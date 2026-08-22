@@ -1,0 +1,21 @@
+{
+  "name": "archmap",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Архитектурная карта: модель в папках, диаграмма и диалоги с агентами вокруг узлов",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "typecheck": "tsc --build --verbose",
+    "check": "node packages/core/dist/cli/check.js map"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

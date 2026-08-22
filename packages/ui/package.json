@@ -1,0 +1,13 @@
+{
+  "name": "@archmap/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Диаграмма и панели: одна кодовая база для standalone и для webview VSCode.",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@archmap/core": "*"
+  }
+}

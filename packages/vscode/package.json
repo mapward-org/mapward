@@ -1,0 +1,14 @@
+{
+  "name": "@archmap/vscode",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Расширение VSCode: тонкая обёртка вокруг server и ui.",
+  "main": "dist/extension.js",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@archmap/core": "*"
+  }
+}

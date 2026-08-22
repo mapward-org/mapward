@@ -1,0 +1,14 @@
+{
+  "name": "@archmap/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Локальный сервер: следит за картой, держит диалоги с агентами, отдаёт модель UI.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@archmap/core": "*"
+  }
+}

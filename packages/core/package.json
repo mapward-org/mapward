@@ -1,0 +1,12 @@
+{
+  "name": "@archmap/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Модель карты: чтение папок, валидация, трассировка. Без VSCode и без UI.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b"
+  }
+}
