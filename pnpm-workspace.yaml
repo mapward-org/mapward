@@ -1,9 +1,11 @@
 packages:
   - packages/*
+  - apps/*
 
 # One version per tool for the whole repo: a monorepo where packages drift in
 # tooling versions is a monorepo only by folder layout.
 catalog:
+  "@types/node": ^26.2.0
   typescript: ^7.0.2
   tsdown: ^0.22.14
   unrun: ^0.3.1

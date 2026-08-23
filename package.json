@@ -11,13 +11,14 @@
     "lint": "oxlint",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "check": "node packages/core/dist/cli/check.js map",
+    "check": "node apps/cli/dist/cli.mjs check map",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",
+    "@types/node": "catalog:",
     "oxfmt": "^0.64.0",
     "oxlint": "^1.79.0",
     "tsdown": "catalog:",

@@ -1,22 +1,19 @@
 {
-  "name": "@archmap/ui",
+  "name": "@archmap/vscode-extension",
   "version": "0.0.0",
   "private": true,
-  "description": "Diagram and panels: a single codebase for standalone and the VSCode webview.",
+  "description": "VSCode binding: hosts the UI in a webview and gives the packages an editor environment.",
   "files": [
     "dist"
   ],
-  "type": "module",
-  "main": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
+  "type": "commonjs",
+  "main": "./dist/extension.cjs",
+  "types": "./dist/extension.d.cts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
+      "types": "./dist/extension.d.cts",
+      "default": "./dist/extension.cjs"
     }
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "build": "tsdown",
@@ -27,6 +24,7 @@
     "@archmap/core": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unrun": "catalog:"

@@ -21,14 +21,21 @@ Russian version of this document: [`ru/README.md`](ru/README.md).
 ## Monorepo
 
 ```
-packages/
-  core/     the map model: reading folders, validation, tracing. No VSCode, no UI
-  server/   watching, agent conversations, running code actions — shared by both clients
-  ui/       diagram and panels: a single codebase
-  vscode/   thin wrapper: the webview plus whatever a browser cannot do
-map/        Archmap's own map — it describes itself
-ru/         Russian space: its own README and `ru/map`
+packages/               published to npm; knows nothing about where it runs
+  core/                 the map model: reading folders, validation, tracing
+  server/               watching, agent conversations, running code actions
+  ui/                   diagram and panels: a single codebase
+apps/                   bindings: one per environment the packages run in
+  cli/                  terminal and CI
+  vscode-extension/     the editor: webview plus what a browser cannot do
+map/                    Archmap's own map — it describes itself
+ru/                     Russian space: its own README and `ru/map`
 ```
+
+The split is the point: a package takes its environment as an argument (`Environment` in `core`),
+an app is the only place that knows about `node:fs`, the `vscode` API or a desktop shell. Node types
+are declared by the apps alone, so a package cannot even type-check a platform import — and
+`tests/platform-independence.test.ts` fails if one appears anyway.
 
 ## Toolchain
 

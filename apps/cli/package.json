@@ -1,20 +1,15 @@
 {
-  "name": "@archmap/vscode",
+  "name": "@archmap/cli",
   "version": "0.0.0",
   "private": true,
-  "description": "VSCode extension: a thin wrapper around server and ui.",
+  "description": "Command-line binding: reads a map from disk and runs checks in CI or a terminal.",
+  "bin": {
+    "archmap": "./dist/cli.mjs"
+  },
   "files": [
     "dist"
   ],
-  "type": "commonjs",
-  "main": "./dist/extension.cjs",
-  "types": "./dist/extension.d.cts",
-  "exports": {
-    ".": {
-      "types": "./dist/extension.d.cts",
-      "default": "./dist/extension.cjs"
-    }
-  },
+  "type": "module",
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
@@ -24,6 +19,7 @@
     "@archmap/core": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unrun": "catalog:"
