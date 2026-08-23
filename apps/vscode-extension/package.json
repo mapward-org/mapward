@@ -1,5 +1,5 @@
 {
-  "name": "@mapwright/vscode-extension",
+  "name": "@mapward/vscode-extension",
   "version": "0.0.0",
   "private": true,
   "description": "VSCode binding: hosts the UI in a webview and gives the packages an editor environment.",
@@ -21,7 +21,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@mapwright/core": "workspace:*"
+    "@mapward/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

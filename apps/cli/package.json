@@ -1,10 +1,10 @@
 {
-  "name": "@mapwright/cli",
+  "name": "@mapward/cli",
   "version": "0.0.0",
   "private": true,
   "description": "Command-line binding: reads a map from disk and runs checks in CI or a terminal.",
   "bin": {
-    "mapwright": "./dist/cli.mjs"
+    "mapward": "./dist/cli.mjs"
   },
   "files": [
     "dist"
@@ -16,7 +16,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@mapwright/core": "workspace:*"
+    "@mapward/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

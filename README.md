@@ -1,4 +1,4 @@
-# Mapwright
+# Mapward
 
 An architecture map: the model lives in folders, you work with it as a diagram, and every node has an
 ongoing conversation with an agent next to it.
@@ -28,7 +28,7 @@ packages/               published to npm; knows nothing about where it runs
 apps/                   bindings: one per environment the packages run in
   cli/                  terminal and CI
   vscode-extension/     the editor: webview plus what a browser cannot do
-map/                    Mapwright's own map — it describes itself
+map/                    Mapward's own map — it describes itself
 ru/                     Russian space: its own README and `ru/map`
 ```
 

@@ -1,5 +1,5 @@
 {
-  "name": "@mapwright/core",
+  "name": "@mapward/core",
   "version": "0.0.0",
   "private": true,
   "description": "The map model: reading folders, validation, tracing. No VSCode, no UI.",
