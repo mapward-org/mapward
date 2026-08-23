@@ -1,8 +1,8 @@
 /**
- * Сервер: единственное место, где карта встречается с процессами.
+ * Server: the only place where the map meets processes.
  *
- * Следит за файлами, отдаёт модель в UI, держит диалоги с агентами (по одному живому на узел)
- * и запускает кодовые действия. Standalone-приложение и расширение VSCode говорят с ним одинаково,
- * поэтому логика не расползается по двум клиентам.
+ * Watches files, serves the model to the UI, keeps agent conversations (one live session per node)
+ * and runs code actions. The standalone app and the VSCode extension talk to it the same way, so the
+ * logic does not drift apart between two clients.
  */
 export const VERSION = '0.0.0';

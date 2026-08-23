@@ -1,8 +1,8 @@
 /**
- * Ядро: модель карты. Читает папки, валидирует, отдаёт структуру наружу.
+ * Core: the map model. Reads folders, validates them, exposes the structure.
  *
- * Здесь не должно быть ни VSCode, ни UI, ни запуска агентов: ядром пользуются и сервер,
- * и расширение, и CLI-проверка. Реализация появится по спеке — сейчас зафиксирована только
- * граница пакета.
+ * Nothing about VSCode, the UI or running agents belongs here: the core is used by the server,
+ * by the extension and by the CLI check alike. The implementation follows the spec — for now only
+ * the package boundary is fixed.
  */
 export const VERSION = '0.0.0';

@@ -1,50 +1,68 @@
 # Archmap
 
-Архитектурная карта: модель живёт в папках, работать с ней можно как с диаграммой, а рядом с каждым
-узлом идёт диалог с агентом.
+An architecture map: the model lives in folders, you work with it as a diagram, and every node has an
+ongoing conversation with an agent next to it.
 
-Версия 2. Первая была прототипом внутри `leafer/archmap` — она осталась эталоном «как было»
-и в этот репозиторий не переносится: v2 собирается по спеке, а не переписыванием прототипа.
+This is version 2. Version 1 was a prototype inside `leafer/archmap`; it stays there as a record of
+what was tried and is not ported here — v2 is built from a spec, not by rewriting the prototype.
 
-## Что уже решено
+Russian version of this document: [`ru/README.md`](ru/README.md).
 
-- **Отдельный инструмент, не часть leafer.** Карта универсальна: любая система с любой иерархией.
-- **Не только VSCode.** UI один, клиентов два: standalone и webview расширения.
-- **Диалог, а не запуск.** У узла живёт долгая сессия агента; действие — сообщение в неё, а не новый
-  процесс со сбором контекста заново. В прототипе каждый клик стоил минуту именно на это.
-- **Служебное отличается префиксом `_`.** Доки — просто доки, дети — просто подпапки.
+## Decided so far
 
-## Монорепа
+- **A tool of its own, not part of leafer.** The map is generic: any system, any hierarchy.
+- **Not VSCode-only.** One UI, two clients: standalone and the extension's webview.
+- **A conversation, not a launch.** Each node keeps a long-lived agent session; an action is a message
+  into it, not a fresh process that re-gathers context. In the prototype every click cost a minute
+  on exactly that.
+- **Internals are marked with `_`.** Docs are just docs, children are just subfolders.
+- **English by default.** The root holds the English version; `ru/` holds the Russian one.
+
+## Monorepo
 
 ```
 packages/
-  core/     модель карты: чтение папок, валидация, трассировка. Без VSCode и UI
-  server/   watch, диалоги с агентами, запуск кодовых действий — общий для обоих клиентов
-  ui/       диаграмма и панели: одна кодовая база
-  vscode/   тонкая обёртка: webview плюс то, чего нет в браузере
-map/        карта самого Archmap — он описывает себя сам
+  core/     the map model: reading folders, validation, tracing. No VSCode, no UI
+  server/   watching, agent conversations, running code actions — shared by both clients
+  ui/       diagram and panels: a single codebase
+  vscode/   thin wrapper: the webview plus whatever a browser cannot do
+map/        Archmap's own map — it describes itself
+ru/         Russian space: its own README and `ru/map`
 ```
 
-`npm install` в корне, дальше `npm run build` (сборка по ссылкам TypeScript) и `npm run typecheck`.
+`npm install` at the root, then `npm run build` (TypeScript project references) and `npm run typecheck`.
 
-## Структура карты
+## Languages
 
-Объект — папка. Служебное начинается с `_`, остальное — содержимое:
+A map is text, and text is written in one language but read in many. So maps live in language spaces,
+and the default one — English — sits at the root.
+
+- English is what a visitor sees: `README.md` and `map/`.
+- Russian lives in `ru/README.md` and `ru/map/`.
+- The structure inside every space is identical: translation changes the text, not the shape of the map.
+- Code, interface names and commit messages are English — they are the same for every language.
+
+Translation between spaces is done by AI, not by hand.
+
+## Map structure
+
+An object is a folder. Internals start with `_`, everything else is content:
 
 ```
-leafer/
-  _index.md          сам объект: класс и поля
-  Назначение.md      док — просто файл рядом
-  Сценарии.md
-  каталог/           ребёнок — обычная подпапка
-  _actions/          действия узла
-  _sessions/         диалоги: история работы с узлом
+map/
+  leafer/
+    _index.md          the object itself: its class and fields
+    Purpose.md         a doc — just a file next to it
+    Scenarios.md
+    catalog/           a child — an ordinary subfolder
+    _actions/          the node's actions
+    _sessions/         conversations: the history of working on this node
 ```
 
-Ни `state/`, ни `state/children/`: дети — подпапки без префикса, доки — файлы. Это главное отличие
-от прототипа, где служебные слои давали больше шума, чем сама модель.
+No `state/`, no `state/children/`: children are unprefixed subfolders, docs are files. That is the
+main departure from the prototype, where the service layers added more noise than the model itself.
 
-## Догфудинг
+## Dogfooding
 
-`map/` — карта этого же проекта. Смысл не в примере: если инструментом неудобно описывать инструмент,
-он не годится и для чужой системы.
+`map/` is this project's own map. The point is not the example: if the tool is awkward for describing
+itself, it is no good for describing anyone else's system.

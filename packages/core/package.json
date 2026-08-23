@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "commonjs",
-  "description": "Модель карты: чтение папок, валидация, трассировка. Без VSCode и без UI.",
+  "description": "The map model: reading folders, validation, tracing. No VSCode, no UI.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

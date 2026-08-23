@@ -2,4 +2,4 @@
 name: Archmap
 ---
 
-_Описание — за тобой: чем инструмент является и для кого._
+_Description is yours: what the tool is, and who it is for._

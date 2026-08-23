@@ -1,5 +1,5 @@
 /**
- * Расширение VSCode: тонкая обёртка. Поднимает сервер, открывает UI в webview, отдаёт ему
- * то, чего нет в браузере — терминалы, открытие файлов, диалоги редактора.
+ * VSCode extension: a thin wrapper. Starts the server, opens the UI in a webview and gives it what
+ * a browser cannot do — terminals, opening files, editor dialogs.
  */
 export const VERSION = '0.0.0';

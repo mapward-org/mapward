@@ -1,5 +1,5 @@
 /**
- * Интерфейс: диаграмма и панели. Одна кодовая база для standalone и для webview VSCode —
- * иначе два клиента разъедутся по возможностям.
+ * UI: diagram and panels. A single codebase for standalone and for the VSCode webview — otherwise
+ * the two clients drift apart in what they can do.
  */
 export const VERSION = '0.0.0';

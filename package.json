@@ -2,7 +2,7 @@
   "name": "archmap",
   "version": "0.0.0",
   "private": true,
-  "description": "Архитектурная карта: модель в папках, диаграмма и диалоги с агентами вокруг узлов",
+  "description": "Architecture map: a model in folders, a diagram, and agent conversations around its nodes",
   "workspaces": [
     "packages/*"
   ],

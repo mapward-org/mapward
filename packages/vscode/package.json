@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "commonjs",
-  "description": "Расширение VSCode: тонкая обёртка вокруг server и ui.",
+  "description": "VSCode extension: a thin wrapper around server and ui.",
   "main": "dist/extension.js",
   "scripts": {
     "build": "tsc -b"

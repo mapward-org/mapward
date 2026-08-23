@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "commonjs",
-  "description": "Локальный сервер: следит за картой, держит диалоги с агентами, отдаёт модель UI.",
+  "description": "Local server: watches the map, keeps agent conversations, serves the model to the UI.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -b"
