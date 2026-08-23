@@ -30,7 +30,29 @@ map/        Archmap's own map — it describes itself
 ru/         Russian space: its own README and `ru/map`
 ```
 
-`npm install` at the root, then `npm run build` (TypeScript project references) and `npm run typecheck`.
+## Toolchain
+
+Decided in `ru/map/decisions/0001-monorepo.md`; this is what it means in practice.
+
+| Concern | Tool |
+| --- | --- |
+| Package manager | pnpm workspaces, one tool version per repo via the `catalog:` |
+| Task runner | Turborepo — `build`, `typecheck`, `dev`, with caching |
+| Language | TypeScript 7 |
+| Bundler | tsdown (rolldown) per package; the extension is emitted as CJS, everything else ESM |
+| Tests | Vitest, a single run for the whole repo |
+| Lint and format | oxlint and oxfmt, default rules only |
+| Releases | Changesets — versions, changelogs and tags on GitHub |
+
+```sh
+pnpm install
+pnpm build        # tsdown per package, in dependency order
+pnpm typecheck    # tsc, no emit
+pnpm test         # vitest
+pnpm lint         # oxlint
+pnpm format       # oxfmt (leaves the maps alone: they are content, not code)
+pnpm changeset    # describe a change before merging it
+```
 
 ## Languages
 

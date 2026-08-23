@@ -5,4 +5,4 @@
  * and runs code actions. The standalone app and the VSCode extension talk to it the same way, so the
  * logic does not drift apart between two clients.
  */
-export const VERSION = '0.0.0';
+export const VERSION = "0.0.0";

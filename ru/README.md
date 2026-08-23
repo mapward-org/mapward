@@ -27,7 +27,29 @@ map/        карта самого Archmap — он описывает себя
 ru/         русское пространство: этот README и `ru/map`
 ```
 
-`npm install` в корне, дальше `npm run build` (сборка по ссылкам TypeScript) и `npm run typecheck`.
+## Инструменты
+
+Решено в `ru/map/decisions/0001-monorepo.md`, здесь — что это значит на практике.
+
+| Что | Чем |
+| --- | --- |
+| Пакетный менеджер | pnpm workspaces, версии инструментов едины через `catalog:` |
+| Запуск задач | Turborepo — `build`, `typecheck`, `dev`, с кэшем |
+| Язык | TypeScript 7 |
+| Сборка | tsdown (rolldown) на пакет; расширение собирается в CJS, остальное — ESM |
+| Тесты | Vitest, один прогон на всю монорепу |
+| Линтер и формат | oxlint и oxfmt, только правила по умолчанию |
+| Релизы | Changesets — версии, changelog и теги на GitHub |
+
+```sh
+pnpm install
+pnpm build        # tsdown по пакетам, в порядке зависимостей
+pnpm typecheck    # tsc без эмита
+pnpm test         # vitest
+pnpm lint         # oxlint
+pnpm format       # oxfmt (карты не трогает: это контент, а не код)
+pnpm changeset    # описать изменение до влития
+```
 
 ## Языки
 

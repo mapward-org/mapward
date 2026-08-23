@@ -1,18 +1,4 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "lib": [
-      "ES2022"
-    ]
-  },
-  "include": [
-    "src"
-  ],
-  "references": [
-    {
-      "path": "../core"
-    }
-  ]
+  "include": ["src/**/*.ts", "tsdown.config.ts"]
 }

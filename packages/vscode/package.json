@@ -2,13 +2,30 @@
   "name": "@archmap/vscode",
   "version": "0.0.0",
   "private": true,
-  "type": "commonjs",
   "description": "VSCode extension: a thin wrapper around server and ui.",
-  "main": "dist/extension.js",
+  "files": [
+    "dist"
+  ],
+  "type": "commonjs",
+  "main": "./dist/extension.cjs",
+  "types": "./dist/extension.d.cts",
+  "exports": {
+    ".": {
+      "types": "./dist/extension.d.cts",
+      "default": "./dist/extension.cjs"
+    }
+  },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc"
   },
   "dependencies": {
-    "@archmap/core": "*"
+    "@archmap/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unrun": "catalog:"
   }
 }

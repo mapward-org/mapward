@@ -5,4 +5,4 @@
  * by the extension and by the CLI check alike. The implementation follows the spec — for now only
  * the package boundary is fixed.
  */
-export const VERSION = '0.0.0';
+export const VERSION = "0.0.0";

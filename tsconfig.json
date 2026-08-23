@@ -1,9 +1,4 @@
 {
-  "files": [],
-  "references": [
-    { "path": "packages/core" },
-    { "path": "packages/server" },
-    { "path": "packages/ui" },
-    { "path": "packages/vscode" }
-  ]
+  "extends": "./tsconfig.base.json",
+  "include": ["packages/*/src/**/*.ts", "*.config.ts"]
 }

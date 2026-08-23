@@ -2,13 +2,30 @@
   "name": "@archmap/server",
   "version": "0.0.0",
   "private": true,
-  "type": "commonjs",
   "description": "Local server: watches the map, keeps agent conversations, serves the model to the UI.",
-  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc"
   },
   "dependencies": {
-    "@archmap/core": "*"
+    "@archmap/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unrun": "catalog:"
   }
 }

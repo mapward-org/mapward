@@ -2,11 +2,27 @@
   "name": "@archmap/core",
   "version": "0.0.0",
   "private": true,
-  "type": "commonjs",
   "description": "The map model: reading folders, validation, tracing. No VSCode, no UI.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unrun": "catalog:"
   }
 }
