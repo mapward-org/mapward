@@ -12,7 +12,7 @@
     "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "@archmap/*": ["./packages/*/src/index.ts"]
+      "@mapwright/*": ["./packages/*/src/index.ts"]
     }
   }
 }

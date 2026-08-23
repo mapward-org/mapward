@@ -1,5 +1,5 @@
 {
-  "name": "archmap",
+  "name": "mapwright",
   "version": "0.0.0",
   "private": true,
   "description": "Architecture map: a model in folders, a diagram, and agent conversations around its nodes",

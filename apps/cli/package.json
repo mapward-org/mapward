@@ -1,10 +1,10 @@
 {
-  "name": "@archmap/cli",
+  "name": "@mapwright/cli",
   "version": "0.0.0",
   "private": true,
   "description": "Command-line binding: reads a map from disk and runs checks in CI or a terminal.",
   "bin": {
-    "archmap": "./dist/cli.mjs"
+    "mapwright": "./dist/cli.mjs"
   },
   "files": [
     "dist"
@@ -16,7 +16,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@archmap/core": "workspace:*"
+    "@mapwright/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

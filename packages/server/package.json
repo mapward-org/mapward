@@ -1,5 +1,5 @@
 {
-  "name": "@archmap/server",
+  "name": "@mapwright/server",
   "version": "0.0.0",
   "private": true,
   "description": "Local server: watches the map, keeps agent conversations, serves the model to the UI.",
@@ -24,7 +24,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@archmap/core": "workspace:*"
+    "@mapwright/core": "workspace:*"
   },
   "devDependencies": {
     "tsdown": "catalog:",

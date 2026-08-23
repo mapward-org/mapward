@@ -1,5 +1,5 @@
 {
-  "name": "@archmap/core",
+  "name": "@mapwright/core",
   "version": "0.0.0",
   "private": true,
   "description": "The map model: reading folders, validation, tracing. No VSCode, no UI.",
