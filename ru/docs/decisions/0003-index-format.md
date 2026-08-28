@@ -7,7 +7,7 @@ import type { Properties as CSSProperties } from "csstype"
 type ObjectIndex = {
   name?: string, // если не заполнить возьмётся имя директории
   props?: Record<string, unknown> // Сюда можно дописать любые данные обьекта, например from to для связи. Они будут доступный в env коллекторов метрик и директив и экшонов
-  extends?: string,        // путь к прототипу. относительные считается относительно корня карты может быть ссылкой в интернет
+  extends?: string,        // mapward:// адрес прототипа, см. решение 0005. Может быть и ссылкой в интернет
   "preview-size"?: { w: number, h: number },   // размер карточки в клетках карты
   "preview-metrics-layout"?: Layout,         // раскладка метрик на карточке. Если не задано пусто
   "details-metrics-layout"?: Layout,         // раскладка метрик на странице обьекта. Если не задано все стопочкой
@@ -38,7 +38,7 @@ areas различается логика на превью и в деталя.
 ```json
 {
   "name": "core",
-  "extends": "prototypes/package",
+  "extends": "mapward://prototypes/package",
   "preview-size": { "w": 2, "h": 1 },
   "preview-metrics-layout": {
     "areas": [["code", "tests"]]

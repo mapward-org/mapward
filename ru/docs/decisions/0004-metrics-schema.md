@@ -9,7 +9,7 @@
 ```ts
 type Metric = {
   label?: string,
-  extends?: string, // относительно корня карты или абсолютная ссылка
+  extends?: string, // mapward:// адрес, см. решение 0005
                     // путь ведёт к директории с config.json, внутри _metrics лежать не обязана
   refresh?: "manual" | "on-display" | `interval:${string}` // default manual
 
@@ -51,45 +51,42 @@ Ui должен не ломаться но показывать `unknown`
 ```ts
 type MetricDisplay =
   | { kind: "text" }   // { text: string }
-  | { kind: "link" }   // { url?: string, path?: string, label?: string }
+  | { kind: "link" }   // { label?: string, link?: string }
   | { kind: "status" } // { ok: boolean, summary?: string }
   | { kind: "list" }   // { items: ListNode[] }
   | { kind: "tree" }   // { children: TreeNode[] }
   | { kind: "map" }    // { nodes: MapNode[], relations: MapRelation[] }
 
 type ListNode = {
-  objectId?: string,
   label?: string,
-  url?: string,
-  path?: string,
+  link?: string,
 }
 
 type TreeNode = {
-  objectId?: string,
   label?: string,
-  url?: string,
-  path?: string,
+  link?: string,
   children?: TreeNode[],
 }
 
 type MapNode = {
-  objectId?: string,
   label?: string,
-  url?: string,
-  path?: string,
+  link?: string,
 }
 
 type MapRelation = {
-  objectId?: string,
   label?: string,
-  from?: string,   // адреса объектов от корня карты
+  link?: string,   // сама связь, если в неё можно провалиться
+  from?: string,   // mapward:// адреса концов
   to?: string,
 }
 ```
 
-`path` - ссылка на файл в проекте. Рендерер превратит в корректную ссылку в зависимости от окружения. url ведёт во вне
+`link` - адрес по решению [0005](0005-addressing.md). По схеме понятно, как резолвить:
+`mapward://` ведёт на объект карты, `https://` наружу, всё остальное файл в проекте —
+рендерер превратит его в ссылку в зависимости от окружения
 
-Если list tree map получает objectId то отображение, формируется на основе объекта и поля url label (и другие которые могут потом появится) игнорируются
+Если `link` ведёт на объект карты, отображение формируется на основе этого объекта,
+а `label` игнорируется
 
 Тип карты сохраняет в файле "map-state.json" координаты элементов и модификаторы линий (точки через которые они проходят)
 
@@ -147,7 +144,7 @@ MAPWARD_OBJECT - json со всем содержимым `_index.json`
 
 **prompt** - медленный но простой вариант собрать метрику откуда угодно. По умолчанию запускается в headless режиме клода, команда агента настраивается в конфиге карты. В базовый промпт так же прокинута информация об объекте
 
-**read-dir** - кастомный коллект, который собирает информацию с директории. Опять же basePath описывается от корня карты. Результат удобно передавать в tree дисплей
+**read-dir** - кастомный коллект, который собирает информацию с директории. basePath это файловый путь: относительный резолвится от cwd, надёжнее указывать через `${{ mapward://#props.basePath }}`. Результат удобно передавать в tree дисплей
 
 Формат вывода
 ```ts
@@ -168,7 +165,7 @@ type ReadDirRes = {
 ```
 
 **object-children-map** - читает детей текущего объекта и выводит конфиг в форме удобной для `map` дисплея
-(Для релейшенов, у объектов в пропсах должно быть from to ссылки на объекты карты по относительному пути от корня карты)
+(Для релейшенов, у объектов в пропсах должно быть from to — mapward:// адреса объектов карты)
 
 (relations, nodes) - по умолчанию все у кого есть (from,to) релейшены остальное ноды. Если хочется только часть показывать - то можно указать глоб относительно объекта
 
