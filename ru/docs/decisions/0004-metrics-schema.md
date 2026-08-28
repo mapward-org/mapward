@@ -10,6 +10,7 @@
 type Metric = {
   label?: string,
   extends?: string, // относительно корня карты или абсолютная ссылка
+                    // путь ведёт к директории с config.json, внутри _metrics лежать не обязана
   refresh?: "manual" | "on-display" | `interval:${string}` // default manual
 
   // Если передан коллекторы пишут в collect.json иначе данные передаются напрямую в transform

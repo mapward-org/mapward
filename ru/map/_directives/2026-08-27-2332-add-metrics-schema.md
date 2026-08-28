@@ -12,6 +12,7 @@
 type Metric = {
   label?: string,
   extends?: string, // относительно корня карты или абсолютная ссылка
+                    // путь ведёт к директории с config.json, внутри _metrics лежать не обязана
   refresh?: "manual" | "on-display" | `interval:${string}` // default manual
 
   // Если передан коллекторы пишут в collect.json иначе данные передаются напрямую в transform
@@ -138,6 +139,7 @@ type MetricCollect = BaseCollect & (
 
 
 **static** - Просто значение которое сразу передаётся в display или transform удобно для тестов и визуальных штук
+
 **script** - Запускает скрипт текущей оболочки. cwd - корень карты!
 Важно: скрипт запускается с переменными окружения содержащими информацию об объекте из `_index.json`
 
