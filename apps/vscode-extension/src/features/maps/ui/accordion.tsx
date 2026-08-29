@@ -2,6 +2,19 @@ import { type ReactNode, useState } from "react";
 
 export type Section = { key: string; title: string; body: ReactNode };
 
+/** One glyph rotated, not two different ones: the row keeps its geometry when it folds. */
+function Chevron(props: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={`size-4 shrink-0 transition-transform duration-100 ${props.open ? "rotate-90" : ""}`}
+    >
+      <path d="M6 4.5 10 8l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
 /** Sections fold the way workspace roots do in the explorer — a habit that already exists. */
 export function Accordion(props: { sections: Section[] }) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
@@ -15,20 +28,23 @@ export function Accordion(props: { sections: Section[] }) {
     });
 
   return (
-    <div className="flex flex-col text-sm">
-      {props.sections.map((section) => (
-        <section key={section.key}>
-          <button
-            type="button"
-            onClick={() => toggle(section.key)}
-            className="flex w-full items-center gap-1 px-2 py-1 text-left uppercase opacity-80 hover:opacity-100"
-          >
-            <span className="inline-block w-3">{closed.has(section.key) ? "›" : "⌄"}</span>
-            {section.title}
-          </button>
-          {!closed.has(section.key) && <div className="px-2 pb-2">{section.body}</div>}
-        </section>
-      ))}
+    <div className="flex flex-col">
+      {props.sections.map((section) => {
+        const open = !closed.has(section.key);
+        return (
+          <section key={section.key}>
+            <button
+              type="button"
+              onClick={() => toggle(section.key)}
+              className="flex w-full items-center gap-px py-[3px] pr-2 text-left text-[11px] font-semibold tracking-wide uppercase hover:bg-[var(--vscode-list-hoverBackground)]"
+            >
+              <Chevron open={open} />
+              <span className="truncate">{section.title}</span>
+            </button>
+            {open && <div className="pb-1 pl-5">{section.body}</div>}
+          </section>
+        );
+      })}
     </div>
   );
 }

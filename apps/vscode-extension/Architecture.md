@@ -47,6 +47,39 @@ compose -> (model|adapters|ui) -> pure-model
 compose -> _submodule -> pure-model
 ```
 
+## `index` не содержит логики
+
+`index.extension.ts` и `index.webview.ts` — только реэкспорт. Как только в них появляется
+код, публичный api фичи перестаёт быть списком того, что она отдаёт, и становится ещё
+одним местом, где живёт реализация: снаружи не видно границ фичи, а внутри — что откуда
+берётся.
+
+Так не надо:
+
+```ts
+// index.extension.ts
+export function handlers() {
+  return {
+    watch: () =>
+      new Observable((subscriber) => {
+        const watcher = vscode.workspace.createFileSystemWatcher("**/config.json");
+        watcher.onDidChange(() => subscriber.next());
+        return () => watcher.dispose();
+      }),
+  };
+}
+```
+
+Здесь в точке входа оказался самый платформенный кусок фичи — тот, который и должен был
+жить в `adapters`. А так надо:
+
+```ts
+// index.extension.ts
+export { handlers } from "./compose/handlers.ts";
+```
+
+Поток уезжает в `adapters/watch.ts`, сборка хендлеров — в `compose/handlers.ts`.
+
 ## Изоморфность
 
 Расширение живёт в двух рантаймах: extension host знает `vscode`, файлы и терминалы,

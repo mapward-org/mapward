@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import type { ResolvedMap } from "../../../kernel/bridge/config.ts";
-import { useMaps, useMapsActions } from "../adapters/use-maps.ts";
-import { Accordion } from "../ui/accordion.tsx";
-import { Empty } from "../ui/empty.tsx";
+import type { ResolvedMap } from "@/kernel/bridge/config.ts";
+import { useMaps, useMapsActions } from "@/features/maps/adapters/use-maps.ts";
+import { Accordion } from "@/features/maps/ui/accordion.tsx";
+import { Empty } from "@/features/maps/ui/empty.tsx";
+import { Loading } from "@/features/maps/ui/loading.tsx";
 
 /**
  * The feature knows how many maps there are and nothing about what a map looks like — that
@@ -12,7 +13,7 @@ export function Maps(props: { renderMap: (map: ResolvedMap) => ReactNode }) {
   const state = useMaps();
   const actions = useMapsActions();
 
-  if (!state) return <p className="p-3 text-sm opacity-70">Ищем карты…</p>;
+  if (!state) return <Loading text="Ищем карты…" />;
 
   if (state.kind === "no-workspace") {
     return (
@@ -20,6 +21,18 @@ export function Maps(props: { renderMap: (map: ResolvedMap) => ReactNode }) {
         text="Не открыта папка. Открой проект, в котором есть карта."
         action="Найти"
         onAction={actions.pickFolder}
+      />
+    );
+  }
+
+  if (state.kind === "error") {
+    return (
+      <Empty
+        text={state.message}
+        action={state.configPath ? "Открыть mapward.json" : "Создать mapward.json"}
+        onAction={() =>
+          state.configPath ? actions.openPath(state.configPath) : actions.createConfig()
+        }
       />
     );
   }

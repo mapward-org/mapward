@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import type { MapsState } from "../../../kernel/bridge/config.ts";
-import { CONFIG_FILE, EMPTY_CONFIG } from "../pure-model/config.ts";
+import type { MapsState } from "@/kernel/bridge/config.ts";
+import { CONFIG_FILE, EMPTY_CONFIG } from "@/features/maps/pure-model/config.ts";
 import { readMaps } from "./workspace.ts";
 
 /** Writes a starting config into the first workspace folder and opens it for editing. */
@@ -26,4 +26,9 @@ export async function pickFolder(): Promise<void> {
     openLabel: "Открыть проект",
   });
   if (picked?.[0]) await vscode.commands.executeCommand("vscode.openFolder", picked[0]);
+}
+
+/** Opens the file the sidebar is complaining about, so the fix is one click away. */
+export async function openPath(params: { path: string }): Promise<void> {
+  await vscode.window.showTextDocument(vscode.Uri.file(params.path));
 }

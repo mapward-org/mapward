@@ -35,12 +35,32 @@ export function parseConfig(text: string): MapEntry[] {
   }));
 }
 
-/** Until the map itself is read, its folder name is the best label we have. */
-export function mapName(mapPath: string): string {
+/** Only the field we need here — reading the map itself comes later. */
+export const MapIndex = T.Object({ name: T.Optional(T.String()) });
+
+function folderName(mapPath: string): string {
   const segments = mapPath.replaceAll("\\", "/").split("/").filter(Boolean);
   return segments.at(-1) ?? mapPath;
 }
 
+/**
+ * The map names itself in `_index.json`. A missing or broken index must not hide the map,
+ * so the folder name stands in — an error belongs on the object, not over the whole sidebar.
+ */
+export function mapName(indexText: string | undefined, mapPath: string): string {
+  if (indexText) {
+    try {
+      const parsed: unknown = JSON.parse(indexText);
+      if (Check(MapIndex, parsed) && parsed.name) return parsed.name;
+    } catch {
+      // fall through to the folder name
+    }
+  }
+  return folderName(mapPath);
+}
+
 export const CONFIG_FILE = "mapward.json";
+
+export const INDEX_FILE = "_index.json";
 
 export const EMPTY_CONFIG = `{\n  "maps": [\n    { "mapUrl": "map" }\n  ]\n}\n`;

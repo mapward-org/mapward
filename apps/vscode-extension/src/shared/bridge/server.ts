@@ -1,4 +1,4 @@
-import type { Subscription } from "rxjs";
+import type { Observable, Subscription } from "rxjs";
 import { Check } from "typebox/value";
 import type { BridgeContract, BridgeHandlers } from "./contract.ts";
 import type { BridgeTransport } from "./protocol.ts";
@@ -47,12 +47,19 @@ export function createBridgeServer<C extends BridgeContract>(
             }),
         );
       } else {
-        const stream = handler(message.params) as {
-          subscribe: (next: (value: unknown) => void) => Subscription;
-        };
+        const stream = handler(message.params) as Observable<unknown>;
         streams.set(
           message.id,
-          stream.subscribe((value) => transport.post({ kind: "event", id: message.id, value })),
+          stream.subscribe({
+            next: (value) => transport.post({ kind: "event", id: message.id, value }),
+            // Without this a failing stream goes quiet and the caller waits forever.
+            error: (error: unknown) =>
+              transport.post({
+                kind: "failure",
+                id: message.id,
+                message: error instanceof Error ? error.message : String(error),
+              }),
+          }),
         );
       }
     } else if (message.kind === "unsubscribe") {

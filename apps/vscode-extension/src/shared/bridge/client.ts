@@ -14,7 +14,10 @@ export function createBridgeClient<C extends BridgeContract>(
     string,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
-  const streams = new Map<string, { next: (value: unknown) => void }>();
+  const streams = new Map<
+    string,
+    { next: (value: unknown) => void; error: (error: Error) => void }
+  >();
 
   transport.onMessage((message) => {
     if (message.kind === "result") {
@@ -23,6 +26,8 @@ export function createBridgeClient<C extends BridgeContract>(
     } else if (message.kind === "failure") {
       calls.get(message.id)?.reject(new Error(message.message));
       calls.delete(message.id);
+      streams.get(message.id)?.error(new Error(message.message));
+      streams.delete(message.id);
     } else if (message.kind === "event") {
       streams.get(message.id)?.next(message.value);
     }
@@ -42,7 +47,10 @@ export function createBridgeClient<C extends BridgeContract>(
       client[method] = (params: unknown) =>
         new Observable((subscriber) => {
           const id = nextId();
-          streams.set(id, { next: (value) => subscriber.next(value) });
+          streams.set(id, {
+            next: (value) => subscriber.next(value),
+            error: (error) => subscriber.error(error),
+          });
           transport.post({ kind: "subscribe", id, method, params });
           return () => {
             streams.delete(id);

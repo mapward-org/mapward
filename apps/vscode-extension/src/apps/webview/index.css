@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+/*
+ * The sidebar sits inside the editor, so it takes the editor's type and colours rather than
+ * bringing its own. The variables come from whichever theme the user has on.
+ */
+body {
+  margin: 0;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: transparent;
+}

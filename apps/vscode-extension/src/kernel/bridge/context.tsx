@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useContext } from "react";
-import type { BridgeClient } from "../../shared/bridge/contract.ts";
+import type { BridgeClient } from "@/shared/bridge/contract.ts";
 import type { ConfigBridge } from "./config.ts";
 
 const BridgeContext = createContext<BridgeClient<ConfigBridge> | undefined>(undefined);
