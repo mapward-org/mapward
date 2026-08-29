@@ -1,0 +1,10 @@
+{
+  "label": "Общие метрики",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node -e \"const fs=require('fs'),p=require('path');const d=p.join(process.env.MAPWARD_MAP_PATH,'shared-metrics');console.log(JSON.stringify({items:fs.readdirSync(d,{withFileTypes:true}).filter(e=>e.isDirectory()).map(e=>({label:e.name,link:'shared-metrics/'+e.name+'/config.json'}))}))\""
+    }
+  ],
+  "display": { "kind": "list" }
+}

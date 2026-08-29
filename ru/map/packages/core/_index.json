@@ -1,0 +1,9 @@
+{
+  "name": "core",
+  "extends": "mapward://prototypes/package",
+  "props": {
+    "codePath": "packages/core",
+    "docsPath": "ru/docs/core.md",
+    "packageName": "@mapward/core"
+  }
+}

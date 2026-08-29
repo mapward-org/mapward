@@ -1,0 +1,18 @@
+{
+  "name": "Пакет",
+  "props": {
+    "fullPath": "${{ mapward://#props.basePath }}/${{ mapward://~#props.codePath }}"
+  },
+  "preview-size": { "w": 2, "h": 1 },
+  "preview-metrics-layout": {
+    "areas": [["code", "tests"]]
+  },
+  "details-metrics-layout": {
+    "areas": [
+      ["code", "docs", "version"],
+      ["tests", "lint", "public-api"],
+      ["files", "files", "files"]
+    ],
+    "style": { "gridTemplateRows": "auto auto 1fr", "gap": "8px" }
+  }
+}

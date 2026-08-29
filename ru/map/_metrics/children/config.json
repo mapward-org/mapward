@@ -1,0 +1,10 @@
+{
+  "label": "Карта",
+  "collectors": [
+    {
+      "kind": "object-children-map",
+      "exclude": ["prototypes/*", "shared-metrics/*"]
+    }
+  ],
+  "display": { "kind": "map" }
+}

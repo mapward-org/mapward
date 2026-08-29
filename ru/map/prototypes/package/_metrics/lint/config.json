@@ -1,0 +1,10 @@
+{
+  "label": "Линтер",
+  "collectors": [
+    { "kind": "script", "run": "pnpm oxlint ${{ mapward://~#props.fullPath }}" }
+  ],
+  "transforms": [ { "kind": "prompt" } ],
+  "collectorsCache": true,
+  "transformsCache": true,
+  "display": { "kind": "status" }
+}

@@ -1,0 +1,7 @@
+{
+  "label": "Дока",
+  "collectors": [
+    { "kind": "static", "value": { "label": "${{ mapward://~#props.docsPath }}", "link": "${{ mapward://#props.basePath }}/${{ mapward://~#props.docsPath }}" } }
+  ],
+  "display": { "kind": "link" }
+}

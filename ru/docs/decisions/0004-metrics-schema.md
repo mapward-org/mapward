@@ -129,7 +129,7 @@ type MetricCollect = BaseCollect & (
   | { kind: "script", run: string }
   | { kind: "prompt", prompt: string }
   | { kind: "read-dir", basePath: string, include?: string[], exclude?: string[] } // в include, exclude глобы
-  | { kind: "object-children-map", relations?: string, nodes?: string }
+  | { kind: "object-children-map", include?: string[], exclude?: string[], relations?: string, nodes?: string }
 )
 
 ```
@@ -170,6 +170,8 @@ type ReadDirRes = {
 (Для релейшенов, у объектов в пропсах должно быть from to — mapward:// адреса объектов карты)
 
 (relations, nodes) - по умолчанию все у кого есть (from,to) релейшены остальное ноды. Если хочется только часть показывать - то можно указать глоб относительно объекта
+
+(include, exclude) - глобы относительно объекта, отбирают детей до деления на ноды и релейшены. Так со своей карты убираются служебные ветки: `exclude: ["prototypes/*", "shared-metrics/*"]`
 
 ### **transforms**
 

@@ -1,0 +1,11 @@
+{
+  "label": "Версия",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node -e \"console.log(JSON.stringify({text:require('${{ mapward://~#props.fullPath }}/package.json').version}))\""
+    }
+  ],
+  "display": { "kind": "text" }
+}

@@ -1,0 +1,11 @@
+{
+  "label": "Файлы",
+  "collectors": [
+    {
+      "kind": "read-dir",
+      "basePath": "${{ mapward://~#props.fullPath }}",
+      "exclude": ["**/node_modules/**", "**/dist/**"]
+    }
+  ],
+  "display": { "kind": "tree" }
+}

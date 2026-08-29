@@ -1,5 +1,16 @@
 {
-    "id": "mapward",
-    "name": "Mapward"
+  "name": "Mapward",
+  "props": {
+    "basePath": "${{ mapward:// }}/../.."
+  },
+  "details-metrics-layout": {
+    "areas": [
+      ["prototypes", "shared-metrics"],
+      ["children", "children"]
+    ],
+    "style": {
+      "gridTemplateRows": "auto 1fr",
+      "gap": "8px"
+    }
+  }
 }
-

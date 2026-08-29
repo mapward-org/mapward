@@ -1,0 +1,11 @@
+{
+  "label": "Public API",
+  "collectors": [
+    {
+      "kind": "prompt",
+      "prompt": "Собери публичный API пакета по пути ${{ mapward://~#props.fullPath }}: посмотри точку входа и экспорты, перечисли экспортируемые имена с краткой сигнатурой. Верни { label, link } — ссылку на файл точки входа и подписью количество экспортов."
+    }
+  ],
+  "collectorsCache": true,
+  "display": { "kind": "link" }
+}

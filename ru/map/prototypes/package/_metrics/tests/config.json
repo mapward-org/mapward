@@ -1,0 +1,12 @@
+{
+  "label": "Тесты",
+  "collectors": [
+    { "kind": "script", "run": "pnpm vitest run --project ${{ mapward://~#props.packageName }}" }
+  ],
+  "transforms": [
+    { "kind": "prompt" }
+  ],
+  "collectorsCache": true,
+  "transformsCache": true,
+  "display": { "kind": "status" }
+}
