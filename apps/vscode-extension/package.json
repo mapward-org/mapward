@@ -1,32 +1,66 @@
 {
   "name": "@mapward/vscode-extension",
+  "displayName": "Mapward",
   "version": "0.0.0",
   "private": true,
   "description": "VSCode binding: hosts the UI in a webview and gives the packages an editor environment.",
+  "categories": [
+    "Other"
+  ],
+  "publisher": "mapward",
   "files": [
-    "dist"
+    "dist",
+    "media"
   ],
   "type": "commonjs",
   "main": "./dist/extension.cjs",
-  "types": "./dist/extension.d.cts",
-  "exports": {
-    ".": {
-      "types": "./dist/extension.d.cts",
-      "default": "./dist/extension.cjs"
-    }
-  },
   "scripts": {
-    "build": "tsdown",
-    "dev": "tsdown --watch",
-    "typecheck": "tsc"
+    "build": "tsdown && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify",
+    "dev": "pnpm run \"/^dev:/\"",
+    "typecheck": "tsc",
+    "dev:js": "tsdown --watch",
+    "dev:css": "tailwindcss -i src/apps/webview/index.css -o dist/webview.css --watch"
   },
   "dependencies": {
-    "@mapward/core": "workspace:*"
+    "@mapward/core": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zustand": "catalog:"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/vscode": "catalog:",
+    "tailwindcss": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unrun": "catalog:"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mapward",
+          "title": "Mapward",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "mapward": [
+        {
+          "id": "mapward.map",
+          "name": "Карта",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "activationEvents": [],
+  "engines": {
+    "node": ">=22",
+    "vscode": "^1.90.0"
   }
 }

@@ -1,0 +1,7 @@
+{
+  "label": "Архитектура",
+  "collectors": [
+    { "kind": "static", "value": { "label": "Architecture.md", "link": "${{ mapward://~#props.fullPath }}/Architecture.md" } }
+  ],
+  "display": { "kind": "link" }
+}

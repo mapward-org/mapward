@@ -9,8 +9,8 @@
   },
   "details-metrics-layout": {
     "areas": [
-      ["code"],
-      ["files"]
+      ["code", "architecture", "plan"],
+      ["files", "files", "files"]
     ],
     "style": { "gridTemplateRows": "auto 1fr", "gap": "8px" }
   }

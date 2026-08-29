@@ -10,3 +10,13 @@ catalog:
   tsdown: ^0.22.14
   unrun: ^0.3.1
   vitest: ^4.1.11
+
+  # The extension: webview runtime and editor types
+  react: ^19.2.0
+  react-dom: ^19.2.0
+  zustand: ^5.0.8
+  tailwindcss: ^4.1.14
+  "@tailwindcss/cli": ^4.1.14
+  "@types/react": ^19.2.0
+  "@types/react-dom": ^19.2.0
+  "@types/vscode": ^1.90.0
