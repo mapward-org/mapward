@@ -13,7 +13,7 @@ mapward://~                                путь до текущего объ
 mapward://~#props.name                     значение своего props
 mapward://~/relations/relation             путь до ребёнка
 mapward://~/relations/relation#props.from  значение props ребёнка
-mapward://@                                корень проекта, baseUrl из mapward.json
+mapward://@                                корень проекта — baseUrl этой карты
 mapward://@/packages/core                  путь от корня проекта
 ```
 
@@ -23,7 +23,8 @@ mapward://@/packages/core                  путь от корня проект
 Пустой путь перед решёткой это корень карты: `mapward://#props.name`
 
 Код лежит вне карты, и чтобы не писать `../..` в каждой метрике, есть `@` — корень
-проекта, `baseUrl` из `mapward.json`, см. решение [0007](0007-config.md)
+проекта. Это `baseUrl` из `mapward.json`, свой у каждой карты: `@` разрешается от той
+карты, которой принадлежит объект, см. решение [0007](0007-config.md)
 
 ```json
 { "kind": "read-dir", "basePath": "${{ mapward://@ }}/packages/core" }
