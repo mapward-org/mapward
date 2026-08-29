@@ -1,8 +1,5 @@
 {
   "name": "Mapward",
-  "props": {
-    "basePath": "${{ mapward:// }}/../.."
-  },
   "details-metrics-layout": {
     "areas": [
       ["prototypes", "shared-metrics"],

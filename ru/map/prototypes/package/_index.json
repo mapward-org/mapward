@@ -1,7 +1,7 @@
 {
   "name": "Пакет",
   "props": {
-    "fullPath": "${{ mapward://#props.basePath }}/${{ mapward://~#props.codePath }}"
+    "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}"
   },
   "preview-size": { "w": 2, "h": 1 },
   "preview-metrics-layout": {

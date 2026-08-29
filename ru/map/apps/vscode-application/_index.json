@@ -2,7 +2,7 @@
   "name": "Расширение VS Code",
   "props": {
     "codePath": "apps/vscode-extension",
-    "fullPath": "${{ mapward://#props.basePath }}/${{ mapward://~#props.codePath }}"
+    "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}"
   },
   "preview-metrics-layout": {
     "areas": [["code"]]

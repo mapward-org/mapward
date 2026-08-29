@@ -37,7 +37,7 @@
 Никаких особых полей нет, `props` обычные данные
 
 ```json
-{ "props": { "codePath": "${{ mapward://#props.basePath }}/packages/core" } }
+{ "props": { "codePath": "${{ mapward://@ }}/packages/core" } }
 ```
 
 Поле может сослаться на поле другого объекта, а то обратно — тогда получится цикл.
