@@ -1,10 +1,6 @@
 import * as T from "typebox";
 import type { Static } from "typebox";
-import {
-  createBridge,
-  createBridgeMethod,
-  createBridgeSubscription,
-} from "@/shared/bridge/contract.ts";
+import { createBridgeMethod, createBridgeSubscription } from "@/shared/bridge/contract.ts";
 
 /** One map, already resolved to absolute paths — the webview never touches the file system. */
 export const ResolvedMap = T.Object({
@@ -26,14 +22,13 @@ export const MapsState = T.Union([
   T.Object({ kind: T.Literal("error"), message: T.String(), configPath: T.Optional(T.String()) }),
 ]);
 
-export const configBridge = createBridge({
+export const configBridge = {
   getMaps: createBridgeMethod(T.Void(), MapsState),
   watchMaps: createBridgeSubscription(T.Void(), MapsState),
   createConfig: createBridgeMethod(T.Void(), MapsState),
   openPath: createBridgeMethod(T.Object({ path: T.String() }), T.Void()),
   pickFolder: createBridgeMethod(T.Void(), T.Void()),
-});
+};
 
 export type ResolvedMap = Static<typeof ResolvedMap>;
 export type MapsState = Static<typeof MapsState>;
-export type ConfigBridge = typeof configBridge;
