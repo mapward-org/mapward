@@ -1,7 +1,8 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
-import type { MapMetric } from "../pure-model/model.ts";
+import type { MapMetric, MapObject } from "../pure-model/model.ts";
+import { childrenMap } from "../_children-map/pure-model/children.ts";
 
 const run = promisify(exec);
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -42,6 +43,7 @@ async function readDir(base: string, exclude: string[]): Promise<FileNode[]> {
 async function collector(
   spec: Record<string, unknown>,
   cwd: string,
+  owner: MapObject,
 ): Promise<{ value: unknown; log?: string }> {
   switch (spec.kind) {
     case "static":
@@ -59,21 +61,32 @@ async function collector(
       const exclude = Array.isArray(spec.exclude) ? spec.exclude.map(String) : [];
       return { value: { children: await readDir(String(spec.basePath), exclude) } };
     }
+    case "object-children-map": {
+      const exclude = Array.isArray(spec.exclude) ? spec.exclude.map(String) : [];
+      return { value: childrenMap(owner, exclude) };
+    }
     default:
       throw new Error(`Коллектор ${String(spec.kind)} ещё не поддержан`);
   }
 }
 
 /**
- * Collectors write into `collect.json` next to the config. On failure the previous data
- * stays: the value was true once, we just could not refresh it — decision 0004.
+ * `collect.json` is written only when the metric asks for it — decision 0004. A script that
+ * runs in milliseconds gains nothing from a cache and would put a diff in the repository on
+ * every look at the map. Logs are always written: they are what a red dot points at.
+ *
+ * On failure the previous data stays: the value was true once, we just could not refresh it.
  */
-export async function collect(metric: MapMetric, cwd: string): Promise<Collected> {
+export async function collect(
+  metric: MapMetric,
+  owner: MapObject,
+  cwd: string,
+): Promise<Collected> {
   const specs = metric.config.collectors ?? [];
   const previous = await readCache(metric);
 
   try {
-    const results = await Promise.all(specs.map((spec) => collector(spec, cwd)));
+    const results = await Promise.all(specs.map((spec) => collector(spec, cwd, owner)));
     const log = results
       .map((result) => result.log)
       .filter(Boolean)
@@ -87,7 +100,7 @@ export async function collect(metric: MapMetric, cwd: string): Promise<Collected
           );
 
     const collected: Collected = { updatedAt: new Date().toISOString(), ok: true, data };
-    await writeCache(metric, collected, log);
+    await write(metric, collected, log);
     return collected;
   } catch (error) {
     const failed: Collected = {
@@ -95,7 +108,7 @@ export async function collect(metric: MapMetric, cwd: string): Promise<Collected
       ok: false,
       data: previous?.data,
     };
-    await writeCache(metric, failed, error instanceof Error ? error.message : String(error));
+    await write(metric, failed, error instanceof Error ? error.message : String(error));
     return failed;
   }
 }
@@ -104,6 +117,7 @@ const cacheUri = (metric: MapMetric, file: string) =>
   vscode.Uri.joinPath(vscode.Uri.file(metric.configPath), "..", file);
 
 export async function readCache(metric: MapMetric): Promise<Collected | undefined> {
+  if (!metric.config.collectorsCache) return undefined;
   try {
     const bytes = await vscode.workspace.fs.readFile(cacheUri(metric, "collect.json"));
     return JSON.parse(new TextDecoder().decode(bytes)) as Collected;
@@ -112,11 +126,13 @@ export async function readCache(metric: MapMetric): Promise<Collected | undefine
   }
 }
 
-async function writeCache(metric: MapMetric, value: Collected, log?: string): Promise<void> {
-  await vscode.workspace.fs.writeFile(
-    cacheUri(metric, "collect.json"),
-    encode(JSON.stringify(value, null, 2) + "\n"),
-  );
+async function write(metric: MapMetric, value: Collected, log?: string): Promise<void> {
+  if (metric.config.collectorsCache) {
+    await vscode.workspace.fs.writeFile(
+      cacheUri(metric, "collect.json"),
+      encode(JSON.stringify(value, null, 2) + "\n"),
+    );
+  }
   // Logs explain a red dot; without them a failed run says only that it failed.
   if (log) {
     await vscode.workspace.fs.writeFile(cacheUri(metric, "collect.logs.json"), encode(log));

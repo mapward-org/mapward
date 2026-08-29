@@ -59,3 +59,17 @@ export function findMetric(root: MapObject, address: string): MapMetric | undefi
   }
   return undefined;
 }
+
+/** Which object a metric belongs to — `object-children-map` reads the model, not the disk. */
+export function findMetricOwner(
+  root: MapObject,
+  address: string,
+): { object: MapObject; metric: MapMetric } | undefined {
+  const own = root.metrics.find((metric) => metric.address === address);
+  if (own) return { object: root, metric: own };
+  for (const child of root.children) {
+    const found = findMetricOwner(child, address);
+    if (found) return found;
+  }
+  return undefined;
+}

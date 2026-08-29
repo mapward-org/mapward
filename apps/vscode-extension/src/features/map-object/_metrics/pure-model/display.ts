@@ -1,6 +1,7 @@
 /** Shapes each display expects — decision 0004. */
 export type LinkNode = { label?: string; link?: string };
 export type TreeNode = { label?: string; link?: string; children?: TreeNode[] };
+export type MapRelation = { label?: string; link?: string; from?: string; to?: string };
 
 export type DisplayData =
   | { kind: "text"; text: string }
@@ -8,6 +9,7 @@ export type DisplayData =
   | { kind: "status"; ok: boolean; summary?: string }
   | { kind: "list"; items: LinkNode[] }
   | { kind: "tree"; children: TreeNode[] }
+  | { kind: "map"; nodes: LinkNode[]; relations: MapRelation[] }
   | { kind: "unknown"; reason: string };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -41,6 +43,14 @@ export function toDisplay(kind: string | undefined, data: unknown): DisplayData 
       return Array.isArray(record.children)
         ? { kind: "tree", children: record.children as TreeNode[] }
         : { kind: "unknown", reason: "ждём { children }" };
+    case "map":
+      return Array.isArray(record.nodes)
+        ? {
+            kind: "map",
+            nodes: record.nodes as LinkNode[],
+            relations: (record.relations ?? []) as MapRelation[],
+          }
+        : { kind: "unknown", reason: "ждём { nodes, relations }" };
     default:
       return { kind: "unknown", reason: `дисплей ${kind ?? "не задан"}` };
   }

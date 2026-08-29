@@ -4,7 +4,8 @@ import { findObject, trail } from "../pure-model/model.ts";
 import { useMap, useMapActions } from "../adapters/use-map.ts";
 import { MetricGrid } from "../_metrics/compose/metric-grid.tsx";
 import { Breadcrumbs } from "../ui/breadcrumbs.tsx";
-import { FileList } from "../ui/file-list.tsx";
+import { ActionsIcon, DirectivesIcon, IndexIcon } from "../ui/icons.tsx";
+import { MenuButton } from "../ui/menu-button.tsx";
 import { HeaderButton, ObjectHeader } from "../ui/object-header.tsx";
 import { Loading } from "@/features/maps/ui/loading.tsx";
 
@@ -29,30 +30,42 @@ export function MapObjectView(props: { mapConfig: Ref }) {
 
   return (
     <div className="pb-2">
-      <Breadcrumbs trail={path} onGo={setAddress} />
+      <Breadcrumbs trail={path.slice(0, -1)} onGo={setAddress} />
 
       <ObjectHeader
         name={current.name}
         prototypeName={current.prototypeName}
         actions={
-          <HeaderButton title="Открыть _index.json" onClick={() => actions.open(current.path)}>
-            ⋯
-          </HeaderButton>
+          <>
+            <MenuButton
+              title="Директивы"
+              icon={DirectivesIcon}
+              items={current.directives.map((file) => ({
+                key: file.path,
+                label: file.name,
+                onSelect: () => actions.open(file.path),
+              }))}
+            />
+            <MenuButton
+              title="Экшоны"
+              icon={ActionsIcon}
+              items={current.actions.map((file) => ({
+                key: file.path,
+                label: file.name,
+                onSelect: () => actions.open(file.path),
+              }))}
+            />
+            <HeaderButton
+              title="Открыть _index.json"
+              onClick={() => actions.open(`${current.path}/_index.json`)}
+            >
+              {IndexIcon}
+            </HeaderButton>
+          </>
         }
       />
 
       <MetricGrid mapRef={props.mapConfig} object={current} onOpen={open} />
-
-      <FileList title="Директивы" files={current.directives} onOpen={actions.open} />
-      <FileList title="Экшоны" files={current.actions} onOpen={actions.open} />
-
-      {current.children.length > 0 && (
-        <FileList
-          title="Внутри"
-          files={current.children.map((child) => ({ name: child.name, path: child.address }))}
-          onOpen={setAddress}
-        />
-      )}
     </div>
   );
 }

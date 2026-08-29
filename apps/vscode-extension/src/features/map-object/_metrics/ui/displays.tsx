@@ -1,4 +1,6 @@
-import type { DisplayData, TreeNode } from "../pure-model/display.ts";
+import type { DisplayData } from "../pure-model/display.ts";
+import { FileTree } from "./file-tree.tsx";
+import { ChildrenMapView } from "../../_children-map/compose/children-map.tsx";
 
 function Link(props: { label?: string; link?: string; onOpen: (link: string) => void }) {
   const text = props.label ?? props.link ?? "—";
@@ -11,21 +13,6 @@ function Link(props: { label?: string; link?: string; onOpen: (link: string) => 
     >
       {text}
     </button>
-  );
-}
-
-function Branch(props: { nodes: TreeNode[]; onOpen: (link: string) => void; depth: number }) {
-  return (
-    <ul className={props.depth === 0 ? "" : "pl-3"}>
-      {props.nodes.map((node, index) => (
-        <li key={`${node.label ?? index}`}>
-          <Link label={node.label} link={node.link} onOpen={props.onOpen} />
-          {node.children && node.children.length > 0 && (
-            <Branch nodes={node.children} onOpen={props.onOpen} depth={props.depth + 1} />
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -55,7 +42,14 @@ export function Display(props: { data: DisplayData; onOpen: (link: string) => vo
         </ul>
       );
     case "tree":
-      return <Branch nodes={data.children} onOpen={props.onOpen} depth={0} />;
+      return <FileTree nodes={data.children} onOpen={props.onOpen} />;
+    case "map":
+      return (
+        <ChildrenMapView
+          map={{ nodes: data.nodes, relations: data.relations }}
+          onOpen={props.onOpen}
+        />
+      );
     default:
       return (
         <span className="text-[var(--vscode-errorForeground)]" title={data.reason}>

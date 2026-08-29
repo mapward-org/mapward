@@ -4,7 +4,7 @@ import type { mapBridge } from "@/kernel/bridge/map.ts";
 import type { BridgeHandlers } from "@/shared/bridge/contract.ts";
 import { collect } from "../adapters/collect.ts";
 import { readMap } from "../adapters/read-map.ts";
-import { findMetric } from "../pure-model/model.ts";
+import { findMetricOwner } from "../pure-model/model.ts";
 
 /** Wiring only: every line names an adapter. */
 export function mapObjectHandlers(): BridgeHandlers<typeof mapBridge> {
@@ -28,10 +28,10 @@ export function mapObjectHandlers(): BridgeHandlers<typeof mapBridge> {
 
     runMetric: async (params) => {
       const map = await readMap(params.mapPath, params.basePath, params.name);
-      const metric = findMetric(map, params.metric);
-      if (!metric) throw new Error(`Метрика ${params.metric} не найдена`);
+      const found = findMetricOwner(map, params.metric);
+      if (!found) throw new Error(`Метрика ${params.metric} не найдена`);
       // Scripts run from the map root, as decision 0004 says.
-      return collect(metric, params.mapPath);
+      return collect(found.metric, found.object, params.mapPath);
     },
   };
 }

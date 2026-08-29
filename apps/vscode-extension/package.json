@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@mapward/core": "workspace:*",
+    "@xyflow/react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "rxjs": "catalog:",
