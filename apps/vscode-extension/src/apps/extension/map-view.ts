@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { bridgeToWebview } from "../../shared/bridge/extension.ts";
+import { serveBridge } from "./bridge-handler.ts";
 
 /**
  * The map lives in the sidebar, where the file tree usually is: the map is the way into the
@@ -17,10 +17,8 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.html(view.webview);
 
-    const bridge = bridgeToWebview(view.webview);
-    bridge.onMessage((message) => {
-      if (message.kind === "ping") bridge.post({ kind: "pong", at: new Date().toISOString() });
-    });
+    const stop = serveBridge(view.webview);
+    view.onDidDispose(stop);
   }
 
   private html(webview: vscode.Webview): string {

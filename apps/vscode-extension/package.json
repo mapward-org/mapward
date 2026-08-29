@@ -25,6 +25,8 @@
     "@mapward/core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "rxjs": "catalog:",
+    "typebox": "catalog:",
     "zustand": "catalog:"
   },
   "devDependencies": {

@@ -1,5 +1,3 @@
 {
-  "maps": [
-    { "mapUrl": "ru/map" }
-  ]
+  "maps": [{ "mapUrl": "ru/map" }]
 }

@@ -1,34 +1,25 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { bridgeToExtension } from "../../shared/bridge/webview.ts";
+import { Maps } from "../../features/maps/index.webview.ts";
+import { BridgeProvider } from "./client-provider.tsx";
 
-/**
- * The base version only proves the chain: the webview asks the host and shows the answer.
- * Everything the map is made of arrives in step 2 of PLAN.md.
- */
-function App() {
-  const [answer, setAnswer] = useState<string>();
-
-  useEffect(() => {
-    const stop = bridgeToExtension.onMessage((message) => {
-      if (message.kind === "pong") setAnswer(message.at);
-    });
-    bridgeToExtension.post({ kind: "ping" });
-    return stop;
-  }, []);
-
+/** A map is still a stub — the next feature fills it. Here it only proves what was found. */
+function MapStub(props: { name: string; mapPath: string }) {
   return (
-    <main className="p-3 text-sm">
-      <h1 className="font-medium">Mapward</h1>
-      <p className="opacity-70">{answer ? `на связи, ${answer}` : "соединяемся…"}</p>
-    </main>
+    <div className="px-1 py-2 text-sm">
+      <div className="font-medium">{props.name}</div>
+      <div className="opacity-60">{props.mapPath}</div>
+    </div>
   );
 }
 
 const root = document.getElementById("root");
-if (root)
+if (root) {
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <BridgeProvider>
+        <Maps renderMap={(map) => <MapStub name={map.name} mapPath={map.mapPath} />} />
+      </BridgeProvider>
     </StrictMode>,
   );
+}

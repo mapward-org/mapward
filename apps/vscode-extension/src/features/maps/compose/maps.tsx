@@ -1,0 +1,50 @@
+import type { ReactNode } from "react";
+import type { ResolvedMap } from "../../../kernel/bridge/config.ts";
+import { useMaps, useMapsActions } from "../adapters/use-maps.ts";
+import { Accordion } from "../ui/accordion.tsx";
+import { Empty } from "../ui/empty.tsx";
+
+/**
+ * The feature knows how many maps there are and nothing about what a map looks like — that
+ * arrives through `renderMap`.
+ */
+export function Maps(props: { renderMap: (map: ResolvedMap) => ReactNode }) {
+  const state = useMaps();
+  const actions = useMapsActions();
+
+  if (!state) return <p className="p-3 text-sm opacity-70">Ищем карты…</p>;
+
+  if (state.kind === "no-workspace") {
+    return (
+      <Empty
+        text="Не открыта папка. Открой проект, в котором есть карта."
+        action="Найти"
+        onAction={actions.pickFolder}
+      />
+    );
+  }
+
+  if (state.kind === "no-config") {
+    return (
+      <Empty
+        text="В проекте нет mapward.json — карту неоткуда взять."
+        action="Создать mapward.json"
+        onAction={actions.createConfig}
+      />
+    );
+  }
+
+  // One map needs no chooser: the sidebar shows it as if there were no choice at all.
+  const [only] = state.maps;
+  if (state.maps.length === 1 && only) return <>{props.renderMap(only)}</>;
+
+  return (
+    <Accordion
+      sections={state.maps.map((map) => ({
+        key: map.mapPath,
+        title: map.name,
+        body: props.renderMap(map),
+      }))}
+    />
+  );
+}
