@@ -2,6 +2,8 @@ import { useState } from "react";
 import { isAddress } from "../pure-model/address.ts";
 import { findObject, trail } from "../pure-model/model.ts";
 import { useMap, useMapActions } from "../adapters/use-map.ts";
+import { useTerminals } from "../adapters/use-terminals.ts";
+import { TerminalMenu } from "../ui/terminal-menu.tsx";
 import { MetricGrid } from "../_metrics/compose/metric-grid.tsx";
 import { Breadcrumbs } from "../ui/breadcrumbs.tsx";
 import { ActionsIcon, DirectivesIcon, IndexIcon } from "../ui/icons.tsx";
@@ -25,6 +27,7 @@ export function MapObjectView(props: { mapConfig: Ref }) {
   const actions = useMapActions();
   // Where you are belongs to the map you are looking at: switching maps starts over.
   const [address, setAddress] = useState<string>();
+  const terminals = useTerminals(props.mapConfig, address ?? "mapward://");
 
   if (!map) return <Loading text="Читаем карту…" />;
 
@@ -46,6 +49,13 @@ export function MapObjectView(props: { mapConfig: Ref }) {
         prototypeName={current.prototypeName}
         actions={
           <>
+            <TerminalMenu
+              terminals={terminals.terminals}
+              onOpen={() => terminals.open()}
+              onFresh={() => terminals.open(true)}
+              onShow={() => terminals.open()}
+              onClose={terminals.close}
+            />
             <MenuButton
               title="Директивы"
               icon={DirectivesIcon}
@@ -59,6 +69,11 @@ export function MapObjectView(props: { mapConfig: Ref }) {
                 hint: statusHint[file.status ?? "new"],
                 hintClass: statusColor[file.status ?? "new"],
                 onSelect: () => actions.open(file.path),
+                runs: [
+                  { label: "проверить", onSelect: () => terminals.run(file.path, "check") },
+                  { label: "сухой прогон", onSelect: () => terminals.run(file.path, "dry-run") },
+                  { label: "выполнить", onSelect: () => terminals.run(file.path, "run") },
+                ],
               }))}
             />
             <MenuButton

@@ -32,7 +32,14 @@ async function readDir(base: string, exclude: string[]): Promise<FileNode[]> {
       // `link`, not `path`: the tree display opens whatever a node links to — decision 0004.
       nodes.push({ name, label: name, link: child.fsPath, isDir, children });
     }
-    return nodes;
+    // The explorer's order: folders first, then names, case ignored.
+    return nodes.toSorted((a, b) =>
+      a.isDir === b.isDir
+        ? a.name.localeCompare(b.name, "ru", { sensitivity: "base" })
+        : a.isDir
+          ? -1
+          : 1,
+    );
   };
   return walk(vscode.Uri.file(base));
 }

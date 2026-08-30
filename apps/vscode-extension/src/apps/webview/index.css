@@ -1,6 +1,8 @@
 @import "tailwindcss";
 /* Стили графа приезжают из пакета: css в бандл вебвью не попадает, его собирает tailwind */
 @import "@xyflow/react/dist/style.css";
+/* Иконки редактора: сам шрифт подключается в html через webview uri */
+@import "./codicon.css";
 
 /*
  * The sidebar sits inside the editor, so it takes the editor's type and colours rather than

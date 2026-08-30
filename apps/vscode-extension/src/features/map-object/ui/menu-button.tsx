@@ -4,7 +4,14 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 export function MenuButton(props: {
   title: string;
   icon: ReactNode;
-  items: { key: string; label: string; hint?: string; hintClass?: string; onSelect: () => void }[];
+  items: {
+    key: string;
+    label: string;
+    hint?: string;
+    hintClass?: string;
+    onSelect: () => void;
+    runs?: { label: string; onSelect: () => void }[];
+  }[];
   lead?: { label: string; onSelect: () => void };
 }) {
   const [open, setOpen] = useState(false);
@@ -49,7 +56,7 @@ export function MenuButton(props: {
             </li>
           )}
           {props.items.map((item) => (
-            <li key={item.key}>
+            <li key={item.key} className="group/item">
               <button
                 type="button"
                 onClick={() => {
@@ -65,6 +72,23 @@ export function MenuButton(props: {
                   </span>
                 )}
               </button>
+              {item.runs && (
+                <span className="hidden gap-2 px-3 pb-1 opacity-70 group-hover/item:flex">
+                  {item.runs.map((run) => (
+                    <button
+                      key={run.label}
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        run.onSelect();
+                      }}
+                      className="rounded-sm px-1 text-[11px] hover:bg-[var(--vscode-list-hoverBackground)] hover:opacity-100"
+                    >
+                      {run.label}
+                    </button>
+                  ))}
+                </span>
+              )}
             </li>
           ))}
         </ul>

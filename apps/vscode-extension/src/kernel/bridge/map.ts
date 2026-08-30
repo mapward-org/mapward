@@ -34,3 +34,34 @@ export const directiveBridge = {
     T.Object({ path: T.String() }),
   ),
 };
+
+/** Terminals are the agent's sessions; the sidebar only asks the host to open or close one. */
+export const terminalBridge = {
+  openObjectTerminal: createBridgeMethod(
+    T.Object({
+      mapPath: T.String(),
+      basePath: T.String(),
+      name: T.String(),
+      address: T.String(),
+      fresh: T.Optional(T.Boolean()),
+    }),
+    T.Object({ name: T.String() }),
+  ),
+  runDirective: createBridgeMethod(
+    T.Object({
+      mapPath: T.String(),
+      basePath: T.String(),
+      name: T.String(),
+      address: T.String(),
+      directive: T.String(),
+      mode: T.Union([T.Literal("check"), T.Literal("dry-run"), T.Literal("run")]),
+      fresh: T.Optional(T.Boolean()),
+    }),
+    T.Object({ name: T.String() }),
+  ),
+  listTerminals: createBridgeMethod(
+    T.Object({ address: T.String() }),
+    T.Array(T.Object({ name: T.String() })),
+  ),
+  closeTerminal: createBridgeMethod(T.Object({ name: T.String() }), T.Void()),
+};

@@ -38,8 +38,14 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
     <link rel="stylesheet" href="${asset("webview.css")}" />
+    <style nonce="${nonce}">
+      @font-face {
+        font-family: codicon;
+        src: url("${asset("codicon.ttf")}") format("truetype");
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

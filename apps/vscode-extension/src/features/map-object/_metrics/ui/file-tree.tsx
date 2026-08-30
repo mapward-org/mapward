@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { TreeNode } from "../pure-model/display.ts";
+import { fileIcon } from "../pure-model/file-icon.ts";
 
 const Chevron = (props: { open: boolean; visible: boolean }) => (
   <svg
@@ -7,31 +8,6 @@ const Chevron = (props: { open: boolean; visible: boolean }) => (
     className={`size-4 shrink-0 transition-transform ${props.open ? "rotate-90" : ""} ${props.visible ? "opacity-70" : "opacity-0"}`}
   >
     <path d="M6 4.5 10 8l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-  </svg>
-);
-
-const FolderIcon = (
-  <svg
-    viewBox="0 0 16 16"
-    className="size-4 shrink-0 opacity-70"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.2"
-  >
-    <path d="M2 12.5v-9h4l1.5 2h6.5v7z" strokeLinejoin="round" />
-  </svg>
-);
-
-const FileIcon = (
-  <svg
-    viewBox="0 0 16 16"
-    className="size-4 shrink-0 opacity-70"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.2"
-  >
-    <path d="M4 2h5.5L12.5 5v9H4z" strokeLinejoin="round" />
-    <path d="M9.5 2v3h3" />
   </svg>
 );
 
@@ -50,7 +26,9 @@ function Row(props: { node: TreeNode; depth: number; onOpen: (link: string) => v
         className="flex w-full items-center gap-0.5 py-px text-left hover:bg-[var(--vscode-list-hoverBackground)]"
       >
         <Chevron open={open} visible={folder} />
-        {folder ? FolderIcon : FileIcon}
+        <span
+          className={`codicon codicon-${fileIcon(node.label ?? "", folder)} shrink-0 opacity-80`}
+        />
         <span className="truncate">{node.label}</span>
       </button>
 

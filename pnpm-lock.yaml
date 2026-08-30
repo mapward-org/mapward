@@ -21,6 +21,9 @@ catalogs:
     '@types/vscode':
       specifier: ^1.90.0
       version: 1.134.0
+    '@vscode/codicons':
+      specifier: 0.0.46-24
+      version: 0.0.46-24
     '@xyflow/react':
       specifier: ^12.10.0
       version: 12.11.5
@@ -142,6 +145,9 @@ importers:
       '@types/vscode':
         specifier: 'catalog:'
         version: 1.134.0
+      '@vscode/codicons':
+        specifier: 'catalog:'
+        version: 0.0.46-24
       tailwindcss:
         specifier: 'catalog:'
         version: 4.3.3
@@ -1022,6 +1028,9 @@ packages:
 
   '@vitest/utils@4.1.11':
     resolution: {integrity: sha512-zTCVGpyFsGWBhllOyKlTw/vnr6D9qxsfSDyfbyZmTyjHw5N/VuvzHpHoQjm2ZJzn4RJgx5w4r7V0er69CmLgPQ==}
+
+  '@vscode/codicons@0.0.46-24':
+    resolution: {integrity: sha512-KIDWUYxG6eh+DHRg+3G4bS487T+g1ZkLfB4HylOBbCcHsvLdfLMRM/m92DS1Ljhi8nglLr9ucwwWhHTEAC+DpA==}
 
   '@xyflow/react@12.11.5':
     resolution: {integrity: sha512-QqoryGkqEhWBuQN9bZWRKhwr3Uoj9lCGj/tg0NnIWHHEOXV+5c8cYsc7Q9TST63V92lHqcNV9P5cjvJ9ZAmblQ==}
@@ -2481,6 +2490,8 @@ snapshots:
       '@vitest/pretty-format': 4.1.11
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
+
+  '@vscode/codicons@0.0.46-24': {}
 
   '@xyflow/react@12.11.5(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:

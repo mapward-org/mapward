@@ -15,7 +15,7 @@
   "type": "commonjs",
   "main": "./dist/extension.cjs",
   "scripts": {
-    "build": "tsdown && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify",
+    "build": "tsdown && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify && node scripts/copy-codicons.mjs",
     "dev": "pnpm run \"/^dev:/\"",
     "typecheck": "tsc",
     "dev:js": "tsdown --watch",
@@ -36,6 +36,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/vscode": "catalog:",
+    "@vscode/codicons": "catalog:",
     "tailwindcss": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
