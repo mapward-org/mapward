@@ -17,7 +17,8 @@ const INDEX = "_index.json";
 const METRICS = "_metrics";
 const DIRECTIVES = "_directives";
 const ACTIONS = "_actions";
-const SERVICE = new Set([METRICS, DIRECTIVES, ACTIONS, "_directives.state"]);
+const STATE = "_directives.state";
+const SERVICE = new Set([METRICS, DIRECTIVES, ACTIONS, STATE]);
 
 async function readJson(uri: vscode.Uri): Promise<unknown> {
   try {
@@ -39,6 +40,43 @@ async function readFiles(uri: vscode.Uri): Promise<MapFile[]> {
   return (await entries(uri))
     .filter(([, type]) => type === vscode.FileType.File)
     .map(([name]) => ({ name, path: vscode.Uri.joinPath(uri, name).fsPath }));
+}
+
+async function readText(uri: vscode.Uri): Promise<string | undefined> {
+  try {
+    return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A directive knows three states, and all three come from comparing its text with the copy
+ * the run left behind: no copy means new, a different copy means changed — decision 0002.
+ */
+/** Git may store either ending; a directive that only changed line endings has not changed. */
+const norm = (value: string | undefined) => value?.replaceAll("\r\n", "\n");
+
+async function readDirectives(objectUri: vscode.Uri): Promise<MapFile[]> {
+  const files = await readFiles(vscode.Uri.joinPath(objectUri, DIRECTIVES));
+  const stateDir = vscode.Uri.joinPath(objectUri, STATE);
+
+  return Promise.all(
+    files.map(async (file) => {
+      const base = file.name.replace(/.md$/, "");
+      const state = await readText(vscode.Uri.joinPath(stateDir, `${base}.state.json`));
+      if (!state) return { ...file, status: "new" as const };
+
+      const text = await readText(vscode.Uri.file(file.path));
+      try {
+        const copy = (JSON.parse(state) as { directive?: string }).directive;
+        const same = norm(copy) === norm(text);
+        return { ...file, status: same ? ("done" as const) : ("changed" as const) };
+      } catch {
+        return { ...file, status: "new" as const };
+      }
+    }),
+  );
 }
 
 async function readMetrics(objectUri: vscode.Uri, address: string): Promise<MapMetric[]> {
@@ -91,7 +129,7 @@ async function readTree(uri: vscode.Uri, address: string, name: string): Promise
     previewLayout: own["preview-metrics-layout"],
     detailsLayout: own["details-metrics-layout"],
     metrics: await readMetrics(uri, address),
-    directives: await readFiles(vscode.Uri.joinPath(uri, DIRECTIVES)),
+    directives: await readDirectives(uri),
     actions: await readFiles(vscode.Uri.joinPath(uri, ACTIONS)),
     children,
     rawExtends: own.extends,
@@ -99,6 +137,45 @@ async function readTree(uri: vscode.Uri, address: string, name: string): Promise
 }
 
 type Raw = MapObject & { rawExtends?: string };
+
+/**
+ * A metric may extend another metric — decision 0004. Its address points at a folder with a
+ * `config.json`, which need not live under `_metrics`: that is how one shared metric serves
+ * many objects.
+ *
+ * Metric inheritance runs before object inheritance, so an object inherits metrics that are
+ * already whole.
+ */
+async function inheritMetrics(
+  object: Raw,
+  mapPath: string,
+  seen = new Set<string>(),
+): Promise<void> {
+  for (const child of object.children as Raw[]) await inheritMetrics(child, mapPath, seen);
+
+  for (const metric of object.metrics) {
+    const address = metric.config.extends;
+    if (!address || seen.has(metric.address)) continue;
+    seen.add(metric.address);
+
+    const parsed = parseAddress(address);
+    if (!parsed || parsed.scope !== "map") continue;
+
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(mapPath), ...parsed.path, "config.json");
+    const raw = await readJson(uri);
+    if (!Check(MetricConfig, raw)) continue;
+
+    const parent: MapMetric = {
+      key: metric.key,
+      address,
+      configPath: uri.fsPath,
+      config: raw,
+    };
+    // The parent may extend something in turn.
+    await inheritMetrics({ ...object, metrics: [parent], children: [] } as Raw, mapPath, seen);
+    metric.config = mergeMetric(parent.config, metric.config);
+  }
+}
 
 /** `extends` resolves recursively; a cycle is an error, not a hang. */
 function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
@@ -192,6 +269,7 @@ function apply(root: MapObject, object: MapObject, basePath: string): void {
 /** Reads a map into the shape the sidebar draws: tree, inheritance, substitution. */
 export async function readMap(mapPath: string, basePath: string, name: string): Promise<MapObject> {
   const root = (await readTree(vscode.Uri.file(mapPath), MAP_ROOT, name)) as Raw;
+  await inheritMetrics(root, mapPath);
   inherit(root, root);
   apply(root, root, basePath);
   return root;

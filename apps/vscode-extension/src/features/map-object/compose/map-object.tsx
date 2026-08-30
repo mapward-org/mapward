@@ -11,6 +11,15 @@ import { Loading } from "@/features/maps/ui/loading.tsx";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
+/** Three states, straight from decision 0002: no copy, a different copy, the same copy. */
+const statusHint = { new: "новая", changed: "изменилась", done: "выполнена" };
+
+const statusColor = {
+  new: "text-[var(--vscode-charts-blue,#4a9)]",
+  changed: "text-[var(--vscode-charts-yellow,#c93)]",
+  done: "text-[var(--vscode-charts-green,#3a3)]",
+};
+
 export function MapObjectView(props: { mapConfig: Ref }) {
   const map = useMap(props.mapConfig);
   const actions = useMapActions();
@@ -29,7 +38,7 @@ export function MapObjectView(props: { mapConfig: Ref }) {
   };
 
   return (
-    <div className="pb-2">
+    <div className="flex h-full flex-col pb-2">
       <Breadcrumbs trail={path.slice(0, -1)} onGo={setAddress} />
 
       <ObjectHeader
@@ -40,9 +49,15 @@ export function MapObjectView(props: { mapConfig: Ref }) {
             <MenuButton
               title="Директивы"
               icon={DirectivesIcon}
-              items={current.directives.map((file) => ({
+              lead={{
+                label: "новая директива",
+                onSelect: () => actions.createDirective(current.path),
+              }}
+              items={current.directives.toReversed().map((file) => ({
                 key: file.path,
                 label: file.name,
+                hint: statusHint[file.status ?? "new"],
+                hintClass: statusColor[file.status ?? "new"],
                 onSelect: () => actions.open(file.path),
               }))}
             />
@@ -65,7 +80,9 @@ export function MapObjectView(props: { mapConfig: Ref }) {
         }
       />
 
-      <MetricGrid mapRef={props.mapConfig} object={current} onOpen={open} />
+      <div className="min-h-0 flex-1">
+        <MetricGrid mapRef={props.mapConfig} object={current} onOpen={open} />
+      </div>
     </div>
   );
 }

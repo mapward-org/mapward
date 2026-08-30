@@ -6,6 +6,12 @@
  * The sidebar sits inside the editor, so it takes the editor's type and colours rather than
  * bringing its own. The variables come from whichever theme the user has on.
  */
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--vscode-font-family);

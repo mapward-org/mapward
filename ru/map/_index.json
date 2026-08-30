@@ -1,12 +1,9 @@
 {
   "name": "Mapward (ru)",
   "details-metrics-layout": {
-    "areas": [
-      ["prototypes", "shared-metrics"],
-      ["children", "children"]
-    ],
+    "areas": [["prototypes"], ["shared-metrics"], ["children"]],
     "style": {
-      "gridTemplateRows": "auto 1fr",
+      "gridTemplateRows": "auto auto 1fr",
       "gap": "8px"
     }
   }

@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 
-/** Buttons appear on hover so a still sidebar stays quiet — requirements, «Метрики». */
+/**
+ * Buttons appear on hover so a still sidebar stays quiet. The chevron sits outside the flow:
+ * appearing on hover must not shift the label sideways.
+ */
 export function MetricCell(props: {
   label: string;
   freshness?: string;
@@ -14,13 +17,13 @@ export function MetricCell(props: {
   children: ReactNode;
 }) {
   return (
-    <div style={{ gridArea: props.gridArea }} className="group min-w-0">
-      <div className="flex items-center gap-1 text-[11px] uppercase opacity-70">
+    <div style={{ gridArea: props.gridArea }} className="group flex min-h-0 min-w-0 flex-col">
+      <div className="relative flex shrink-0 items-center gap-1 text-[11px] uppercase opacity-70">
         <button
           type="button"
           onClick={props.onToggle}
           title={props.hidden ? "Показать" : "Скрыть"}
-          className="shrink-0 opacity-60 hover:opacity-100"
+          className="absolute -left-4 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
         >
           <svg
             viewBox="0 0 16 16"
@@ -39,28 +42,27 @@ export function MetricCell(props: {
           </button>
         )}
 
-        <span className="ml-auto flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={props.onRefresh}
-            title="Обновить"
-            className="hidden opacity-60 group-hover:block hover:opacity-100"
-          >
-            <svg viewBox="0 0 16 16" className="size-4">
-              <path
-                d="M13 8a5 5 0 1 1-1.6-3.7M13 3v2.5h-2.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-          {props.freshness && <span className="opacity-60">{props.freshness}</span>}
-        </span>
+        <button
+          type="button"
+          onClick={props.onRefresh}
+          title="Обновить"
+          className="hidden shrink-0 opacity-60 group-hover:block hover:opacity-100"
+        >
+          <svg viewBox="0 0 16 16" className="size-4">
+            <path
+              d="M13 8a5 5 0 1 1-1.6-3.7M13 3v2.5h-2.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+
+        {props.freshness && <span className="ml-auto shrink-0 opacity-60">{props.freshness}</span>}
       </div>
 
-      {!props.hidden && <div className="min-w-0 break-words">{props.children}</div>}
+      {!props.hidden && <div className="min-h-0 min-w-0 flex-1 break-words">{props.children}</div>}
     </div>
   );
 }

@@ -8,7 +8,9 @@ export type MapMetric = {
   config: MetricConfig;
 };
 
-export type MapFile = { name: string; path: string };
+export type DirectiveStatus = "new" | "changed" | "done";
+
+export type MapFile = { name: string; path: string; status?: DirectiveStatus };
 
 /**
  * An object of the map. A folder without `_index.json` is a group: it holds children but is

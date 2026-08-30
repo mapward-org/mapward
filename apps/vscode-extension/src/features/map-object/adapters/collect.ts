@@ -11,7 +11,7 @@ export type Collected = { updatedAt: string; ok: boolean; data: unknown; log?: s
 
 type FileNode = {
   name: string;
-  path: string;
+  link: string;
   isDir?: boolean;
   label: string;
   children: FileNode[];
@@ -29,7 +29,8 @@ async function readDir(base: string, exclude: string[]): Promise<FileNode[]> {
       const isDir = type === vscode.FileType.Directory;
       // oxlint-disable-next-line no-await-in-loop
       const children = isDir ? await walk(child) : [];
-      nodes.push({ name, label: name, path: child.fsPath, isDir, children });
+      // `link`, not `path`: the tree display opens whatever a node links to — decision 0004.
+      nodes.push({ name, label: name, link: child.fsPath, isDir, children });
     }
     return nodes;
   };
@@ -49,7 +50,19 @@ async function collector(
     case "static":
       return { value: spec.value };
     case "script": {
-      const { stdout, stderr } = await run(String(spec.run), { cwd, windowsHide: true });
+      const { stdout, stderr } = await run(String(spec.run), {
+        cwd,
+        windowsHide: true,
+        // Decision 0004: a script gets its object through the environment, because
+        // substitution cannot reach inside the script body.
+        env: {
+          ...process.env,
+          MAPWARD_MAP_PATH: cwd,
+          MAPWARD_OBJECT_PATH: owner.path,
+          MAPWARD_OBJECT_NAME: owner.name,
+          MAPWARD_OBJECT: JSON.stringify({ name: owner.name, props: owner.props }),
+        },
+      });
       const text = stdout.trim();
       try {
         return { value: JSON.parse(text), log: stderr || undefined };

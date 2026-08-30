@@ -26,3 +26,11 @@ export const mapBridge = {
     T.Unknown(),
   ),
 };
+
+/** Creating a directive is a host job: it writes a file and opens it for editing. */
+export const directiveBridge = {
+  createDirective: createBridgeMethod(
+    T.Object({ objectPath: T.String() }),
+    T.Object({ path: T.String() }),
+  ),
+};

@@ -14,5 +14,8 @@ export function useMap(ref: Ref): MapObject | undefined {
 
 export function useMapActions() {
   const bridge = useBridgeClient();
-  return { open: (path: string) => void bridge.openPath({ path }) };
+  return {
+    open: (path: string) => void bridge.openPath({ path }),
+    createDirective: (objectPath: string) => void bridge.createDirective({ objectPath }),
+  };
 }

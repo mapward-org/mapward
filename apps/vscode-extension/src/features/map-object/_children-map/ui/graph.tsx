@@ -1,21 +1,39 @@
-import { Background, type Edge, type Node, ReactFlow } from "@xyflow/react";
+import {
+  applyNodeChanges,
+  Background,
+  type Edge,
+  type Node,
+  type NodeChange,
+  ReactFlow,
+  type Viewport,
+} from "@xyflow/react";
+import { useEffect, useState } from "react";
 import type { ChildrenMap } from "../pure-model/children.ts";
 
-/** Positions are a placeholder until map-state.json exists — a row is honest, at least. */
-function layout(map: ChildrenMap): { nodes: Node[]; edges: Edge[] } {
-  const nodes = map.nodes.map((node, index) => ({
-    id: node.link ?? String(index),
-    position: { x: (index % 3) * 160, y: Math.floor(index / 3) * 90 },
-    data: { label: node.label ?? "" },
-    style: {
-      fontSize: 11,
-      padding: 6,
-      borderRadius: 4,
-      border: "1px solid var(--vscode-panel-border, #8884)",
-      background: "var(--vscode-editor-background)",
-      color: "var(--vscode-foreground)",
-    },
-  }));
+export type Positions = Record<string, { x: number; y: number }>;
+
+/** Until a node has a saved position, it falls into a plain row — honest, if not pretty. */
+function place(index: number) {
+  return { x: (index % 3) * 170, y: Math.floor(index / 3) * 90 };
+}
+
+function build(map: ChildrenMap, positions: Positions): { nodes: Node[]; edges: Edge[] } {
+  const nodes = map.nodes.map((node, index) => {
+    const id = node.link ?? String(index);
+    return {
+      id,
+      position: positions[id] ?? place(index),
+      data: { label: node.label ?? "" },
+      style: {
+        fontSize: 11,
+        padding: 6,
+        borderRadius: 4,
+        border: "1px solid var(--vscode-panel-border, #8884)",
+        background: "var(--vscode-editor-background)",
+        color: "var(--vscode-foreground)",
+      },
+    };
+  });
 
   const edges = map.relations.map((relation, index) => ({
     id: relation.link ?? `edge-${index}`,
@@ -28,17 +46,44 @@ function layout(map: ChildrenMap): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
-export function Graph(props: { map: ChildrenMap; onOpen: (link: string) => void }) {
-  const { nodes, edges } = layout(props.map);
+export function Graph(props: {
+  map: ChildrenMap;
+  positions: Positions;
+  viewport?: Viewport;
+  onOpen: (link: string) => void;
+  onMove: (positions: Positions) => void;
+  onViewport: (viewport: Viewport) => void;
+}) {
+  const [nodes, setNodes] = useState<Node[]>(() => build(props.map, props.positions).nodes);
+  const { edges } = build(props.map, props.positions);
+
+  // Rebuild when the set of nodes changes or a saved position arrives — not on every render.
+  const signature = props.map.nodes.map((node) => node.link).join("|");
+  useEffect(() => {
+    setNodes(build(props.map, props.positions).nodes);
+    // oxlint-disable-next-line exhaustive-deps
+  }, [signature, props.positions]);
+
+  const change = (changes: NodeChange[]) => {
+    const next = applyNodeChanges(changes, nodes);
+    setNodes(next);
+    // Only a finished drag is worth writing to disk; every frame would be noise in git.
+    if (changes.some((item) => item.type === "position" && item.dragging === false)) {
+      props.onMove(Object.fromEntries(next.map((node) => [node.id, node.position])));
+    }
+  };
 
   return (
-    <div className="h-60 w-full">
+    <div className="h-full min-h-40 w-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        fitView
+        onNodesChange={change}
+        defaultViewport={props.viewport}
+        fitView={!props.viewport}
         proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, node) => props.onOpen(node.id)}
+        onMoveEnd={(_, viewport) => props.onViewport(viewport)}
+        onNodeDoubleClick={(_, node) => props.onOpen(node.id)}
       >
         <Background gap={16} size={1} color="var(--vscode-panel-border, #8883)" />
       </ReactFlow>

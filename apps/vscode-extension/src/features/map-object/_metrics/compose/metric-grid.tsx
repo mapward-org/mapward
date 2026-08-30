@@ -1,8 +1,8 @@
-import { useState } from "react";
 import type { MapObject } from "../../pure-model/model.ts";
 import { ago, toDisplay } from "../pure-model/display.ts";
 import { planGrid } from "../pure-model/grid.ts";
 import { useMetrics } from "../adapters/use-metrics.ts";
+import { useViewState } from "../../adapters/use-view-state.ts";
 import { Display } from "../ui/displays.tsx";
 import { MetricCell } from "../ui/metric-cell.tsx";
 
@@ -14,8 +14,8 @@ export function MetricGrid(props: {
   onOpen: (link: string) => void;
 }) {
   const { values, busy, run } = useMetrics(props.mapRef, props.object.metrics);
-  // Hiding is a per-viewer convenience, so it lives in the webview, not in the repository.
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  // Hiding is a per-person convenience: the editor remembers it, the repository never sees it.
+  const [hidden, setHidden] = useViewState<string[]>(`hidden:${props.object.address}`, []);
   const now = Date.now();
 
   const plan = planGrid(
@@ -24,16 +24,11 @@ export function MetricGrid(props: {
   );
 
   const toggle = (key: string) =>
-    setHidden((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    setHidden(hidden.includes(key) ? hidden.filter((name) => name !== key) : [...hidden, key]);
 
   return (
     <div
-      className="grid gap-2 p-2"
+      className="grid h-full min-h-0 gap-2 p-2 pl-6"
       style={{
         gridTemplateAreas: plan?.areas,
         gridTemplateColumns: plan?.columns,
@@ -47,10 +42,10 @@ export function MetricGrid(props: {
             key={metric.address}
             gridArea={metric.key}
             label={metric.config.label ?? metric.key}
-            freshness={ago(value?.updatedAt, now)}
+            freshness={metric.config.collectorsCache ? ago(value?.updatedAt, now) : undefined}
             ok={value?.ok}
             busy={busy.has(metric.address)}
-            hidden={hidden.has(metric.key)}
+            hidden={hidden.includes(metric.key)}
             onRefresh={() => run(metric)}
             onToggle={() => toggle(metric.key)}
             onLogs={() =>
@@ -59,6 +54,8 @@ export function MetricGrid(props: {
           >
             <Display
               data={toDisplay(metric.config.display?.kind, value?.data)}
+              mapPath={props.mapRef.mapPath}
+              address={metric.address}
               onOpen={props.onOpen}
             />
           </MetricCell>

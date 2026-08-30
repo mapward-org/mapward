@@ -8,7 +8,10 @@ import { serveBridge } from "./bridge-handler.ts";
 export class MapViewProvider implements vscode.WebviewViewProvider {
   static readonly viewId = "mapward.map";
 
-  constructor(private readonly extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly memento: vscode.Memento,
+  ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
     view.webview.options = {
@@ -17,7 +20,7 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.html(view.webview);
 
-    const stop = serveBridge(view.webview);
+    const stop = serveBridge(view.webview, this.memento);
     view.onDidDispose(stop);
   }
 

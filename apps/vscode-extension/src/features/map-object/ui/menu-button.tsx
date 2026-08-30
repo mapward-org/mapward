@@ -4,7 +4,8 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 export function MenuButton(props: {
   title: string;
   icon: ReactNode;
-  items: { key: string; label: string; onSelect: () => void }[];
+  items: { key: string; label: string; hint?: string; hintClass?: string; onSelect: () => void }[];
+  lead?: { label: string; onSelect: () => void };
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -18,7 +19,7 @@ export function MenuButton(props: {
     return () => document.removeEventListener("mousedown", away);
   }, [open]);
 
-  if (props.items.length === 0) return null;
+  if (props.items.length === 0 && !props.lead) return null;
 
   return (
     <div ref={box} className="relative">
@@ -26,13 +27,27 @@ export function MenuButton(props: {
         type="button"
         title={props.title}
         onClick={() => setOpen(!open)}
-        className="rounded-sm px-1 hover:bg-[var(--vscode-list-hoverBackground)]"
+        className="rounded-sm px-1 opacity-70 hover:bg-[var(--vscode-list-hoverBackground)] hover:opacity-100"
       >
         {props.icon}
       </button>
 
       {open && (
-        <ul className="absolute right-0 z-10 min-w-40 rounded-sm border border-[var(--vscode-menu-border,transparent)] bg-[var(--vscode-menu-background,var(--vscode-editor-background))] py-1 shadow-lg">
+        <ul className="absolute right-0 z-50 min-w-56 rounded-sm border border-[var(--vscode-menu-border,#8884)] bg-[var(--vscode-menu-background,var(--vscode-editor-background))] py-1 shadow-lg">
+          {props.lead && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  props.lead?.onSelect();
+                }}
+                className="block w-full px-3 py-0.5 text-left hover:bg-[var(--vscode-list-hoverBackground)]"
+              >
+                + {props.lead.label}
+              </button>
+            </li>
+          )}
           {props.items.map((item) => (
             <li key={item.key}>
               <button
@@ -41,9 +56,14 @@ export function MenuButton(props: {
                   setOpen(false);
                   item.onSelect();
                 }}
-                className="block w-full truncate px-3 py-0.5 text-left hover:bg-[var(--vscode-list-hoverBackground)]"
+                className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-[var(--vscode-list-hoverBackground)]"
               >
-                {item.label}
+                <span className="truncate">{item.label}</span>
+                {item.hint && (
+                  <span className={`ml-auto shrink-0 ${item.hintClass ?? "opacity-60"}`}>
+                    {item.hint}
+                  </span>
+                )}
               </button>
             </li>
           ))}

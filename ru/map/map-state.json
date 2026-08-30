@@ -1,0 +1,12 @@
+{
+  "positions": {
+    "mapward://apps/vscode-application": {
+      "x": 60.42447903205206,
+      "y": -133.08691848924246
+    },
+    "mapward://packages/core": {
+      "x": 62.04819277108433,
+      "y": -0.6425702811244953
+    }
+  }
+}

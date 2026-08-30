@@ -28,11 +28,11 @@ export function Accordion(props: { sections: Section[] }) {
     });
 
   return (
-    <div className="flex flex-col">
+    <div className="flex h-full flex-col">
       {props.sections.map((section) => {
         const open = !closed.has(section.key);
         return (
-          <section key={section.key}>
+          <section key={section.key} className={open ? "flex min-h-0 flex-1 flex-col" : ""}>
             <button
               type="button"
               onClick={() => toggle(section.key)}
@@ -41,7 +41,7 @@ export function Accordion(props: { sections: Section[] }) {
               <Chevron open={open} />
               <span className="truncate">{section.title}</span>
             </button>
-            {open && <div className="pb-1 pl-5">{section.body}</div>}
+            {open && <div className="min-h-0 flex-1 overflow-auto pb-1 pl-5">{section.body}</div>}
           </section>
         );
       })}

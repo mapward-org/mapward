@@ -16,7 +16,12 @@ function Link(props: { label?: string; link?: string; onOpen: (link: string) => 
   );
 }
 
-export function Display(props: { data: DisplayData; onOpen: (link: string) => void }) {
+export function Display(props: {
+  data: DisplayData;
+  mapPath: string;
+  address: string;
+  onOpen: (link: string) => void;
+}) {
   const { data } = props;
 
   switch (data.kind) {
@@ -47,6 +52,8 @@ export function Display(props: { data: DisplayData; onOpen: (link: string) => vo
       return (
         <ChildrenMapView
           map={{ nodes: data.nodes, relations: data.relations }}
+          mapPath={props.mapPath}
+          address={props.address}
           onOpen={props.onOpen}
         />
       );

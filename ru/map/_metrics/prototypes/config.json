@@ -2,9 +2,9 @@
   "label": "Прототипы",
   "collectors": [
     {
-      "kind": "script",
-      "run": "node -e \"const fs=require('fs'),p=require('path');const d=p.join(process.env.MAPWARD_MAP_PATH,'prototypes');console.log(JSON.stringify({items:fs.readdirSync(d,{withFileTypes:true}).filter(e=>e.isDirectory()&&fs.existsSync(p.join(d,e.name,'_index.json'))).map(e=>({label:JSON.parse(fs.readFileSync(p.join(d,e.name,'_index.json'),'utf8')).name||e.name,link:'mapward://prototypes/'+e.name}))}))\""
+      "kind": "read-dir",
+      "basePath": "${{ mapward:// }}/prototypes"
     }
   ],
-  "display": { "kind": "list" }
+  "display": { "kind": "tree" }
 }

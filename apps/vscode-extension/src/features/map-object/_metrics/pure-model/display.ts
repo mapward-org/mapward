@@ -1,6 +1,6 @@
 /** Shapes each display expects — decision 0004. */
 export type LinkNode = { label?: string; link?: string };
-export type TreeNode = { label?: string; link?: string; children?: TreeNode[] };
+export type TreeNode = { label?: string; link?: string; isDir?: boolean; children?: TreeNode[] };
 export type MapRelation = { label?: string; link?: string; from?: string; to?: string };
 
 export type DisplayData =

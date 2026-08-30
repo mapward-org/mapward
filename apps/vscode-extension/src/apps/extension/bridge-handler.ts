@@ -6,9 +6,9 @@ import { createBridgeServer } from "@/shared/bridge/server.ts";
 import { webviewTransport } from "@/shared/bridge/transport.ts";
 
 /** Where features meet the bridge. Nothing below apps decides what the host answers. */
-export function serveBridge(webview: vscode.Webview): () => void {
+export function serveBridge(webview: vscode.Webview, memento: vscode.Memento): () => void {
   return createBridgeServer(appBridge, webviewTransport(webview), {
     ...mapsHandlers(),
-    ...mapObjectHandlers(),
+    ...mapObjectHandlers(memento),
   });
 }
