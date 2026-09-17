@@ -1,0 +1,11 @@
+{
+  "label": "Доки",
+  "collectors": [
+    {
+      "kind": "read-dir",
+      "basePath": "${{ mapward://@ }}/ru",
+      "exclude": ["map"]
+    }
+  ],
+  "display": { "kind": "tree" }
+}
