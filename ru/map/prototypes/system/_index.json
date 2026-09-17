@@ -1,0 +1,10 @@
+{
+  "name": "Система",
+  "props": {
+    "requirementsPath": "${{ mapward://~#props.fullPath }}/ru/requirements"
+  },
+  "details-metrics-layout": {
+    "areas": [["requirements-todo"], ["requirements-drift"], ["requirements"]],
+    "style": { "gridTemplateRows": "auto auto 1fr", "gap": "8px" }
+  }
+}

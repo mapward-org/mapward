@@ -28,7 +28,15 @@ export const MetricConfig = T.Object({
   collectors: T.Optional(T.Array(T.Record(T.String(), T.Unknown()))),
   transformsCache: T.Optional(T.Boolean()),
   transforms: T.Optional(T.Array(T.Record(T.String(), T.Unknown()))),
-  display: T.Optional(T.Object({ kind: T.String() })),
+  display: T.Optional(
+    T.Object({
+      kind: T.String(),
+      // Decision 0010: what to say when there is nothing to show — an error would be a lie.
+      empty: T.Optional(T.String()),
+    }),
+  ),
+  // Decision 0010: a metric may come folded; what the person folds by hand wins over it.
+  collapsed: T.Optional(T.Boolean()),
 });
 
 export type LayoutVariant = Static<typeof LayoutVariant>;

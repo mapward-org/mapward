@@ -1,7 +1,0 @@
-{
-  "label": "План",
-  "collectors": [
-    { "kind": "static", "value": { "label": "PLAN.md", "link": "${{ mapward://~#props.fullPath }}/PLAN.md" } }
-  ],
-  "display": { "kind": "link" }
-}

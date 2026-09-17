@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TreeNode } from "../pure-model/display.ts";
 import { fileIcon } from "../pure-model/file-icon.ts";
+import { StatusDot } from "./status-dot.tsx";
 
 const Chevron = (props: { open: boolean; visible: boolean }) => (
   <svg
@@ -30,7 +31,17 @@ function Row(props: { node: TreeNode; depth: number; onOpen: (link: string) => v
           className={`codicon codicon-${fileIcon(node.label ?? "", folder)} shrink-0 opacity-80`}
         />
         <span className="truncate">{node.label}</span>
+        <StatusDot mark={node} />
       </button>
+
+      {node.description && (
+        <div
+          style={{ paddingLeft: `${props.depth * 10 + 18}px` }}
+          className="text-[11px] opacity-70"
+        >
+          {node.description}
+        </div>
+      )}
 
       {folder && open && (
         <ul>

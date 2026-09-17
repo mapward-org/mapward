@@ -1,4 +1,8 @@
 {
-  "updatedAt": "2026-08-30T00:15:05.480Z",
-  "ok": false
+  "updatedAt": "2026-09-17T23:31:16.070Z",
+  "ok": true,
+  "data": {
+    "label": "3 экспорта",
+    "link": "d:/my-space/mapward/packages/core/src/index.ts"
+  }
 }

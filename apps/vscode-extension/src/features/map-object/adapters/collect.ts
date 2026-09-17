@@ -3,6 +3,8 @@ import { promisify } from "node:util";
 import * as vscode from "vscode";
 import type { MapMetric, MapObject } from "../pure-model/model.ts";
 import { childrenMap } from "../_children-map/pure-model/children.ts";
+import { excluded, matchesAny } from "../pure-model/glob.ts";
+import { objectEnv, parseAnswer, runAgent, shapeHint } from "./agent.ts";
 
 const run = promisify(exec);
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -15,23 +17,63 @@ type FileNode = {
   isDir?: boolean;
   label: string;
   children: FileNode[];
+  /** Only with `content: true` — decision 0010: a status lives inside the file, not in its name. */
+  text?: string;
 };
 
-async function readDir(base: string, exclude: string[]): Promise<FileNode[]> {
-  const skip = (name: string) => exclude.some((glob) => glob.replaceAll("*", "").includes(name));
-  const walk = async (uri: vscode.Uri): Promise<FileNode[]> => {
+type ReadDirSpec = {
+  include?: string[];
+  exclude?: string[];
+  content?: boolean;
+};
+
+async function readText(uri: vscode.Uri): Promise<string | undefined> {
+  try {
+    return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Globs match the path relative to `basePath`, so a config says `**\/*.md` and means it on
+ * every platform. With `include` set, a folder that holds nothing matching is left out: the
+ * point of filtering is not to show the empty scaffolding around two files.
+ */
+async function readDir(base: string, spec: ReadDirSpec): Promise<FileNode[]> {
+  const walk = async (uri: vscode.Uri, prefix: string): Promise<FileNode[]> => {
     const nodes: FileNode[] = [];
+
     for (const [name, type] of await vscode.workspace.fs.readDirectory(uri)) {
-      if (skip(name)) continue;
-      // Depth first on purpose: the tree is read in the order it will be shown.
-      // oxlint-disable-next-line no-await-in-loop
+      const relative = prefix ? `${prefix}/${name}` : name;
+      if (excluded(relative, spec.exclude)) continue;
+
       const child = vscode.Uri.joinPath(uri, name);
       const isDir = type === vscode.FileType.Directory;
+
+      if (isDir) {
+        // Depth first on purpose: the tree is read in the order it will be shown.
+        // oxlint-disable-next-line no-await-in-loop
+        const children = await walk(child, relative);
+        if (spec.include?.length && children.length === 0) continue;
+        // `link`, not `path`: the tree display opens whatever a node links to — decision 0004.
+        nodes.push({ name, label: name, link: child.fsPath, isDir, children });
+        continue;
+      }
+
+      if (!matchesAny(relative, spec.include)) continue;
       // oxlint-disable-next-line no-await-in-loop
-      const children = isDir ? await walk(child) : [];
-      // `link`, not `path`: the tree display opens whatever a node links to — decision 0004.
-      nodes.push({ name, label: name, link: child.fsPath, isDir, children });
+      const text = spec.content ? await readText(child) : undefined;
+      nodes.push({
+        name,
+        label: name,
+        link: child.fsPath,
+        isDir: false,
+        children: [],
+        ...(text === undefined ? {} : { text }),
+      });
     }
+
     // The explorer's order: folders first, then names, case ignored.
     return nodes.toSorted((a, b) =>
       a.isDir === b.isDir
@@ -41,17 +83,19 @@ async function readDir(base: string, exclude: string[]): Promise<FileNode[]> {
           : 1,
     );
   };
-  return walk(vscode.Uri.file(base));
+
+  return walk(vscode.Uri.file(base), "");
 }
 
-/**
- * Runs one collector. `prompt` waits for the agent work of a later step; until then it says
- * so rather than pretending to have data.
- */
+const strings = (value: unknown): string[] | undefined =>
+  Array.isArray(value) ? value.map(String) : undefined;
+
+/** Runs one collector. */
 async function collector(
   spec: Record<string, unknown>,
   cwd: string,
   owner: MapObject,
+  displayKind: string | undefined,
 ): Promise<{ value: unknown; log?: string }> {
   switch (spec.kind) {
     case "static":
@@ -62,13 +106,7 @@ async function collector(
         windowsHide: true,
         // Decision 0004: a script gets its object through the environment, because
         // substitution cannot reach inside the script body.
-        env: {
-          ...process.env,
-          MAPWARD_MAP_PATH: cwd,
-          MAPWARD_OBJECT_PATH: owner.path,
-          MAPWARD_OBJECT_NAME: owner.name,
-          MAPWARD_OBJECT: JSON.stringify({ name: owner.name, props: owner.props }),
-        },
+        env: objectEnv(owner, cwd),
       });
       const text = stdout.trim();
       try {
@@ -77,12 +115,25 @@ async function collector(
         return { value: { text }, log: stderr || undefined };
       }
     }
+    case "prompt": {
+      // The display knows its own shape, so the agent is told it rather than guessing.
+      const prompt = `${String(spec.prompt)}\n\n${shapeHint(displayKind)}`;
+      const { stdout, stderr } = await runAgent({ prompt, cwd, env: objectEnv(owner, cwd) });
+      return { value: parseAnswer(stdout), log: stderr || undefined };
+    }
     case "read-dir": {
-      const exclude = Array.isArray(spec.exclude) ? spec.exclude.map(String) : [];
-      return { value: { children: await readDir(String(spec.basePath), exclude) } };
+      return {
+        value: {
+          children: await readDir(String(spec.basePath), {
+            include: strings(spec.include),
+            exclude: strings(spec.exclude),
+            content: spec.content === true,
+          }),
+        },
+      };
     }
     case "object-children-map": {
-      const exclude = Array.isArray(spec.exclude) ? spec.exclude.map(String) : [];
+      const exclude = strings(spec.exclude) ?? [];
       return { value: childrenMap(owner, exclude) };
     }
     default:
@@ -106,7 +157,9 @@ export async function collect(
   const previous = await readCache(metric);
 
   try {
-    const results = await Promise.all(specs.map((spec) => collector(spec, cwd, owner)));
+    const results = await Promise.all(
+      specs.map((spec) => collector(spec, cwd, owner, metric.config.display?.kind)),
+    );
     const log = results
       .map((result) => result.log)
       .filter(Boolean)
@@ -133,7 +186,7 @@ export async function collect(
   }
 }
 
-const cacheUri = (metric: MapMetric, file: string) =>
+export const cacheUri = (metric: MapMetric, file: string) =>
   vscode.Uri.joinPath(vscode.Uri.file(metric.configPath), "..", file);
 
 export async function readCache(metric: MapMetric): Promise<Collected | undefined> {
@@ -146,15 +199,23 @@ export async function readCache(metric: MapMetric): Promise<Collected | undefine
   }
 }
 
+export async function writeCache(
+  metric: MapMetric,
+  file: string,
+  value: unknown,
+): Promise<void> {
+  await vscode.workspace.fs.writeFile(
+    cacheUri(metric, file),
+    encode(JSON.stringify(value, null, 2) + "\n"),
+  );
+}
+
+export async function writeLogs(metric: MapMetric, file: string, log: string): Promise<void> {
+  await vscode.workspace.fs.writeFile(cacheUri(metric, file), encode(log));
+}
+
 async function write(metric: MapMetric, value: Collected, log?: string): Promise<void> {
-  if (metric.config.collectorsCache) {
-    await vscode.workspace.fs.writeFile(
-      cacheUri(metric, "collect.json"),
-      encode(JSON.stringify(value, null, 2) + "\n"),
-    );
-  }
+  if (metric.config.collectorsCache) await writeCache(metric, "collect.json", value);
   // Logs explain a red dot; without them a failed run says only that it failed.
-  if (log) {
-    await vscode.workspace.fs.writeFile(cacheUri(metric, "collect.logs.json"), encode(log));
-  }
+  if (log) await writeLogs(metric, "collect.logs.json", log);
 }

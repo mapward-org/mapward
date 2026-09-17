@@ -1,5 +1,6 @@
 {
   "name": "Пакет",
+  "extends": "mapward://prototypes/system",
   "props": {
     "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}"
   },
@@ -11,8 +12,11 @@
     "areas": [
       ["code", "docs", "version"],
       ["tests", "lint", "public-api"],
+      ["requirements-todo", "requirements-todo", "requirements-todo"],
+      ["requirements-drift", "requirements-drift", "requirements-drift"],
+      ["requirements", "requirements", "requirements"],
       ["files", "files", "files"]
     ],
-    "style": { "gridTemplateRows": "auto auto 1fr", "gap": "8px" }
+    "style": { "gridTemplateRows": "auto auto auto auto auto 1fr", "gap": "8px" }
   }
 }

@@ -1,0 +1,32 @@
+{
+  "updatedAt": "2026-09-17T23:23:21.707Z",
+  "ok": true,
+  "data": {
+    "items": [
+      {
+        "label": "Ссылка ведёт туда, куда обещает схема — «всё остальное — наружу, в браузер» не реализовано: рендерер делит ссылки надвое (mapward:// → сайдбар, иначе → openPath → showTextDocument(Uri.file)), внешний http/https уходит в редактор как путь к файлу; vscode.env.openExternal в коде нет",
+        "link": "d:/my-space/mapward/apps/vscode-extension/ru/requirements/объект/переходы-по-ссылкам.md",
+        "status": "fail",
+        "hint": "map-object.tsx:38 open(), maps/adapters/editor.ts:32 openPath"
+      },
+      {
+        "label": "Дети объекта показываются графом — коллектор object-children-map не знает include: collect.ts читает только spec.exclude и передаёт его в childrenMap(owner, exclude), параметра include нет ни в сигнатуре childrenMap, ни в фильтрации",
+        "link": "d:/my-space/mapward/apps/vscode-extension/ru/requirements/метрики/дисплеи/дети-показываются-графом.md",
+        "status": "fail",
+        "hint": "adapters/collect.ts:135, _children-map/pure-model/children.ts:25"
+      },
+      {
+        "label": "Метрика собирается агентом — «упавший трансформ показывает прошлое значение» не выполнено: в catch возвращается { ...collected, ok: false }, то есть свежий сырой вывод коллекторов без трансформа, а кэш transform.json только пишется и никогда не читается — дисплей покажет «данные не той формы», а не прошлое значение",
+        "link": "d:/my-space/mapward/apps/vscode-extension/ru/requirements/метрики/метрика-собирается-агентом.md",
+        "status": "fail",
+        "hint": "adapters/transform.ts:103-110; readCache в collect.ts:192 читает только collect.json"
+      },
+      {
+        "label": "По объекту видно, что в нём сделано и что на очереди — прототипа `requirements` нет: объект наследует mapward://prototypes/system («Система»), а в prototypes/requirements лежит только осиротевший collect.json без _index.json и config.json; три метрики и два экшона живут в system",
+        "link": "d:/my-space/mapward/apps/vscode-extension/ru/requirements/требования/требования-объекта.md",
+        "status": "fail",
+        "hint": "ru/map/apps/vscode-application/_index.json: extends mapward://prototypes/system"
+      }
+    ]
+  }
+}

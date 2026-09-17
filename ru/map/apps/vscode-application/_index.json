@@ -1,5 +1,6 @@
 {
   "name": "Расширение VS Code",
+  "extends": "mapward://prototypes/system",
   "props": {
     "codePath": "apps/vscode-extension",
     "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}"
@@ -9,9 +10,12 @@
   },
   "details-metrics-layout": {
     "areas": [
-      ["code", "architecture", "plan"],
-      ["files", "files", "files"]
+      ["code", "architecture"],
+      ["requirements-todo", "requirements-todo"],
+      ["requirements-drift", "requirements-drift"],
+      ["requirements", "requirements"],
+      ["files", "files"]
     ],
-    "style": { "gridTemplateRows": "auto 1fr", "gap": "8px" }
+    "style": { "gridTemplateRows": "auto auto auto auto 1fr", "gap": "8px" }
   }
 }

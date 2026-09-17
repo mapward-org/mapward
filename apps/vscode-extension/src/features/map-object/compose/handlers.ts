@@ -4,6 +4,7 @@ import type { directiveBridge, mapBridge, terminalBridge } from "@/kernel/bridge
 import type { stateBridge } from "@/kernel/bridge/state.ts";
 import type { BridgeHandlers } from "@/shared/bridge/contract.ts";
 import { collect } from "../adapters/collect.ts";
+import { transform } from "../adapters/transform.ts";
 import { createDirective } from "../adapters/directives.ts";
 import { closeTerminal, listTerminals, openTerminal } from "../adapters/terminals.ts";
 import { directivePrompt, objectPrompt } from "../pure-model/prompts.ts";
@@ -57,7 +58,9 @@ export function mapObjectHandlers(
       const found = findMetricOwner(map, params.metric);
       if (!found) throw new Error(`Метрика ${params.metric} не найдена`);
       // Scripts run from the map root, as decision 0004 says.
-      return collect(found.metric, found.object, params.mapPath);
+      const collected = await collect(found.metric, found.object, params.mapPath);
+      // Collect, then transform: the display gets the shape it asked for, not the source's.
+      return transform(found.metric, found.object, params.mapPath, collected);
     },
 
     createDirective: (params) => createDirective(params),

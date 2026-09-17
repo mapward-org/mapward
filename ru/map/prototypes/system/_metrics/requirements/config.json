@@ -1,0 +1,19 @@
+{
+  "label": "Требования",
+  "collapsed": true,
+  "collectors": [
+    {
+      "kind": "read-dir",
+      "basePath": "${{ mapward://~#props.requirementsPath }}",
+      "include": ["**/*.md"],
+      "content": true
+    }
+  ],
+  "transforms": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\""
+    }
+  ],
+  "display": { "kind": "tree", "empty": "требований нет" }
+}

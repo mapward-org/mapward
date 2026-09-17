@@ -1,6 +1,21 @@
-/** Shapes each display expects — decision 0004. */
-export type LinkNode = { label?: string; link?: string };
-export type TreeNode = { label?: string; link?: string; isDir?: boolean; children?: TreeNode[] };
+/** Shapes each display expects — decisions 0004 and 0010. */
+
+/**
+ * Four states carry their own colour, and that covers most of what a list has to say: a run
+ * passed or failed, work is queued or has not started. Anything else names its own `color`
+ * and explains itself in `hint` — decision 0010.
+ */
+export type StatusMark = { status?: string; color?: string; hint?: string };
+
+/** `description` is the second line: where a check says what exactly went wrong — decision 0010. */
+export type LinkNode = StatusMark & { label?: string; link?: string; description?: string };
+export type TreeNode = StatusMark & {
+  label?: string;
+  link?: string;
+  description?: string;
+  isDir?: boolean;
+  children?: TreeNode[];
+};
 export type MapRelation = { label?: string; link?: string; from?: string; to?: string };
 
 export type DisplayData =
@@ -11,6 +26,23 @@ export type DisplayData =
   | { kind: "tree"; children: TreeNode[] }
   | { kind: "map"; nodes: LinkNode[]; relations: MapRelation[] }
   | { kind: "unknown"; reason: string };
+
+/** Editor colours, so a status reads the same as the rest of the interface in any theme. */
+const KNOWN: Record<string, string> = {
+  success: "var(--vscode-testing-iconPassed, #3fb950)",
+  fail: "var(--vscode-testing-iconFailed, #f85149)",
+  pending: "var(--vscode-testing-iconQueued, #d29922)",
+  idle: "var(--vscode-descriptionForeground, #8b949e)",
+};
+
+/** An unknown status is still shown — in the neutral colour, with its name in the tooltip. */
+export function statusColor(mark: StatusMark): string | undefined {
+  if (mark.color) return mark.color;
+  if (!mark.status) return undefined;
+  return KNOWN[mark.status] ?? KNOWN.idle;
+}
+
+export const statusHint = (mark: StatusMark): string | undefined => mark.hint ?? mark.status;
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
@@ -54,6 +86,22 @@ export function toDisplay(kind: string | undefined, data: unknown): DisplayData 
     default:
       return { kind: "unknown", reason: `дисплей ${kind ?? "не задан"}` };
   }
+}
+
+/**
+ * Nothing to show is an answer, not a failure — decision 0010. A metric that has not run yet
+ * used to read as «данные не той формы», which blamed the config for a run that never happened.
+ * The metric may say it in its own words through `display.empty`.
+ */
+export function placeholder(
+  data: DisplayData,
+  collected: boolean,
+  empty: string | undefined,
+): string | undefined {
+  if (!collected) return empty ?? "не собиралась";
+  if (data.kind === "list" && data.items.length === 0) return empty ?? "нет таких";
+  if (data.kind === "tree" && data.children.length === 0) return empty ?? "нет таких";
+  return undefined;
 }
 
 /** «5 минут назад» rather than a timestamp: freshness is what the eye needs here. */

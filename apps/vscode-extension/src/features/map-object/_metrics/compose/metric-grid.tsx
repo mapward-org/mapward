@@ -15,7 +15,11 @@ export function MetricGrid(props: {
 }) {
   const { values, busy, run } = useMetrics(props.mapRef, props.object.metrics);
   // Hiding is a per-person convenience: the editor remembers it, the repository never sees it.
-  const [hidden, setHidden] = useViewState<string[]>(`hidden:${props.object.address}`, []);
+  // What the person folded by hand wins over the metric's own `collapsed` — decision 0010.
+  const [folded, setFolded] = useViewState<Record<string, boolean>>(
+    `folded:${props.object.address}`,
+    {},
+  );
   const now = Date.now();
 
   const plan = planGrid(
@@ -23,8 +27,9 @@ export function MetricGrid(props: {
     props.object.metrics.map((metric) => metric.key),
   );
 
-  const toggle = (key: string) =>
-    setHidden(hidden.includes(key) ? hidden.filter((name) => name !== key) : [...hidden, key]);
+  const isFolded = (key: string, collapsed: boolean | undefined) => folded[key] ?? collapsed ?? false;
+  const toggle = (key: string, collapsed: boolean | undefined) =>
+    setFolded({ ...folded, [key]: !isFolded(key, collapsed) });
 
   return (
     <div
@@ -45,15 +50,17 @@ export function MetricGrid(props: {
             freshness={metric.config.collectorsCache ? ago(value?.updatedAt, now) : undefined}
             ok={value?.ok}
             busy={busy.has(metric.address)}
-            hidden={hidden.includes(metric.key)}
+            hidden={isFolded(metric.key, metric.config.collapsed)}
             onRefresh={() => run(metric)}
-            onToggle={() => toggle(metric.key)}
+            onToggle={() => toggle(metric.key, metric.config.collapsed)}
             onLogs={() =>
               props.onOpen(metric.configPath.replace(/config.json$/, "collect.logs.json"))
             }
           >
             <Display
               data={toDisplay(metric.config.display?.kind, value?.data)}
+              collected={value?.data !== undefined}
+              empty={metric.config.display?.empty}
               mapPath={props.mapRef.mapPath}
               address={metric.address}
               onOpen={props.onOpen}
