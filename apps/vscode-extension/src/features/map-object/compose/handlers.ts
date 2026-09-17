@@ -36,8 +36,11 @@ export function mapObjectHandlers(
         const push = () =>
           void readMap(ref.mapPath, ref.basePath, ref.name).then((map) => subscriber.next(map));
         // The map is edited by hand and by agents, so the file system is the source of truth.
+        // Markdown counts as the map too: directives and actions are `.md`, and a directive's
+        // status is read from its text — a json-only watcher left a fresh directive out of the
+        // list until something else happened to touch a json.
         const watcher = vscode.workspace.createFileSystemWatcher(
-          new vscode.RelativePattern(vscode.Uri.file(ref.mapPath), "**/*.json"),
+          new vscode.RelativePattern(vscode.Uri.file(ref.mapPath), "**/*.{json,md}"),
         );
         const onChange = (uri: vscode.Uri) => {
           if (!ourOwnWrite(uri)) push();

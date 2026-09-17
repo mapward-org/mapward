@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { quotePrompt, shellOf, singleLine } from "../pure-model/shell.ts";
 
 /**
  * A terminal is the session. Nothing is stored on disk: while the terminal lives, the agent
@@ -23,13 +24,21 @@ export function openTerminal(params: {
   if (params.fresh) alive(params.name)?.dispose();
 
   const existing = params.fresh ? undefined : alive(params.name);
-  const terminal = existing ?? vscode.window.createTerminal({ name: params.name, cwd: params.cwd });
+  if (existing) {
+    existing.show();
+    // The session is already running, so the prompt goes to the agent rather than to a shell:
+    // no `claude` in front of it, and one line, because the agent submits on Enter.
+    existing.sendText(singleLine(params.prompt));
+    return { name: params.name };
+  }
+
+  const terminal = vscode.window.createTerminal({ name: params.name, cwd: params.cwd });
   byName.set(params.name, terminal);
 
   terminal.show();
-  // Single quotes would break on the prompt's own text, so the whole prompt goes as one
-  // argument with the quotes it cannot contain.
-  terminal.sendText(`claude ${JSON.stringify(params.prompt)}`);
+  // One argument, quoted the way this shell wants it — decision 0002 counts on the agent
+  // reading the prompt as written, line breaks and all.
+  terminal.sendText(`claude ${quotePrompt(params.prompt, shellOf(vscode.env.shell))}`);
   return { name: params.name };
 }
 
