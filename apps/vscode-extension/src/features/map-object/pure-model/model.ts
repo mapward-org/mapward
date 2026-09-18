@@ -1,12 +1,33 @@
+import { childAddress } from "./address.ts";
 import type { Layout, MetricConfig } from "./schema.ts";
 
 /** A metric as the sidebar needs it: config plus where it came from. */
 export type MapMetric = {
   key: string;
   address: string;
+  /** Where the config was read from — it may belong to a prototype. */
   configPath: string;
+  /** Where caches and logs of this metric live — always the object's own folder. */
+  cachePath: string;
   config: MetricConfig;
 };
+
+/**
+ * A metric inherited from a prototype belongs to the heir: the config is borrowed, the state is
+ * not — decision 0002. Left with the prototype's address, every heir shares one entry: caches
+ * land in the prototype's folder, and the object that runs the metric is whichever the search
+ * finds first, so the whole map shows one object's numbers.
+ */
+export function adoptMetric(
+  object: { address: string; path: string },
+  metric: MapMetric,
+): MapMetric {
+  return {
+    ...metric,
+    address: `${childAddress(object.address, "_metrics")}/${metric.key}`,
+    cachePath: `${object.path}/_metrics/${metric.key}`,
+  };
+}
 
 export type DirectiveStatus = "new" | "changed" | "done";
 

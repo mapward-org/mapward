@@ -54,7 +54,7 @@ export function MetricGrid(props: {
             onRefresh={() => run(metric)}
             onToggle={() => toggle(metric.key, metric.config.collapsed)}
             onLogs={() =>
-              props.onOpen(metric.configPath.replace(/config.json$/, "collect.logs.json"))
+              props.onOpen(`${metric.cachePath}/collect.logs.json`)
             }
           >
             <Display

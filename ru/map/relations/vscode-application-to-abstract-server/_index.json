@@ -1,0 +1,7 @@
+{
+  "name": "использует",
+  "props": {
+    "from": "mapward://apps/vscode-application",
+    "to": "mapward://packages/abstract-server"
+  }
+}

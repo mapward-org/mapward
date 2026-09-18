@@ -1,0 +1,23 @@
+{
+  "name": "abstract-react-client",
+  "extends": "mapward://prototypes/package",
+  "props": {
+    "codePath": "packages/abstract-react-client",
+    "docsPath": "ru/docs/mapward/architecture.md",
+    "packageName": "@mapward/abstract-react-client"
+  },
+  "preview-size": { "w": 2, "h": 1 },
+  "preview-metrics-layout": {
+    "areas": [["code"]]
+  },
+  "details-metrics-layout": {
+    "areas": [
+      ["code", "docs"],
+      ["requirements-todo", "requirements-todo"],
+      ["code-drift", "code-drift"],
+      ["requirements", "requirements"],
+      ["files", "files"]
+    ],
+    "style": { "gridTemplateRows": "auto auto auto auto 1fr", "gap": "8px" }
+  }
+}

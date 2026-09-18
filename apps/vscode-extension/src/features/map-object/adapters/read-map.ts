@@ -9,7 +9,7 @@ import {
 } from "../pure-model/address.ts";
 import { mergeIndex, mergeMetric } from "../pure-model/merge.ts";
 import type { MapFile, MapMetric, MapObject } from "../pure-model/model.ts";
-import { findObject } from "../pure-model/model.ts";
+import { adoptMetric, findObject } from "../pure-model/model.ts";
 import { MetricConfig, ObjectIndex } from "../pure-model/schema.ts";
 import { substituteDeep } from "../pure-model/substitution.ts";
 
@@ -93,6 +93,7 @@ async function readMetrics(objectUri: vscode.Uri, address: string): Promise<MapM
       key,
       address: `${childAddress(address, METRICS)}/${key}`,
       configPath: configUri.fsPath,
+      cachePath: vscode.Uri.joinPath(dir, key).fsPath,
       config: Check(MetricConfig, raw) ? raw : {},
     });
   }
@@ -169,6 +170,8 @@ async function inheritMetrics(
       key: metric.key,
       address,
       configPath: uri.fsPath,
+      // Only the config is taken from the parent; the cache stays where the metric itself lives.
+      cachePath: metric.cachePath,
       config: raw,
     };
     // The parent may extend something in turn.
@@ -217,7 +220,9 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   object.metrics = [
     ...prototype.metrics.map((metric) => {
       const mine = own.get(metric.key);
-      return mine ? { ...mine, config: mergeMetric(metric.config, mine.config) } : metric;
+      return mine
+        ? { ...mine, config: mergeMetric(metric.config, mine.config) }
+        : adoptMetric(object, metric);
     }),
     ...object.metrics.filter((metric) => !prototype.metrics.some((p) => p.key === metric.key)),
   ];

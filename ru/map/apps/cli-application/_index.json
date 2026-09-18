@@ -1,0 +1,21 @@
+{
+  "name": "CLI",
+  "extends": "mapward://prototypes/system",
+  "props": {
+    "codePath": "apps/cli",
+    "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}"
+  },
+  "preview-metrics-layout": {
+    "areas": [["code"]]
+  },
+  "details-metrics-layout": {
+    "areas": [
+      ["code", "docs"],
+      ["requirements-todo", "requirements-todo"],
+      ["code-drift", "code-drift"],
+      ["requirements", "requirements"],
+      ["files", "files"]
+    ],
+    "style": { "gridTemplateRows": "auto auto auto auto 1fr", "gap": "8px" }
+  }
+}

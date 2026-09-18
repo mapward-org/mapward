@@ -22,12 +22,12 @@ Russian version of this document: [`ru/README.md`](ru/README.md).
 
 ```
 packages/               published to npm; knows nothing about where it runs
-  core/                 the map model: reading folders, validation, tracing
-  server/               watching, agent conversations, running code actions
-  ui/                   diagram and panels: a single codebase
+  core/                 what both sides must know alike: model types, addressing, the call contract
+  abstract-server/      use cases and the map domain; the environment through ports
+  abstract-react-client/  React and tailwind rendering; the platform through ports
 apps/                   bindings: one per environment the packages run in
-  cli/                  terminal and CI
-  vscode-extension/     the editor: webview plus what a browser cannot do
+  cli/                  terminal and CI: starts the server or runs one of its commands
+  vscode-extension/     the editor: implements the ports of both sides
 map/                    Mapward's own map — it describes itself
 ru/                     Russian space
   docs/                 decisions, business requirements and docs: the tool and how we work with it
@@ -35,10 +35,13 @@ ru/                     Russian space
   map/                  the project's map
 ```
 
-The split is the point: a package takes its environment as an argument (`Environment` in `core`),
-an app is the only place that knows about `node:fs`, the `vscode` API or a desktop shell. Node types
-are declared by the apps alone, so a package cannot even type-check a platform import — and
-`tests/platform-independence.test.ts` fails if one appears anyway.
+The split is the point: a package takes its environment as an argument — the ports of
+`abstract-server` and `abstract-react-client` — and an app stays the only place that knows about
+`node:fs`, the `vscode` API or a desktop shell. The client does not depend on the server: all it
+knows about it lives in `core` — decision `ru/docs/decisions/0014-client-server.md`.
+
+Node types are declared by the apps alone, so a package cannot even type-check a platform import —
+and `tests/platform-independence.test.ts` fails if one appears anyway.
 
 ## Toolchain
 

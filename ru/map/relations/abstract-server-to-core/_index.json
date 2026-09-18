@@ -1,0 +1,7 @@
+{
+  "name": "использует",
+  "props": {
+    "from": "mapward://packages/abstract-server",
+    "to": "mapward://packages/core"
+  }
+}

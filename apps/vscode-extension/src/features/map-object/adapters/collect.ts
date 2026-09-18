@@ -190,7 +190,7 @@ export async function collect(
 }
 
 export const cacheUri = (metric: MapMetric, file: string) =>
-  vscode.Uri.joinPath(vscode.Uri.file(metric.configPath), "..", file);
+  vscode.Uri.joinPath(vscode.Uri.file(metric.cachePath), file);
 
 export async function readCache(metric: MapMetric): Promise<Collected | undefined> {
   if (!metric.config.collectorsCache) return undefined;
