@@ -1,8 +1,9 @@
 # Расширение VS Code
 
 Карта проекта в сайдбаре. Продукт — `ru/docs/requirements.md`, устройство кода —
-[Architecture.md](Architecture.md), что сделано и что на очереди — требования в
-[ru/requirements](ru/requirements), они же видны метриками на объекте карты.
+[Architecture.md](Architecture.md), что сделано и что на очереди — требования в реестре
+`ru/requirements` с `object: mapward://apps/vscode-application`, они же видны метриками
+на объекте карты.
 
 ## Запустить
 

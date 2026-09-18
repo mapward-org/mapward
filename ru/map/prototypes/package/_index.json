@@ -13,7 +13,7 @@
       ["code", "docs", "version"],
       ["tests", "lint", "public-api"],
       ["requirements-todo", "requirements-todo", "requirements-todo"],
-      ["requirements-drift", "requirements-drift", "requirements-drift"],
+      ["code-drift", "code-drift", "code-drift"],
       ["requirements", "requirements", "requirements"],
       ["files", "files", "files"]
     ],

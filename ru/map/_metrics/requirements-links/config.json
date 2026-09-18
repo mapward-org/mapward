@@ -1,0 +1,10 @@
+{
+  "label": "Битые адреса требований",
+  "collectors": [
+    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }
+  ],
+  "transforms": [
+    { "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/links.mjs\"" }
+  ],
+  "display": { "kind": "list", "empty": "все адреса на месте" }
+}

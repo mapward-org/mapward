@@ -9,12 +9,23 @@ import type { MapObject } from "../pure-model/model.ts";
 const COMMAND = "claude";
 const ARGS = ["-p"];
 
+/**
+ * `MAPWARD_OBJECT_PATH` is the path from the map root, as decision 0004 says — which makes it
+ * the object's address without the scheme, and that is what a script needs to tell whose
+ * requirement it is holding.
+ */
+function objectPath(owner: MapObject, mapPath: string): string {
+  const path = owner.path.replaceAll("\\", "/");
+  const root = mapPath.replaceAll("\\", "/");
+  return path.startsWith(root) ? path.slice(root.length).replace(/^\/+/, "") : path;
+}
+
 /** Same environment a script collector gets: substitution cannot reach inside a prompt either. */
 export function objectEnv(owner: MapObject, mapPath: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
     MAPWARD_MAP_PATH: mapPath,
-    MAPWARD_OBJECT_PATH: owner.path,
+    MAPWARD_OBJECT_PATH: objectPath(owner, mapPath),
     MAPWARD_OBJECT_NAME: owner.name,
     MAPWARD_OBJECT: JSON.stringify({ name: owner.name, props: owner.props }),
   };

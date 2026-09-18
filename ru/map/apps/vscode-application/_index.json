@@ -12,7 +12,7 @@
     "areas": [
       ["code", "architecture"],
       ["requirements-todo", "requirements-todo"],
-      ["requirements-drift", "requirements-drift"],
+      ["code-drift", "code-drift"],
       ["requirements", "requirements"],
       ["files", "files"]
     ],

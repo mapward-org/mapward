@@ -8,11 +8,6 @@
       "content": true
     }
   ],
-  "transforms": [
-    {
-      "kind": "script",
-      "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --todo"
-    }
-  ],
+  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own --todo" }],
   "display": { "kind": "tree", "empty": "всё сделано" }
 }

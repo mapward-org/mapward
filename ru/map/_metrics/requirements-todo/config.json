@@ -1,0 +1,8 @@
+{
+  "label": "Очередь работ",
+  "collectors": [
+    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }
+  ],
+  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --todo" }],
+  "display": { "kind": "tree", "empty": "всё сделано" }
+}

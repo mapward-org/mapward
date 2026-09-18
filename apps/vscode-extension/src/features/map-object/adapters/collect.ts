@@ -116,8 +116,11 @@ async function collector(
       }
     }
     case "prompt": {
+      // Decision 0004: the object goes into the base prompt. Substitution reaches the text a
+      // human wrote, but not the address of the object the metric hangs on.
+      const about = `Объект карты: «${owner.name}», адрес ${owner.address}, путь ${owner.path}.`;
       // The display knows its own shape, so the agent is told it rather than guessing.
-      const prompt = `${String(spec.prompt)}\n\n${shapeHint(displayKind)}`;
+      const prompt = `${about}\n\n${String(spec.prompt)}\n\n${shapeHint(displayKind)}`;
       const { stdout, stderr } = await runAgent({ prompt, cwd, env: objectEnv(owner, cwd) });
       return { value: parseAnswer(stdout), log: stderr || undefined };
     }
