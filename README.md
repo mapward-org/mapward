@@ -29,7 +29,10 @@ apps/                   bindings: one per environment the packages run in
   cli/                  terminal and CI
   vscode-extension/     the editor: webview plus what a browser cannot do
 map/                    Mapward's own map — it describes itself
-ru/                     Russian space: its own README and `ru/map`
+ru/                     Russian space
+  docs/                 decisions, business requirements and docs: the tool and how we work with it
+  requirements/         the requirements registry: what mapward must do
+  map/                  the project's map
 ```
 
 The split is the point: a package takes its environment as an argument (`Environment` in `core`),
@@ -39,7 +42,7 @@ are declared by the apps alone, so a package cannot even type-check a platform i
 
 ## Toolchain
 
-Decided in `ru/map/decisions/0001-monorepo.md`; this is what it means in practice.
+Decided in `ru/docs/decisions/0001-monorepo.md`; this is what it means in practice.
 
 | Concern | Tool |
 | --- | --- |
@@ -67,7 +70,7 @@ A map is text, and text is written in one language but read in many. So maps liv
 and the default one — English — sits at the root.
 
 - English is what a visitor sees: `README.md` and `map/`.
-- Russian lives in `ru/README.md` and `ru/map/`.
+- Russian lives in `ru/README.md`, `ru/docs/`, `ru/requirements/` and `ru/map/`.
 - The structure inside every space is identical: translation changes the text, not the shape of the map.
 - Code, interface names and commit messages are English — they are the same for every language.
 
