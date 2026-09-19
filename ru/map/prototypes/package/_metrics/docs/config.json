@@ -1,8 +1,0 @@
-{
-  "label": "Дока",
-  "refresh": "on-display",
-  "collectors": [
-    { "kind": "static", "value": { "label": "${{ mapward://~#props.docsPath }}", "link": "${{ mapward://@ }}/${{ mapward://~#props.docsPath }}" } }
-  ],
-  "display": { "kind": "link" }
-}
