@@ -1,10 +1,13 @@
 /**
- * The client side of the map: React and tailwind, one codebase for every host.
+ * abstract-react-client: интерфейс карты — решения 0014 и 0015.
  *
- * It talks to the server through the contract in `core` and never imports the server itself. Opening
- * a file, starting a conversation, remembering view state and the theme come from the host through
- * ports — abstract enough to render in the editor today and in a browser or a desktop shell later.
- *
- * Decision `ru/docs/decisions/0013-client-server.md`.
+ * React и tailwind, одна кодовая база на все хосты. Платформа приходит портами, сервер виден
+ * только через контракт `core`.
  */
 export const VERSION = "0.0.0";
+
+export { MapwardApp } from "./entry/app.tsx";
+export { ProviderBridgeClient, useBridgeClient } from "./ports/bridge.tsx";
+export { ProviderIcons, useIcon, type RenderIcon } from "./ports/icons.tsx";
+export { Maps } from "./features/maps/index.ts";
+export { MapObjectView } from "./features/map-object/index.ts";

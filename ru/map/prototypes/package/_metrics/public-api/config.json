@@ -1,5 +1,6 @@
 {
   "label": "Public API",
+  "refresh": "manual",
   "collectors": [
     {
       "kind": "prompt",

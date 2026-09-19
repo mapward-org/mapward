@@ -1,8 +1,10 @@
 {
-  "updatedAt": "2026-09-18T23:45:19.644Z",
+  "updatedAt": "2026-09-19T09:48:36.527Z",
   "ok": true,
   "data": {
-    "label": "3 экспорта: VERSION, DirectoryEntry, Environment",
-    "link": "d:\\my-space\\mapward\\packages\\core\\src\\index.ts"
+    "label": "61 экспортов",
+    "link": "packages/core/src/index.ts",
+    "description": "VERSION; contracts/bridge: BridgeMethod, BridgeSubscription, BridgeEntry, BridgeContract, BridgeClient<C>, BridgeHandlers<C>, createBridgeMethod(params, result), createBridgeSubscription(params, event), createBridge(contract); contracts/protocol: Envelope, BridgeTransport, nextId(): string, isEnvelope(value): value is Envelope; contracts/map: MapRef, Capabilities (схема + тип), mapBridge, directiveBridge, terminalBridge, DirectiveMode = 'check' | 'dry-run' | 'run'; contracts/state: stateBridge; contracts/config: ResolvedMap, MapsState, configBridge; contracts/app: appBridge, AppBridge; lib/bridge: createBridgeClient<C>(contract, transport), createBridgeServer<C>(contract, handlers, transport); model/model: MapMetric, MapFile, MapObject, DirectiveStatus, adoptMetric(...), findObject(root, address), trail(root, address), findMetric(root, address), findMetricOwner(...); model/address: Address, LinkKind, MAP_ROOT, isAddress(raw), parseAddress(raw), readField(source, field), childAddress(parent, name), mapAddress(path), linkKind(link); model/schema: LayoutVariant, Layout, ObjectIndex, MetricConfig, layoutVariants(...); model/children: MapNode, ChildrenMap, childrenMap(object, exclude?); model/display: StatusMark, LinkNode, TreeNode, MapRelation, DisplayShape, SHAPES, shapeHint(kind)",
+    "status": "success"
   }
 }

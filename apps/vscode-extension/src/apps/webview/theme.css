@@ -1,0 +1,29 @@
+/*
+ * Порт темы со стороны редактора — решения 0014 и 0015.
+ *
+ * Клиент рисует по своим переменным `--mw-*` и про vscode ничего не знает; хост подставляет
+ * им значения своей темы. В браузере тот же клиент получит значения оттуда, и трогать его
+ * код для этого не придётся.
+ */
+:root {
+  --mw-button-background: var(--vscode-button-background);
+  --mw-button-foreground: var(--vscode-button-foreground);
+  --mw-button-hoverBackground: var(--vscode-button-hoverBackground);
+  --mw-charts-blue: var(--vscode-charts-blue);
+  --mw-charts-green: var(--vscode-charts-green);
+  --mw-charts-yellow: var(--vscode-charts-yellow);
+  --mw-descriptionForeground: var(--vscode-descriptionForeground);
+  --mw-editor-background: var(--vscode-editor-background);
+  --mw-errorForeground: var(--vscode-errorForeground);
+  --mw-foreground: var(--vscode-foreground);
+  --mw-list-hoverBackground: var(--vscode-list-hoverBackground);
+  --mw-menu-background: var(--vscode-menu-background);
+  --mw-menu-border: var(--vscode-menu-border);
+  --mw-panel-border: var(--vscode-panel-border);
+  --mw-testing-iconFailed: var(--vscode-testing-iconFailed);
+  --mw-testing-iconPassed: var(--vscode-testing-iconPassed);
+  --mw-testing-iconQueued: var(--vscode-testing-iconQueued);
+  --mw-textLink-foreground: var(--vscode-textLink-foreground);
+  --mw-font-family: var(--vscode-font-family);
+  --mw-font-size: var(--vscode-font-size);
+}

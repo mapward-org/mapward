@@ -1,5 +1,6 @@
 {
   "label": "Требования для реализации",
+  "refresh": "on-display",
   "collectors": [
     {
       "kind": "read-dir",

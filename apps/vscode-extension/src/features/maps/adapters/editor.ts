@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import type { MapsState } from "@/kernel/bridge/config.ts";
-import { CONFIG_FILE, EMPTY_CONFIG } from "@/features/maps/pure-model/config.ts";
+import type { MapsState } from "@mapward/core";
+import { CONFIG_FILE, EMPTY_CONFIG } from "@mapward/abstract-server";
 import { readMaps } from "./workspace.ts";
 
 /** Writes a starting config into the first workspace folder and opens it for editing. */
@@ -26,6 +26,11 @@ export async function pickFolder(): Promise<void> {
     openLabel: "Открыть проект",
   });
   if (picked?.[0]) await vscode.commands.executeCommand("vscode.openFolder", picked[0]);
+}
+
+/** Внешняя ссылка уходит в браузер: это решает схема адреса, а не настройка метрики (0005). */
+export async function openExternal(params: { url: string }): Promise<void> {
+  await vscode.env.openExternal(vscode.Uri.parse(params.url));
 }
 
 /** Opens the file the sidebar is complaining about, so the fix is one click away. */

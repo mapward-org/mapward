@@ -1,5 +1,6 @@
 {
   "label": "Общие метрики",
+  "refresh": "on-display",
   "collectors": [
     {
       "kind": "read-dir",

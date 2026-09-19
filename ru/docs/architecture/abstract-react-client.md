@@ -27,10 +27,13 @@ src/
       model/
       pure-model/
       ui/
-  ports/                порты во внешний мир и между фичами
+  ports/                порты во внешний мир: мост к серверу, иконки хоста
   kernel/               переиспользуемые доменные типы и функции
-  lib/                  переиспользуемое, к домену не относящееся
+  lib/                  переиспользуемое, к домену не относящееся: rxjs-биндинги, общий ui
 ```
+
+Сегодня в `services/` живёт `state` — состояние вида и состояние карты. Ими пользуются и
+фичи, и подмодули, поэтому место им общее, а не внутри одной фичи.
 
 ## Правила
 
@@ -48,3 +51,32 @@ compose -> (model|adapters|ui) -> pure-model
 
 Реализации портов — в приложениях. В пакете лежит только объявление и то, что от него
 зависит.
+
+Цвета и шрифты берутся из переменных `--mw-*`, значения им даёт хост: в редакторе — из темы
+vscode, в браузере — из своих. Поэтому в коде клиента нет ни одного `--vscode-*`.
+
+Иконки — такой же порт: клиент просит нарисовать по имени (`ports/icons.tsx`), а чем рисовать —
+знает хост. В редакторе это шрифт codicon, и слова `codicon` в пакете нет.
+
+Набор переменных и есть контракт темы — хосту достаточно заполнить его:
+
+- `--mw-button-background`
+- `--mw-button-foreground`
+- `--mw-button-hoverBackground`
+- `--mw-charts-blue`
+- `--mw-charts-green`
+- `--mw-charts-yellow`
+- `--mw-descriptionForeground`
+- `--mw-editor-background`
+- `--mw-errorForeground`
+- `--mw-font-family`
+- `--mw-font-size`
+- `--mw-foreground`
+- `--mw-list-hoverBackground`
+- `--mw-menu-background`
+- `--mw-menu-border`
+- `--mw-panel-border`
+- `--mw-testing-iconFailed`
+- `--mw-testing-iconPassed`
+- `--mw-testing-iconQueued`
+- `--mw-textLink-foreground`

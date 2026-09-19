@@ -7,6 +7,8 @@ import { expect, test } from "vitest";
  * packages take it as an argument. A test guards it because a review will not: one convenient
  * `node:fs` import is exactly the change that looks harmless in a diff.
  *
+ * `.tsx` counts too: the client package is React, and `vscode` has no business there either.
+ *
  * oxlint has no working `no-restricted-imports` for this, so the check lives here.
  */
 const FORBIDDEN = [
@@ -22,7 +24,7 @@ async function sourceFiles(dir: string): Promise<string[]> {
     entries.map(async (entry) => {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) return sourceFiles(full);
-      return entry.name.endsWith(".ts") ? [full] : [];
+      return entry.name.endsWith(".ts") || entry.name.endsWith(".tsx") ? [full] : [];
     }),
   );
   return found.flat();

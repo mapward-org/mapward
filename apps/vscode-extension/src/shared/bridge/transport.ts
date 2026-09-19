@@ -1,4 +1,4 @@
-import { type BridgeTransport, isEnvelope } from "./protocol.ts";
+import { type BridgeTransport, isEnvelope } from "@mapward/core";
 
 type VsCodeApi = { postMessage: (message: unknown) => void };
 type WebviewLike = {

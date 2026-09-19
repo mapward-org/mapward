@@ -16,6 +16,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@mapward/abstract-server": "workspace:*",
     "@mapward/core": "workspace:*"
   },
   "devDependencies": {

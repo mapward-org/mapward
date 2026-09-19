@@ -1,5 +1,6 @@
 {
   "label": "Прототипы",
+  "refresh": "on-display",
   "collectors": [
     {
       "kind": "read-dir",

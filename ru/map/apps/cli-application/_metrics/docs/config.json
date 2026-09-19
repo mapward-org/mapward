@@ -1,5 +1,6 @@
 {
   "label": "Дока",
+  "refresh": "on-display",
   "collectors": [
     { "kind": "static", "value": { "label": "architecture.md", "link": "${{ mapward://@ }}/ru/docs/mapward/architecture.md" } }
   ],

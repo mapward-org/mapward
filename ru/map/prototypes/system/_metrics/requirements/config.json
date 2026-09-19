@@ -1,5 +1,6 @@
 {
   "label": "Требования",
+  "refresh": "on-display",
   "collapsed": true,
   "collectors": [
     {

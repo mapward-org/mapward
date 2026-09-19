@@ -1,0 +1,253 @@
+import { Observable, Subject } from "rxjs";
+import { findMetricOwner } from "@mapward/core";
+import type { MapMetric, MapObject } from "@mapward/core";
+import type { ServerPorts } from "../../../../ports/index.ts";
+import { createCancellation } from "../../../../lib/cancellation.ts";
+import { createLimit } from "../../../../lib/limit.ts";
+import { collect, readCache, type Collected } from "../use-cases/collect.ts";
+import { transform } from "../use-cases/transform.ts";
+
+/** Что видно про метрику снаружи: значение, когда его собрали, чем кончилось и идёт ли прогон. */
+export type MetricValue = {
+  updatedAt?: string;
+  ok?: boolean;
+  data?: unknown;
+  busy?: boolean;
+};
+
+export type MetricsSnapshot = Record<string, MetricValue>;
+
+export type MapRef = { mapPath: string; basePath: string; name: string };
+
+type Entry = {
+  /** Результат стадии сбора — от него считается свежесть коллекторов. */
+  collected?: Collected;
+  /** Итог пайплайна: то, что видит дисплей. */
+  result?: Collected;
+  busy: boolean;
+  hydrated: boolean;
+  running?: Promise<void>;
+  cancel?: () => void;
+};
+
+const valueOf = (entry: Entry): MetricValue => ({
+  updatedAt: entry.result?.updatedAt,
+  ok: entry.result?.ok,
+  data: entry.result?.data,
+  busy: entry.busy,
+});
+
+/** Отменяется только то, что об этом просили: `cancelOnLeave` у коллектора или трансформа. */
+const cancellable = (metric: MapMetric): boolean =>
+  [...(metric.config.collectors ?? []), ...(metric.config.transforms ?? [])].some(
+    (spec) => spec.cancelOnLeave === true,
+  );
+
+/**
+ * Стор метрик — решение 0013.
+ *
+ * Значения живут у сервера, а не у вида: подписчиков может быть несколько (сайдбар, таб,
+ * агент через MCP), и считать одно и то же по разу на каждого незачем. Отсюда же и кэш:
+ * значение переживает переход по карте, а прогон переживает уход с объекта.
+ */
+export function createMetricStore(
+  ports: ServerPorts,
+  readMap: (ref: MapRef) => Promise<MapObject>,
+  settings: { metricsConcurrency?: number } = {},
+) {
+  const maps = new Map<string, Map<string, Entry>>();
+  const changes = new Subject<string>();
+  // По умолчанию лимита нет: метрик немного, и ждать друг друга им незачем.
+  const limited = createLimit(settings.metricsConcurrency);
+
+  const entriesOf = (mapPath: string) => {
+    const existing = maps.get(mapPath);
+    if (existing) return existing;
+    const created = new Map<string, Entry>();
+    maps.set(mapPath, created);
+    return created;
+  };
+
+  const entryOf = (mapPath: string, address: string): Entry => {
+    const all = entriesOf(mapPath);
+    const existing = all.get(address);
+    if (existing) return existing;
+    const created: Entry = { busy: false, hydrated: false };
+    all.set(address, created);
+    return created;
+  };
+
+  /** Первое значение поднимается из файлов: собранное раньше показывается до прогона. */
+  async function hydrate(mapPath: string, metric: MapMetric): Promise<void> {
+    const entry = entryOf(mapPath, metric.address);
+    if (entry.hydrated) return;
+    entry.hydrated = true;
+
+    const collected = await readCache(ports.files, metric, "collect.json");
+    const transformed = await readCache(ports.files, metric, "transform.json");
+    if (collected) entry.collected = collected;
+    // Приоритет из решения 0004: память, потом transform, потом collect.
+    const result = transformed ?? collected;
+    if (result) {
+      entry.result = result;
+      changes.next(mapPath);
+    }
+  }
+
+  /** Без `staleTime` метрика ведёт себя как раньше: каждое открытие — новый прогон. */
+  function stale(at: string | undefined, staleTime: number | undefined): boolean {
+    if (at === undefined) return true;
+    if (staleTime === undefined) return true;
+    const age = Date.parse(ports.clock.now()) - Date.parse(at);
+    return Number.isNaN(age) || age > staleTime;
+  }
+
+  async function runOnce(
+    ref: MapRef,
+    metric: MapMetric,
+    owner: MapObject,
+    force: boolean,
+  ): Promise<void> {
+    const entry = entryOf(ref.mapPath, metric.address);
+    const config = metric.config;
+
+    const needCollect = force || stale(entry.collected?.updatedAt, config.collectorsStaleTime);
+    const hasTransforms = (config.transforms ?? []).length > 0;
+    const needTransform =
+      hasTransforms &&
+      (force || needCollect || stale(entry.result?.updatedAt, config.transformsStaleTime));
+
+    if (!needCollect && !needTransform) return;
+
+    const { token, cancel } = createCancellation();
+    entry.cancel = cancel;
+    entry.busy = true;
+    changes.next(ref.mapPath);
+
+    try {
+      // Свежий сбор с протухшим трансформом — прогон одного трансформа на готовых данных.
+      const collected =
+        needCollect || !entry.collected
+          ? await limited(() => collect(ports, metric, owner, ref.mapPath, token))
+          : entry.collected;
+      entry.collected = collected;
+
+      entry.result = hasTransforms
+        ? await limited(() =>
+            transform(ports, metric, owner, ref.mapPath, collected, token, entry.result),
+          )
+        : collected;
+    } catch (error) {
+      // Отмена — не неудача: значение остаётся прежним, писать нечего.
+      if (!token.cancelled) {
+        entry.result = {
+          updatedAt: ports.clock.now(),
+          ok: false,
+          data: entry.result?.data ?? { text: String(error) },
+        };
+      }
+    } finally {
+      entry.busy = false;
+      entry.cancel = undefined;
+      entry.running = undefined;
+      changes.next(ref.mapPath);
+    }
+  }
+
+  /** Один прогон на метрику: второй подписчик присоединяется к идущему, а не заводит свой. */
+  function start(ref: MapRef, metric: MapMetric, owner: MapObject, force: boolean): Promise<void> {
+    const entry = entryOf(ref.mapPath, metric.address);
+    if (entry.running) return entry.running;
+    const running = runOnce(ref, metric, owner, force);
+    entry.running = running;
+    return running;
+  }
+
+  const snapshot = (mapPath: string, metrics: MapMetric[]): MetricsSnapshot =>
+    Object.fromEntries(
+      metrics.map((metric) => [metric.address, valueOf(entryOf(mapPath, metric.address))]),
+    );
+
+  /**
+   * Подписка — это и есть «объект открыт». Пока на него смотрят, тикают интервалы; отписался
+   * последний — таймеры гаснут, а прогоны с `cancelOnLeave` прерываются.
+   */
+  function watch(ref: MapRef, address: string | undefined): Observable<MetricsSnapshot> {
+    return new Observable<MetricsSnapshot>((subscriber) => {
+      let metrics: MapMetric[] = [];
+      let alive = true;
+      const timers: (() => void)[] = [];
+
+      const push = () => subscriber.next(snapshot(ref.mapPath, metrics));
+
+      const subscription = changes.subscribe((changed) => {
+        if (changed === ref.mapPath && alive) push();
+      });
+
+      void (async () => {
+        const map = await readMap(ref);
+        const object = (address ? findMetricOwnerObject(map, address) : map) ?? map;
+        metrics = object.metrics;
+        if (!alive) return;
+
+        await Promise.all(metrics.map((metric) => hydrate(ref.mapPath, metric)));
+        push();
+
+        for (const metric of metrics) {
+          const refresh = metric.config.refresh ?? "manual";
+          if (refresh === "manual") continue;
+
+          // Значение уже показано; прогон идёт следом и меняет его — решение 0013.
+          void start(ref, metric, object, false);
+
+          const interval = /^interval:(\d+)$/.exec(refresh)?.[1];
+          if (!interval) continue;
+          // Интервал тикает, пока объект открыт хотя бы в одном виде.
+          timers.push(
+            ports.timers.every(Number(interval), () => void start(ref, metric, object, true)),
+          );
+        }
+      })();
+
+      return () => {
+        alive = false;
+        subscription.unsubscribe();
+        for (const stop of timers) stop();
+        for (const metric of metrics) {
+          if (!cancellable(metric)) continue;
+          entryOf(ref.mapPath, metric.address).cancel?.();
+        }
+      };
+    });
+  }
+
+  /**
+   * Значения без прогона: агенту через MCP нужно то же, что видит человек на экране, а не
+   * повод запустить дорогую метрику (решение 0009).
+   */
+  async function read(ref: MapRef, object: MapObject): Promise<MetricsSnapshot> {
+    await Promise.all(object.metrics.map((metric) => hydrate(ref.mapPath, metric)));
+    return snapshot(ref.mapPath, object.metrics);
+  }
+
+  /** Ручной прогон: кнопка свежесть не спрашивает, пайплайн идёт целиком. */
+  async function run(ref: MapRef, metricAddress: string): Promise<MetricValue> {
+    const map = await readMap(ref);
+    const found = findMetricOwner(map, metricAddress);
+    if (!found) throw new Error(`Метрика ${metricAddress} не найдена`);
+    await start(ref, found.metric, found.object, true);
+    return valueOf(entryOf(ref.mapPath, metricAddress));
+  }
+
+  return { watch, run, read };
+}
+
+/** Объект по адресу, включая корень: у адреса метрики владелец ищется по самой метрике. */
+function findMetricOwnerObject(map: MapObject, address: string): MapObject | undefined {
+  if (map.address === address) return map;
+  for (const child of map.children) {
+    const found = findMetricOwnerObject(child, address);
+    if (found) return found;
+  }
+  return undefined;
+}

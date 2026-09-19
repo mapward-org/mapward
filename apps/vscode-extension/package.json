@@ -22,13 +22,14 @@
     "dev:css": "tailwindcss -i src/apps/webview/index.css -o dist/webview.css --watch"
   },
   "dependencies": {
+    "@mapward/abstract-react-client": "workspace:*",
+    "@mapward/abstract-server": "workspace:*",
     "@mapward/core": "workspace:*",
     "@xyflow/react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "rxjs": "catalog:",
-    "typebox": "catalog:",
-    "zustand": "catalog:"
+    "typebox": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/cli": "catalog:",

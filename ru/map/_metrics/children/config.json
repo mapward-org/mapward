@@ -1,5 +1,6 @@
 {
   "label": "Карта",
+  "refresh": "on-display",
   "collectors": [
     {
       "kind": "object-children-map",

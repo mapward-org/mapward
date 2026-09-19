@@ -23,6 +23,10 @@
     "dev": "tsdown --watch",
     "typecheck": "tsc"
   },
+  "dependencies": {
+    "rxjs": "catalog:",
+    "typebox": "catalog:"
+  },
   "devDependencies": {
     "tsdown": "catalog:",
     "typescript": "catalog:",

@@ -1,5 +1,6 @@
 {
   "label": "Импорты",
+  "refresh": "manual",
   "collectors": [
     {
       "kind": "prompt",

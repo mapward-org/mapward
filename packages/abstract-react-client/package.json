@@ -24,9 +24,13 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@mapward/core": "workspace:*"
+    "@mapward/core": "workspace:*",
+    "@xyflow/react": "catalog:",
+    "react": "catalog:",
+    "rxjs": "catalog:"
   },
   "devDependencies": {
+    "@types/react": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unrun": "catalog:"

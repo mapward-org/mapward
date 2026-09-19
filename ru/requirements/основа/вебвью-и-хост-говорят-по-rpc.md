@@ -1,6 +1,6 @@
 ---
 status: implemented
-object: mapward://apps/vscode-application
+object: [mapward://packages/core, mapward://apps/vscode-application]
 ---
 
 # Вебвью и хост говорят типизированным rpc

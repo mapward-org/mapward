@@ -1,12 +1,7 @@
 import { Observable } from "rxjs";
 import * as vscode from "vscode";
-import type { MapsState, ResolvedMap } from "@/kernel/bridge/config.ts";
-import {
-  CONFIG_FILE,
-  INDEX_FILE,
-  mapName,
-  parseConfig,
-} from "@/features/maps/pure-model/config.ts";
+import type { MapsState, ResolvedMap } from "@mapward/core";
+import { CONFIG_FILE, INDEX_FILE, mapName, parseConfig } from "@mapward/abstract-server";
 
 async function readText(uri: vscode.Uri): Promise<string | undefined> {
   try {

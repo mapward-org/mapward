@@ -1,5 +1,6 @@
 {
   "label": "Тесты",
+  "refresh": "manual",
   "collectors": [
     { "kind": "script", "run": "pnpm vitest run --project ${{ mapward://~#props.packageName }}" }
   ],

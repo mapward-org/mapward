@@ -1,10 +1,12 @@
 /**
- * The server side of the map: use cases and the domain.
+ * abstract-server: юзкейсы и домен карты — решения 0014 и 0015.
  *
- * It reads maps, collects metrics, runs directives — and asks the environment for all of it through
- * ports. Files, watchers, shell processes and the agent are given to it by an app; it never reaches
- * for them itself. That is what lets the same server run inside the editor and from a terminal.
- *
- * Decision `ru/docs/decisions/0013-client-server.md`.
+ * Среда приходит портами, поэтому сервер одинаково работает из редактора и из терминала.
  */
 export const VERSION = "0.0.0";
+
+export * from "./ports/index.ts";
+export * from "./entry/server.ts";
+export * from "./entry/mcp.ts";
+export * from "./features/map-object/index.ts";
+export * from "./features/maps/index.ts";

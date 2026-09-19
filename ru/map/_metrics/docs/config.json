@@ -1,5 +1,6 @@
 {
   "label": "Доки",
+  "refresh": "on-display",
   "collectors": [
     {
       "kind": "read-dir",

@@ -1,5 +1,6 @@
 {
   "label": "Линтер",
+  "refresh": "manual",
   "collectors": [
     { "kind": "script", "run": "pnpm oxlint ${{ mapward://~#props.fullPath }}" }
   ],

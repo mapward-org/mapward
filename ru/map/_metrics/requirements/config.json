@@ -1,5 +1,6 @@
 {
   "label": "Реестр требований",
+  "refresh": "on-display",
   "collapsed": true,
   "collectors": [
     { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }

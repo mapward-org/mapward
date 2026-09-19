@@ -1,5 +1,6 @@
 {
   "label": "Код",
+  "refresh": "on-display",
   "collectors": [
     { "kind": "static", "value": { "label": "${{ mapward://~#props.codePath }}", "link": "${{ mapward://~#props.fullPath }}" } }
   ],

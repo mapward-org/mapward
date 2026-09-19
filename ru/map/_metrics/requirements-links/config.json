@@ -1,5 +1,6 @@
 {
   "label": "Битые адреса требований",
+  "refresh": "on-display",
   "collectors": [
     { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }
   ],

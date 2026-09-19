@@ -28,6 +28,15 @@ src/
                    но декомпозированы по low coupling / high cohesion
 ```
 
+Стили собирает tailwind из `apps/webview/index.css`, и он же подключает разметку клиента
+директивой `@source`: сам tailwind ищет классы только рядом с входным css, а она живёт в пакете.
+Забыть эту строку — получить сайдбар из голого текста при зелёной сборке, поэтому её стережёт
+`tests/webview-styles.test.ts`.
+
+MCP-сервер карты поднимается здесь же: `apps/extension/mcp-http.ts` слушает петлю по http и
+отдаёт юзкейсы сервера, а его адрес уезжает в `--mcp-config` при запуске терминалов — решение
+[0009](../decisions/0009-mcp.md).
+
 ## Правило импортов приложения
 
 ```
@@ -103,6 +112,5 @@ export { handlers } from "./compose/handlers.ts";
 ## Техстек
 
 - react
-- zustand
 - xyflow
 - tailwind

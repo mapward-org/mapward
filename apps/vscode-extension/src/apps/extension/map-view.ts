@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import type { MapServer } from "@mapward/abstract-server";
 import { serveBridge } from "./bridge-handler.ts";
 
 /**
@@ -11,6 +12,7 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly memento: vscode.Memento,
+    private readonly server: MapServer,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -20,7 +22,7 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.html(view.webview);
 
-    const stop = serveBridge(view.webview, this.memento);
+    const stop = serveBridge(this.server, view.webview, this.memento);
     view.onDidDispose(stop);
   }
 

@@ -1,8 +1,15 @@
 @import "tailwindcss";
+/*
+ * Разметка живёт в пакете клиента — решение 0014, — а tailwind сам ищет классы только в
+ * приложении. Без этой строки он не видит ни одного класса, и сайдбар остаётся голым текстом.
+ */
+@source "../../../../../packages/abstract-react-client/src";
 /* Стили графа приезжают из пакета: css в бандл вебвью не попадает, его собирает tailwind */
 @import "@xyflow/react/dist/style.css";
 /* Иконки редактора: сам шрифт подключается в html через webview uri */
 @import "./codicon.css";
+/* Тема хоста: значения для переменных клиента */
+@import "./theme.css";
 
 /*
  * The sidebar sits inside the editor, so it takes the editor's type and colours rather than
@@ -16,8 +23,8 @@ body,
 
 body {
   margin: 0;
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
-  color: var(--vscode-foreground);
+  font-family: var(--mw-font-family);
+  font-size: var(--mw-font-size);
+  color: var(--mw-foreground);
   background: transparent;
 }

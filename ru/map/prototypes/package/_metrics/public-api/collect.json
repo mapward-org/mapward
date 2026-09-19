@@ -1,8 +1,8 @@
 {
-  "updatedAt": "2026-09-19T00:29:29.821Z",
+  "updatedAt": "2026-09-19T00:39:27.019Z",
   "ok": true,
   "data": {
-    "label": "3 экспорта",
+    "label": "3 экспорта: VERSION, DirectoryEntry, Environment",
     "link": "packages/core/src/index.ts"
   }
 }

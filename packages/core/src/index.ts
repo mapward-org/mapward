@@ -1,23 +1,21 @@
 /**
- * Core: the map model. Reads folders, validates them, exposes the structure.
+ * core: то, что серверу и клиенту нужно понимать одинаково — решения 0014 и 0015.
  *
- * Nothing about VSCode, the UI or running agents belongs here: the core is used by every app alike.
- * The implementation follows the spec — for now only the package boundary is fixed.
+ * Контракт вызовов и подписок, модель карты и адресация. Ни платформы, ни рантайма: это
+ * стережёт `tests/platform-independence.test.ts`.
  */
 export const VERSION = "0.0.0";
 
-/** One entry of a folder — the only shape the model needs to walk a map. */
-export interface DirectoryEntry {
-  name: string;
-  isDirectory: boolean;
-}
-
-/**
- * Where a map is read from. Packages never import `node:fs`, `vscode` or touch the DOM: an app binds
- * the real environment and passes it in. That is what lets the same core run in a terminal, inside
- * the extension and in a browser without forking. The set of operations grows with the spec.
- */
-export interface Environment {
-  readDirectory(path: string): Promise<DirectoryEntry[]>;
-  readTextFile(path: string): Promise<string>;
-}
+export * from "./contracts/bridge.ts";
+export * from "./contracts/protocol.ts";
+export * from "./contracts/map.ts";
+export * from "./contracts/state.ts";
+export * from "./contracts/config.ts";
+export * from "./contracts/app.ts";
+export * from "./lib/bridge/client.ts";
+export * from "./lib/bridge/server.ts";
+export * from "./model/model.ts";
+export * from "./model/address.ts";
+export * from "./model/schema.ts";
+export * from "./model/children.ts";
+export * from "./model/display.ts";
