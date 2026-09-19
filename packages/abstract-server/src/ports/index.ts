@@ -48,7 +48,11 @@ export type AgentPort = {
 export type ClockPort = { now(): string };
 
 /** Таймеры тоже из среды: интервальная метрика тикает, пока объект открыт — решение 0013. */
-export type TimersPort = { every(ms: number, run: () => void): () => void };
+export type TimersPort = {
+  every(ms: number, run: () => void): () => void;
+  /** Одноразовый: по нему истекает таймаут сбора — решение 0016. */
+  after(ms: number, run: () => void): () => void;
+};
 
 /** Переменные окружения процесса: скрипт метрики ждёт их рядом со своими. */
 export type EnvPort = { vars(): ProcessEnv };

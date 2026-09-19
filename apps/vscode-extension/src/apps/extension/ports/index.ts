@@ -136,6 +136,10 @@ export function createPorts(): ServerPorts {
         const timer = setInterval(run, ms);
         return () => clearInterval(timer);
       },
+      after(ms, run) {
+        const timer = setTimeout(run, ms);
+        return () => clearTimeout(timer);
+      },
     },
     env: { vars: () => process.env },
     // Редактор умеет всё: терминалы, открыть файл, спросить строку — решение 0014.

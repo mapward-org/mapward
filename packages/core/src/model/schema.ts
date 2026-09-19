@@ -28,9 +28,13 @@ export const MetricConfig = T.Object({
   // Decision 0013: how long a result counts as fresh, in milliseconds. While it is fresh,
   // opening the object starts no run at all.
   collectorsStaleTime: T.Optional(T.Number()),
+  // Decision 0016: how long a stage may run, in milliseconds. A caller may pass its own and
+  // override this; there is no global setting, since the duration belongs to the metric.
+  collectorsTimeout: T.Optional(T.Number()),
   collectors: T.Optional(T.Array(T.Record(T.String(), T.Unknown()))),
   transformsCache: T.Optional(T.Boolean()),
   transformsStaleTime: T.Optional(T.Number()),
+  transformsTimeout: T.Optional(T.Number()),
   transforms: T.Optional(T.Array(T.Record(T.String(), T.Unknown()))),
   display: T.Optional(
     T.Object({

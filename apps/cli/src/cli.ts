@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { argv, cwd, exit } from "node:process";
 import { createMapServer, findMaps, parseSettings, serveMcp } from "@mapward/abstract-server";
+import type { MapObject, ResolvedMap } from "@mapward/core";
 import { createPorts } from "./ports.ts";
 import { stdioTransport } from "./stdio.ts";
 
@@ -11,6 +12,7 @@ import { stdioTransport } from "./stdio.ts";
 const USAGE = `mapward <команда>
 
   maps                        карты, видимые отсюда
+  object [адрес] [карта]      объект целиком: поля, метрики со значениями, дети
   metric <адрес> [карта]      собрать метрику и напечатать результат
   mcp [карта]                 поднять mcp-сервер над картой
 
@@ -26,6 +28,22 @@ async function settingsOf(
   return text ? parseSettings(text) : {};
 }
 
+/** Карта по имени: без имени берётся первая, как и в остальных командах. */
+function pick(maps: ResolvedMap[], name: string | undefined): ResolvedMap {
+  const found = name ? maps.find((entry) => entry.name === name) : maps[0];
+  if (!found) throw new Error(name ? `карта ${name} не найдена` : "карт не найдено");
+  return found;
+}
+
+function find(object: MapObject, address: string): MapObject | undefined {
+  if (object.address === address) return object;
+  for (const child of object.children) {
+    const found = find(child, address);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 async function main(): Promise<void> {
   const [command, first, second] = argv.slice(2);
   const ports = createPorts();
@@ -37,6 +55,43 @@ async function main(): Promise<void> {
       exit(1);
     }
     for (const map of maps) console.log(`${map.name}\t${map.mapPath}`);
+    return;
+  }
+
+  if (command === "object") {
+    // Объект таким, каким его видит человек: мердж, подстановки и уже собранные значения.
+    // Прогонов здесь нет — за ними `metric`.
+    const map = pick(maps, second ?? undefined);
+    const server = createMapServer(ports, await settingsOf(ports, map.configPath));
+    const tree = await server.getMap(map);
+    const object = first ? find(tree, first) : tree;
+    if (!object) throw new Error(`объект ${String(first)} не найден`);
+
+    const values = await server.readMetrics(map, object);
+    console.log(
+      JSON.stringify(
+        {
+          address: object.address,
+          name: object.name,
+          prototypeName: object.prototypeName,
+          path: object.path,
+          props: object.props,
+          metrics: object.metrics.map((metric) => ({
+            key: metric.key,
+            address: metric.address,
+            label: metric.config.label ?? metric.key,
+            refresh: metric.config.refresh ?? "manual",
+            display: metric.config.display?.kind,
+            value: values[metric.address],
+          })),
+          directives: object.directives.map((file) => ({ name: file.name, status: file.status })),
+          actions: object.actions.map((file) => file.name),
+          children: object.children.map((child) => ({ address: child.address, name: child.name })),
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 

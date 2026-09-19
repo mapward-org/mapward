@@ -11,9 +11,11 @@ type Metric = {
   refresh?: "manual" | "on-display" | `interval:${string}`   // default manual
   collectorsCache?: boolean
   collectorsStaleTime?: number                      // мс, сколько сбор считается свежим
+  collectorsTimeout?: number                        // мс, сколько сбору позволено идти
   collectors?: MetricCollect[]
   transformsCache?: boolean
   transformsStaleTime?: number
+  transformsTimeout?: number
   transforms?: MetricTransform[]
   display?: MetricDisplay
   collapsed?: boolean
@@ -38,6 +40,12 @@ type Metric = {
 `collectorsStaleTime` или `transformsStaleTime`, открытие объекта прогон не запускает вовсе;
 свежесть считается по стадиям, поэтому свежий сбор с протухшим трансформом означает прогон
 одного трансформа. Кнопка обновления свежесть не спрашивает.
+
+Стадия, которой задан `collectorsTimeout` или `transformsTimeout`, дольше этого не идёт:
+время вышло — прогон снимается, метрика краснеет, причина уходит в логи, прежнее значение
+остаётся. От отмены это отличается тем, что отмене записать нечего, а здесь ответ обещали и
+не дали. Зовущий может назвать свой предел и перебить метрикин — так делает MCP
+([0016](../decisions/0016-agent-context.md)).
 
 Значения живут в сторе сервера, одном на карту, и виды его читают: сайдбар и табы одного окна
 показывают одно и то же, включая идущий прогон. Решение [0013](../decisions/0013-metrics-store.md).

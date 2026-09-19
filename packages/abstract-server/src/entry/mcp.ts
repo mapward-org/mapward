@@ -1,6 +1,10 @@
+import { findObject, trail } from "@mapward/core";
 import type { MapObject } from "@mapward/core";
 import type { MapServer } from "./server.ts";
-import type { MapRef } from "../features/map-object/application/services/metric-store.ts";
+import type {
+  MapRef,
+  ReadOptions,
+} from "../features/map-object/application/services/metric-store.ts";
 
 /**
  * MCP — ещё один транспорт к тем же юзкейсам, а не вторая модель карты (решения 0009 и 0014).
@@ -26,9 +30,17 @@ const PROTOCOL = "2024-11-05";
 async function describe(
   server: MapServer,
   ref: MapRef,
+  root: MapObject,
   object: MapObject,
+  options: ReadOptions,
 ): Promise<Record<string, unknown>> {
-  const values = await server.readMetrics(ref, object);
+  const values = await server.readMetrics(ref, object, options);
+  // Вверх по дереву — решение 0016: дети у объекта уже есть, а родителя без этого не видно,
+  // и агент не мог уйти к соседу иначе как обходом от корня.
+  const parents = trail(root, object.address)
+    .slice(0, -1)
+    .toReversed()
+    .map((ancestor) => ({ address: ancestor.address, name: ancestor.name }));
 
   return {
     address: object.address,
@@ -50,18 +62,11 @@ async function describe(
     })),
     directives: object.directives.map((file) => ({ name: file.name, status: file.status })),
     actions: object.actions.map((file) => file.name),
+    /** От ближайшего родителя к корню: по ним поднимаются и уходят к соседям через их детей. */
+    parents,
     children: object.children.map((child) => ({ address: child.address, name: child.name })),
     map: ref.name,
   };
-}
-
-function find(object: MapObject, address: string): MapObject | undefined {
-  if (object.address === address) return object;
-  for (const child of object.children) {
-    const found = find(child, address);
-    if (found) return found;
-  }
-  return undefined;
 }
 
 const TOOLS = [
@@ -73,12 +78,24 @@ const TOOLS = [
   {
     name: "read_object",
     description:
-      "Объект карты так, как его видит человек: поля после наследования и подстановок, список метрик, директив и детей.",
+      "Объект карты так, как его видит человек: поля после наследования и подстановок, список метрик, директив, родителей и детей. " +
+      'С refresh: "on-display" дешёвые метрики досчитываются — зови так, чтобы увидеть то же, что человек на экране. ' +
+      "По parents и children можно обойти карту целиком, не заглядывая в репозиторий.",
     inputSchema: {
       type: "object",
       properties: {
         address: { type: "string", description: "mapward:// адрес; без него корень" },
         map: { type: "string", description: "имя карты; без него первая" },
+        refresh: {
+          type: "string",
+          enum: ["none", "on-display"],
+          description:
+            'по умолчанию "none" — только собранное раньше; "on-display" досчитывает дешёвые метрики и дожидается их. Дорогие (refresh: manual) не запускаются никогда — для них run_metric',
+        },
+        timeout: {
+          type: "number",
+          description: "мс на стадию сбора; перебивает то, что задано на метрике",
+        },
       },
     },
   },
@@ -103,11 +120,26 @@ const TOOLS = [
       properties: {
         address: { type: "string", description: "mapward:// адрес метрики" },
         map: { type: "string", description: "имя карты; без него первая" },
+        timeout: {
+          type: "number",
+          description: "мс на стадию сбора; перебивает то, что задано на метрике",
+        },
       },
       required: ["address"],
     },
   },
 ] as const;
+
+/** Один `timeout` в вызове кладётся на обе стадии: зовущий думает про ожидание целиком. */
+const timeouts = (args: Record<string, unknown>) =>
+  typeof args.timeout === "number"
+    ? { collectorsTimeout: args.timeout, transformsTimeout: args.timeout }
+    : {};
+
+const readOptions = (args: Record<string, unknown>): ReadOptions => ({
+  ...timeouts(args),
+  ...(args.refresh === "on-display" ? { refresh: "on-display" as const } : {}),
+});
 
 /** Ответ инструмента: агент читает json как текст — так устроен протокол. */
 const text = (value: unknown) => ({
@@ -143,15 +175,15 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
     if (name === "read_object") {
       const map = await server.getMap(ref);
       const address = typeof args.address === "string" ? args.address : undefined;
-      const object = address ? find(map, address) : map;
+      const object = address ? findObject(map, address) : map;
       if (!object) throw new Error(`Объект ${String(address)} не найден`);
-      return text(await describe(server, ref, object));
+      return text(await describe(server, ref, map, object, readOptions(args)));
     }
 
     if (name === "read_index") {
       const map = await server.getMap(ref);
       const address = typeof args.address === "string" ? args.address : undefined;
-      const object = address ? find(map, address) : map;
+      const object = address ? findObject(map, address) : map;
       if (!object) throw new Error(`Объект ${String(address)} не найден`);
       const raw = await server.readIndexFile(object.path);
       return text({ address: object.address, path: object.path, index: raw ?? null });
@@ -159,7 +191,7 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
 
     if (name === "run_metric") {
       const address = String(args.address ?? "");
-      return text(await server.runMetric({ ...ref, metric: address }));
+      return text(await server.runMetric({ ...ref, metric: address, ...timeouts(args) }));
     }
 
     throw new Error(`Инструмент ${name} не найден`);

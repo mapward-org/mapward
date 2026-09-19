@@ -34,7 +34,7 @@ function fakePorts(tree: Record<string, string>): ServerPorts {
     },
     agent: { run: () => Promise.resolve({ stdout: "{}", stderr: "" }) },
     clock: { now: () => new Date().toISOString() },
-    timers: { every: () => () => undefined },
+    timers: { every: () => () => undefined, after: () => () => undefined },
     env: { vars: () => ({}) },
     capabilities: { terminals: false, openFile: false, ask: false },
   };
@@ -117,4 +117,67 @@ test("manual waits for the button", async () => {
 
   const value = await store.run(ref, "mapward://_metrics/waiting");
   expect(value.data).toEqual({ text: "не должно собраться" });
+});
+
+/** Объект карты для чтения: стор читает метрики у того, кого ему дали. */
+const objectOf = (ports: ServerPorts) =>
+  readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
+
+test("read without refresh returns the cache and starts nothing", async () => {
+  const ports = fakePorts(tree);
+  const store = createMetricStore(ports, () => objectOf(ports));
+
+  const snapshot = await store.read(ref, await objectOf(ports));
+
+  // Кэша на диске нет, а запускать чтение не просили — значит показывать нечего.
+  expect(snapshot["mapward://_metrics/version"]?.data).toBeUndefined();
+  expect(snapshot["mapward://_metrics/waiting"]?.data).toBeUndefined();
+});
+
+test("read with on-display fills the cheap metrics and leaves manual alone", async () => {
+  const ports = fakePorts(tree);
+  const store = createMetricStore(ports, () => objectOf(ports));
+
+  const snapshot = await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+
+  // То же, что человек видит, открыв объект, — решение 0016.
+  expect(snapshot["mapward://_metrics/version"]?.data).toEqual({ text: "из скрипта" });
+  // Дорогое так не считается ни у человека, ни у агента.
+  expect(snapshot["mapward://_metrics/waiting"]?.data).toBeUndefined();
+});
+
+test("an expired timeout is a failure, not a cancel", async () => {
+  const base = fakePorts({
+    ...tree,
+    "/map/_metrics/version/config.json": JSON.stringify({
+      label: "Версия",
+      refresh: "on-display",
+      collectorsTimeout: 5,
+      collectors: [{ kind: "script", run: "sleep forever" }],
+      display: { kind: "text" },
+    }),
+  });
+
+  const ports: ServerPorts = {
+    ...base,
+    // Скрипт не кончается сам: его снимает отмена, как это делает настоящий адаптер.
+    shell: {
+      ...base.shell,
+      run: (_command, options) =>
+        new Promise((_resolve, reject) => {
+          options.cancel?.onCancel(() => reject(new Error("убит")));
+        }),
+    },
+    timers: { ...base.timers, after: (_ms, run) => {
+      void Promise.resolve().then(run);
+      return () => undefined;
+    } },
+  };
+
+  const store = createMetricStore(ports, () => objectOf(ports));
+  const snapshot = await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+
+  const value = snapshot["mapward://_metrics/version"];
+  expect(value?.ok).toBe(false);
+  expect(value?.updatedAt).toBeDefined();
 });

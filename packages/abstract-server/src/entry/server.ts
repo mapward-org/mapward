@@ -5,6 +5,8 @@ import { readMap } from "../features/map-object/application/use-cases/read-map.t
 import {
   createMetricStore,
   type MapRef,
+  type ReadOptions,
+  type RunOptions,
 } from "../features/map-object/application/services/metric-store.ts";
 import { createDirective } from "../features/map-object/application/use-cases/directives.ts";
 import {
@@ -51,10 +53,15 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     watchMetrics: (params: MapRef & { address?: string }) => metrics.watch(params, params.address),
 
-    runMetric: (params: MapRef & { metric: string }) => metrics.run(params, params.metric),
+    runMetric: (params: MapRef & { metric: string } & RunOptions) =>
+      metrics.run(params, params.metric, params),
 
-    /** Что показано сейчас, без прогона: этим MCP отдаёт метрики в собранном виде. */
-    readMetrics: (ref: MapRef, object: MapObject) => metrics.read(ref, object),
+    /**
+     * Что показано сейчас: этим MCP отдаёт метрики в собранном виде. Без опций — только кэш,
+     * с `refresh: "on-display"` дешёвое досчитывается (решение 0016).
+     */
+    readMetrics: (ref: MapRef, object: MapObject, options?: ReadOptions) =>
+      metrics.read(ref, object, options),
 
     /** Объект файлом, как он написан на диске — решение 0009: агент видит и мердж, и исходник. */
     readIndexFile: (objectPath: string) => ports.files.read(`${objectPath}/_index.json`),

@@ -17,6 +17,18 @@ export type MetricValue = {
 
 export type MetricsSnapshot = Record<string, MetricValue>;
 
+/**
+ * Сколько стадии вправе идти — решение 0016. Переданное здесь перебивает то, что стоит на
+ * метрике: у зовущего свой предел терпения, и он про него знает больше, чем автор метрики.
+ */
+export type RunOptions = { collectorsTimeout?: number; transformsTimeout?: number };
+
+/**
+ * `on-display` досчитывает дешёвое и дожидается его — то же, что делает открытие объекта у
+ * человека. `none` отдаёт только кэш и ничего не запускает.
+ */
+export type ReadOptions = RunOptions & { refresh?: "none" | "on-display" };
+
 export type MapRef = { mapPath: string; basePath: string; name: string };
 
 type Entry = {
@@ -29,6 +41,8 @@ type Entry = {
   running?: Promise<void>;
   cancel?: () => void;
 };
+
+const noop = () => {};
 
 const valueOf = (entry: Entry): MetricValue => ({
   updatedAt: entry.result?.updatedAt,
@@ -107,6 +121,7 @@ export function createMetricStore(
     metric: MapMetric,
     owner: MapObject,
     force: boolean,
+    options: RunOptions = {},
   ): Promise<void> {
     const entry = entryOf(ref.mapPath, metric.address);
     const config = metric.config;
@@ -124,22 +139,53 @@ export function createMetricStore(
     entry.busy = true;
     changes.next(ref.mapPath);
 
+    // Истёкшее время отменяет прогон теми же средствами, что кнопка, но неудачей считается
+    // только оно: отмене нечего записать, а здесь ответ обещали и не дали — решение 0016.
+    let expired = false;
+    const deadline = (ms: number | undefined): (() => void) =>
+      ms === undefined
+        ? noop
+        : ports.timers.after(ms, () => {
+            expired = true;
+            cancel();
+          });
+
+    let stopDeadline = noop;
+
     try {
       // Свежий сбор с протухшим трансформом — прогон одного трансформа на готовых данных.
       const collected =
         needCollect || !entry.collected
-          ? await limited(() => collect(ports, metric, owner, ref.mapPath, token))
+          ? await limited(() => {
+              stopDeadline = deadline(options.collectorsTimeout ?? config.collectorsTimeout);
+              return collect(ports, metric, owner, ref.mapPath, token).finally(stopDeadline);
+            })
           : entry.collected;
       entry.collected = collected;
 
       entry.result = hasTransforms
-        ? await limited(() =>
-            transform(ports, metric, owner, ref.mapPath, collected, token, entry.result),
-          )
+        ? await limited(() => {
+            stopDeadline = deadline(options.transformsTimeout ?? config.transformsTimeout);
+            return transform(
+              ports,
+              metric,
+              owner,
+              ref.mapPath,
+              collected,
+              token,
+              entry.result,
+            ).finally(stopDeadline);
+          })
         : collected;
     } catch (error) {
-      // Отмена — не неудача: значение остаётся прежним, писать нечего.
-      if (!token.cancelled) {
+      // Отмена — не неудача: значение остаётся прежним, писать нечего. Таймаут — неудача.
+      if (expired) {
+        entry.result = {
+          updatedAt: ports.clock.now(),
+          ok: false,
+          data: entry.result?.data,
+        };
+      } else if (!token.cancelled) {
         entry.result = {
           updatedAt: ports.clock.now(),
           ok: false,
@@ -147,6 +193,7 @@ export function createMetricStore(
         };
       }
     } finally {
+      stopDeadline();
       entry.busy = false;
       entry.cancel = undefined;
       entry.running = undefined;
@@ -155,10 +202,16 @@ export function createMetricStore(
   }
 
   /** Один прогон на метрику: второй подписчик присоединяется к идущему, а не заводит свой. */
-  function start(ref: MapRef, metric: MapMetric, owner: MapObject, force: boolean): Promise<void> {
+  function start(
+    ref: MapRef,
+    metric: MapMetric,
+    owner: MapObject,
+    force: boolean,
+    options: RunOptions = {},
+  ): Promise<void> {
     const entry = entryOf(ref.mapPath, metric.address);
     if (entry.running) return entry.running;
-    const running = runOnce(ref, metric, owner, force);
+    const running = runOnce(ref, metric, owner, force, options);
     entry.running = running;
     return running;
   }
@@ -222,20 +275,59 @@ export function createMetricStore(
   }
 
   /**
+   * Присоединиться к идущему прогону можно, а навязать ему свой срок — нет: он начат не этим
+   * вызовом. Поэтому вызов перестаёт ждать сам, чужого прогона не трогая, и в ответ уходит
+   * то, что уже есть, вместе с `busy`.
+   */
+  function waitAtMost(running: Promise<void>, options: RunOptions): Promise<void> {
+    const ms = options.collectorsTimeout ?? options.transformsTimeout;
+    if (ms === undefined) return running;
+
+    return new Promise((resolve) => {
+      const stop = ports.timers.after(ms, resolve);
+      void running.finally(() => {
+        stop();
+        resolve();
+      });
+    });
+  }
+
+  /**
    * Значения без прогона: агенту через MCP нужно то же, что видит человек на экране, а не
    * повод запустить дорогую метрику (решение 0009).
+   *
+   * С `refresh: "on-display"` дешёвое досчитывается — решение 0016. Это тот же проход, что
+   * делает открытие объекта у человека; разница в том, что подписка прогона не ждёт, а
+   * чтение ждёт: агенту ответ уходит целиком, дорисовывать ему нечего.
    */
-  async function read(ref: MapRef, object: MapObject): Promise<MetricsSnapshot> {
+  async function read(
+    ref: MapRef,
+    object: MapObject,
+    options: ReadOptions = {},
+  ): Promise<MetricsSnapshot> {
     await Promise.all(object.metrics.map((metric) => hydrate(ref.mapPath, metric)));
+
+    if (options.refresh === "on-display") {
+      await Promise.all(
+        object.metrics
+          .filter((metric) => (metric.config.refresh ?? "manual") !== "manual")
+          .map((metric) => waitAtMost(start(ref, metric, object, false, options), options)),
+      );
+    }
+
     return snapshot(ref.mapPath, object.metrics);
   }
 
   /** Ручной прогон: кнопка свежесть не спрашивает, пайплайн идёт целиком. */
-  async function run(ref: MapRef, metricAddress: string): Promise<MetricValue> {
+  async function run(
+    ref: MapRef,
+    metricAddress: string,
+    options: RunOptions = {},
+  ): Promise<MetricValue> {
     const map = await readMap(ref);
     const found = findMetricOwner(map, metricAddress);
     if (!found) throw new Error(`Метрика ${metricAddress} не найдена`);
-    await start(ref, found.metric, found.object, true);
+    await waitAtMost(start(ref, found.metric, found.object, true, options), options);
     return valueOf(entryOf(ref.mapPath, metricAddress));
   }
 
