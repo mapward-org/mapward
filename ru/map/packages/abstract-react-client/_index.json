@@ -4,20 +4,62 @@
   "props": {
     "codePath": "packages/abstract-react-client",
     "docsPath": "ru/docs/mapward/architecture.md",
-    "packageName": "@mapward/abstract-react-client"
+    "packageName": "@mapward/abstract-react-client",
+    "architectureDoc": "ru/docs/architecture/abstract-react-client.md"
   },
-  "preview-size": { "w": 2, "h": 1 },
+  "preview-size": {
+    "w": 2,
+    "h": 1
+  },
   "preview-metrics-layout": {
-    "areas": [["code"]]
+    "areas": [
+      [
+        "code"
+      ]
+    ]
   },
   "details-metrics-layout": {
     "areas": [
-      ["code", "docs"],
-      ["requirements-todo", "requirements-todo"],
-      ["code-drift", "code-drift"],
-      ["requirements", "requirements"],
-      ["files", "files"]
+      [
+        "code",
+        "docs"
+      ],
+      [
+        "version",
+        "tests"
+      ],
+      [
+        "lint",
+        "public-api"
+      ],
+      [
+        "architecture",
+        "architecture"
+      ],
+      [
+        "requirements-todo",
+        "requirements-todo"
+      ],
+      [
+        "architecture-drift",
+        "architecture-drift"
+      ],
+      [
+        "code-drift",
+        "code-drift"
+      ],
+      [
+        "requirements",
+        "requirements"
+      ],
+      [
+        "files",
+        "files"
+      ]
     ],
-    "style": { "gridTemplateRows": "auto auto auto auto 1fr", "gap": "8px" }
+    "style": {
+      "gridTemplateRows": "auto auto auto auto auto auto auto auto 1fr",
+      "gap": "8px"
+    }
   }
 }

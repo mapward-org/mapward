@@ -17,26 +17,37 @@ Mapward описывает сам себя: карта репозитория л
 ## Что на ней есть
 
 ```
-ru/map/                            Mapward (ru) — корневой объект
+ru/map/                                       Mapward (ru) — корневой объект
   apps/
-    vscode-application/            Расширение VS Code   extends prototypes/system
+    vscode-application/                       Расширение VS Code   extends prototypes/system
+    cli-application/                          CLI                  extends prototypes/system
   packages/
-    core/                          core                 extends prototypes/package
+    core/                                     core                 extends prototypes/package
+    abstract-server/                          abstract-server      extends prototypes/package
+    abstract-react-client/                    abstract-react-client extends prototypes/package
   relations/
-    vscode-application-to-core/    «использует»
+    vscode-application-to-core/               «использует»
+    vscode-application-to-abstract-server/
+    vscode-application-to-abstract-react-client/
+    cli-application-to-abstract-server/
+    abstract-server-to-core/
+    abstract-react-client-to-core/
   prototypes/
-    system/                        Система
-    package/                       Пакет                extends prototypes/system
+    system/                                   Система
+    package/                                  Пакет                extends prototypes/system
   shared-metrics/
     files/
+    architecture/
+    architecture-drift/
 ```
 
 `apps/`, `packages/` и `relations/` — группы, а не объекты: полки, чтобы дети не лежали
 кучей в корне.
 
-Монорепа шире карты: в `packages/` живут ещё `server` и `ui`, в `apps/` — `cli`. На карту они
-попадут, когда в них появится что мерить. Заводить пустые объекты ради полноты незачем: карта
-не оглавление репозитория.
+Связи повторяют направление зависимостей из решения
+[0014](../decisions/0014-client-server.md): приложения на пакеты, пакеты на `core`. Кода в
+новых пакетах пока нет — объекты заведены вместе с решением, потому что карта описывает
+принятое устройство, а не только написанное.
 
 ## Наши прототипы
 
@@ -54,8 +65,9 @@ ru/map/                            Mapward (ru) — корневой объек�
 
 ## Шареные метрики
 
-В `shared-metrics/` лежит то, что нужно не одному прототипу. Сейчас одна, `files` — файловое
-дерево объекта. Подключается поштучно:
+В `shared-metrics/` лежит то, что нужно не одному прототипу. Сейчас три: `files` — файловое
+дерево объекта, `architecture` — ссылка на док об устройстве, `architecture-drift` — проверка
+кода по этому доку. Подключается поштучно:
 
 ```json
 { "extends": "mapward://shared-metrics/files" }
@@ -69,6 +81,7 @@ ru/map/                            Mapward (ru) — корневой объек�
 - `codePath` — путь до кода от корня репозитория;
 - `fullPath` — он же абсолютный; его ждут скрипты и промпты;
 - `docsPath` — дока пакета;
+- `architectureDoc` — док об устройстве в `ru/docs/architecture/`, у каждого объекта свой;
 - `packageName` — имя в npm, по нему запускаются тесты;
 - `requirementsPath` — реестр требований, задан один раз на `system`;
 - `from` и `to` у связи — адреса её концов.
@@ -77,7 +90,11 @@ ru/map/                            Mapward (ru) — корневой объек�
 
 У корня метрики идут стопкой: очередь работ и противоречия сверху, реестр и служебные ниже,
 карта детей последней и растягивается. У пакета и расширения наверху ссылки и прогоны, под
-ними требования, внизу файлы.
+ними архитектура и требования, внизу файлы.
+
+Раскладку задаёт объект, а не только прототип: метрики архитектуры у каждого свои, и место им
+находится на месте. У пакетов, где кода ещё нет, прогоны кода свёрнуты — разворачивать там
+нечего, пока он не переехал.
 
 Правило простое: сверху то, что требует действия, снизу то, куда проваливаются за
 подробностями.

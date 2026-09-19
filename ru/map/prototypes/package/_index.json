@@ -12,11 +12,13 @@
     "areas": [
       ["code", "docs", "version"],
       ["tests", "lint", "public-api"],
+      ["architecture", "architecture", "architecture"],
       ["requirements-todo", "requirements-todo", "requirements-todo"],
+      ["architecture-drift", "architecture-drift", "architecture-drift"],
       ["code-drift", "code-drift", "code-drift"],
       ["requirements", "requirements", "requirements"],
       ["files", "files", "files"]
     ],
-    "style": { "gridTemplateRows": "auto auto auto auto auto 1fr", "gap": "8px" }
+    "style": { "gridTemplateRows": "auto auto auto auto auto auto auto 1fr", "gap": "8px" }
   }
 }

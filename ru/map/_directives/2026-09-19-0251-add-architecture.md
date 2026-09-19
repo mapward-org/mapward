@@ -56,6 +56,7 @@ features/
   adapters/ - все зависимости на внешнее состояние. Например на глобал стейт.
   compose/
   model/
+  pure-model/
   ui/
 services/ - переиспользуемы доменные модули
  <service>/
@@ -63,6 +64,7 @@ services/ - переиспользуемы доменные модули
   adapters/
   compose/
   model/
+  pure-model/
   ui/
 
 ports/ - Порты взаимодействия с внешним миром и фич друг с другом. 

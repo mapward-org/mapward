@@ -3,19 +3,50 @@
   "extends": "mapward://prototypes/system",
   "props": {
     "codePath": "apps/cli",
-    "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}"
+    "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}",
+    "architectureDoc": "ru/docs/architecture/cli.md"
   },
   "preview-metrics-layout": {
-    "areas": [["code"]]
+    "areas": [
+      [
+        "code"
+      ]
+    ]
   },
   "details-metrics-layout": {
     "areas": [
-      ["code", "docs"],
-      ["requirements-todo", "requirements-todo"],
-      ["code-drift", "code-drift"],
-      ["requirements", "requirements"],
-      ["files", "files"]
+      [
+        "code",
+        "docs"
+      ],
+      [
+        "architecture",
+        "architecture"
+      ],
+      [
+        "requirements-todo",
+        "requirements-todo"
+      ],
+      [
+        "architecture-drift",
+        "architecture-drift"
+      ],
+      [
+        "code-drift",
+        "code-drift"
+      ],
+      [
+        "requirements",
+        "requirements"
+      ],
+      [
+        "files",
+        "files"
+      ]
     ],
-    "style": { "gridTemplateRows": "auto auto auto auto 1fr", "gap": "8px" }
+    "style": {
+      "gridTemplateRows": "auto auto auto auto auto auto 1fr",
+      "gap": "8px"
+    }
   }
 }

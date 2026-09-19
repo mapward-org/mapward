@@ -4,6 +4,7 @@
   "props": {
     "codePath": "packages/core",
     "docsPath": "ru/docs/mapward/architecture.md",
-    "packageName": "@mapward/core"
+    "packageName": "@mapward/core",
+    "architectureDoc": "ru/docs/architecture/core.md"
   }
 }
