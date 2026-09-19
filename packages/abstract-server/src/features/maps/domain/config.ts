@@ -11,7 +11,19 @@ export const RawConfig = T.Object({
   maps: T.Array(RawMapEntry),
   // Свойство машины и карты, а не метрики, поэтому живёт здесь — решение 0013.
   metricsConcurrency: T.Optional(T.Number()),
+  // Свежесть — свойство смотрящего: сколько не жалко показывать старое, решает тот, кто
+  // читает, а не тот, кто метрику написал. Умолчание на карту, метрика перебивает своим —
+  // решение 0016. Стадии разведены, потому что сбор дорогой, а трансформ поверх него дешёвый.
+  collectorsStaleTime: T.Optional(T.Number()),
+  transformsStaleTime: T.Optional(T.Number()),
 });
+
+/** Настройки рантайма из `mapward.json`: карты берут их себе при подъёме сервера. */
+export type Settings = {
+  metricsConcurrency?: number;
+  collectorsStaleTime?: number;
+  transformsStaleTime?: number;
+};
 
 export type MapEntry = { mapUrl: string; baseUrl: string };
 
@@ -40,16 +52,20 @@ export function parseConfig(text: string): MapEntry[] {
 }
 
 /** Настройки рантайма из того же файла: карты берут их себе при подъёме сервера. */
-export function parseSettings(text: string): { metricsConcurrency?: number } {
+export function parseSettings(text: string): Settings {
   try {
     const parsed: unknown = JSON.parse(text);
-    if (Check(RawConfig, parsed) && parsed.metricsConcurrency !== undefined) {
-      return { metricsConcurrency: parsed.metricsConcurrency };
-    }
+    if (!Check(RawConfig, parsed)) return {};
+    const { metricsConcurrency, collectorsStaleTime, transformsStaleTime } = parsed;
+    return {
+      ...(metricsConcurrency === undefined ? {} : { metricsConcurrency }),
+      ...(collectorsStaleTime === undefined ? {} : { collectorsStaleTime }),
+      ...(transformsStaleTime === undefined ? {} : { transformsStaleTime }),
+    };
   } catch {
     // Настройки не повод ронять карту: без них она работает как раньше.
+    return {};
   }
-  return {};
 }
 
 /** Only the field we need here — reading the map itself comes later. */

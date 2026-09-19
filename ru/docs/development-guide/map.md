@@ -102,4 +102,4 @@ ru/map/                                       Mapward (ru) — корневой 
 Положение узлов на карте лежит в `map-state.json` корневого объекта и коммитится: это часть
 карты, её видят все.
 
-Форматы полей и синтаксис раскладок — в [`../mapward/index-format.md`](../mapward/index-format.md).
+Форматы полей и синтаксис раскладок — в [`index-format.md`](../../../packages/docs/ru/index-format.md).

@@ -67,7 +67,11 @@ const cancellable = (metric: MapMetric): boolean =>
 export function createMetricStore(
   ports: ServerPorts,
   readMap: (ref: MapRef) => Promise<MapObject>,
-  settings: { metricsConcurrency?: number } = {},
+  settings: {
+    metricsConcurrency?: number;
+    collectorsStaleTime?: number;
+    transformsStaleTime?: number;
+  } = {},
 ) {
   const maps = new Map<string, Map<string, Entry>>();
   const changes = new Subject<string>();
@@ -126,11 +130,15 @@ export function createMetricStore(
     const entry = entryOf(ref.mapPath, metric.address);
     const config = metric.config;
 
-    const needCollect = force || stale(entry.collected?.updatedAt, config.collectorsStaleTime);
+    // Своё у метрики перебивает общее: настройка карты — умолчание, а не замена (решение 0016).
+    const collectorsStaleTime = config.collectorsStaleTime ?? settings.collectorsStaleTime;
+    const transformsStaleTime = config.transformsStaleTime ?? settings.transformsStaleTime;
+
+    const needCollect = force || stale(entry.collected?.updatedAt, collectorsStaleTime);
     const hasTransforms = (config.transforms ?? []).length > 0;
     const needTransform =
       hasTransforms &&
-      (force || needCollect || stale(entry.result?.updatedAt, config.transformsStaleTime));
+      (force || needCollect || stale(entry.result?.updatedAt, transformsStaleTime));
 
     if (!needCollect && !needTransform) return;
 

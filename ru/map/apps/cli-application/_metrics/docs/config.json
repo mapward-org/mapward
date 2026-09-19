@@ -2,7 +2,7 @@
   "label": "Дока",
   "refresh": "on-display",
   "collectors": [
-    { "kind": "static", "value": { "label": "architecture.md", "link": "${{ mapward://@ }}/ru/docs/mapward/architecture.md" } }
+    { "kind": "static", "value": { "label": "packages.md", "link": "${{ mapward://@ }}/ru/docs/architecture/packages.md" } }
   ],
   "display": { "kind": "link" }
 }

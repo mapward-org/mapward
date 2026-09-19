@@ -101,4 +101,4 @@ map/
 
 Как она заведена у нас — какие объекты, прототипы и метрики и по какому порядку мы их ведём —
 в [`ru/docs/development-guide/`](docs/development-guide/). Как устроен сам инструмент —
-в [`ru/docs/mapward/`](docs/mapward/).
+в [`packages/docs/ru/`](../packages/docs/ru/).

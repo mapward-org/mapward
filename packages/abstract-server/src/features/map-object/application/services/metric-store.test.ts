@@ -120,8 +120,7 @@ test("manual waits for the button", async () => {
 });
 
 /** Объект карты для чтения: стор читает метрики у того, кого ему дали. */
-const objectOf = (ports: ServerPorts) =>
-  readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
+const objectOf = (ports: ServerPorts) => readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
 
 test("read without refresh returns the cache and starts nothing", async () => {
   const ports = fakePorts(tree);
@@ -146,6 +145,77 @@ test("read with on-display fills the cheap metrics and leaves manual alone", asy
   expect(snapshot["mapward://_metrics/waiting"]?.data).toBeUndefined();
 });
 
+/**
+ * Считает прогоны скрипта: свежесть видна только по тому, запустился коллектор или нет.
+ *
+ * Часы идут вперёд на секунду за взгляд — иначе оба чтения случаются в одну миллисекунду,
+ * возраст выходит нулевым и ничто не успевает протухнуть.
+ */
+function countingPorts(files: Record<string, string>): ServerPorts & { runs: () => number } {
+  const base = fakePorts(files);
+  let runs = 0;
+  let clock = Date.parse("2026-09-19T12:00:00.000Z");
+  return {
+    ...base,
+    clock: {
+      now: () => {
+        clock += 1000;
+        return new Date(clock).toISOString();
+      },
+    },
+    shell: {
+      ...base.shell,
+      run: (...args) => {
+        runs++;
+        return base.shell.run(...args);
+      },
+    },
+    runs: () => runs,
+  };
+}
+
+test("a map-wide staleTime keeps the second read from collecting again", async () => {
+  const ports = countingPorts(tree);
+  const store = createMetricStore(ports, () => objectOf(ports), { collectorsStaleTime: 60_000 });
+
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+
+  // Настройка карты — умолчание для метрик, у которых своего срока нет (решение 0016).
+  expect(ports.runs()).toBe(1);
+});
+
+test("without it every read collects anew, as before", async () => {
+  const ports = countingPorts(tree);
+  const store = createMetricStore(ports, () => objectOf(ports));
+
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+
+  expect(ports.runs()).toBe(2);
+});
+
+test("what the metric says about itself wins over the map-wide default", async () => {
+  const own = {
+    ...tree,
+    "/map/_metrics/version/config.json": JSON.stringify({
+      label: "Версия",
+      refresh: "on-display",
+      // Своя свежесть нулевая: значит протухает сразу, что бы ни стояло на карте.
+      collectorsStaleTime: 0,
+      collectors: [{ kind: "script", run: "echo hi" }],
+      display: { kind: "text" },
+    }),
+  };
+  const ports = countingPorts(own);
+  const store = createMetricStore(ports, () => objectOf(ports), { collectorsStaleTime: 60_000 });
+
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+
+  expect(ports.runs()).toBe(2);
+});
+
 test("an expired timeout is a failure, not a cancel", async () => {
   const base = fakePorts({
     ...tree,
@@ -168,10 +238,13 @@ test("an expired timeout is a failure, not a cancel", async () => {
           options.cancel?.onCancel(() => reject(new Error("убит")));
         }),
     },
-    timers: { ...base.timers, after: (_ms, run) => {
-      void Promise.resolve().then(run);
-      return () => undefined;
-    } },
+    timers: {
+      ...base.timers,
+      after: (_ms, run) => {
+        void Promise.resolve().then(run);
+        return () => undefined;
+      },
+    },
   };
 
   const store = createMetricStore(ports, () => objectOf(ports));

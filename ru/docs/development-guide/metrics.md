@@ -1,7 +1,7 @@
 # Наши метрики
 
 Что мы завели на объектах и зачем. Как метрика устроена внутри — в
-[`../mapward/metrics.md`](../mapward/metrics.md).
+[`metrics.md`](../../../packages/docs/ru/metrics.md).
 
 ## Корень
 

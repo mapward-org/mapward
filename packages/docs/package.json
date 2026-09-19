@@ -1,0 +1,30 @@
+{
+  "name": "@mapward/docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "How mapward works, in text: the docs that ship with the tool and reach the agent over MCP.",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/bundle-docs.mjs && tsdown",
+    "dev": "node scripts/bundle-docs.mjs && tsdown --watch",
+    "typecheck": "node scripts/bundle-docs.mjs && tsc"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
+}

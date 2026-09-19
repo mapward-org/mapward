@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { argv, cwd, exit } from "node:process";
 import { createMapServer, findMaps, parseSettings, serveMcp } from "@mapward/abstract-server";
+import type { Settings } from "@mapward/abstract-server";
 import type { MapObject, ResolvedMap } from "@mapward/core";
 import { createPorts } from "./ports.ts";
 import { stdioTransport } from "./stdio.ts";
@@ -23,7 +24,7 @@ const USAGE = `mapward <команда>
 async function settingsOf(
   ports: ReturnType<typeof createPorts>,
   configPath: string,
-): Promise<{ metricsConcurrency?: number }> {
+): Promise<Settings> {
   const text = await ports.files.read(configPath);
   return text ? parseSettings(text) : {};
 }

@@ -188,9 +188,19 @@ async function inheritMetrics(
   }
 }
 
-const byName = (inherited: MapFile[], own: MapFile[]): MapFile[] => {
+/**
+ * Унаследованный файл помечается владельцем: лежит он у прототипа, и править его надо там.
+ * Свой файл поля не получает — ставить его на себя значило бы шуметь в каждом ответе.
+ * Владелец сохраняется из цепочки: прототип мог сам получить файл выше.
+ */
+const byName = (inherited: MapFile[], own: MapFile[], from: string): MapFile[] => {
   const mine = new Set(own.map((file) => file.name));
-  return [...inherited.filter((file) => !mine.has(file.name)), ...own];
+  return [
+    ...inherited
+      .filter((file) => !mine.has(file.name))
+      .map((file) => (file.owner ? file : { ...file, owner: from })),
+    ...own,
+  ];
 };
 
 /** `extends` resolves recursively; a cycle is an error, not a hang. */
@@ -241,8 +251,8 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   ];
   // По имени, и своё выигрывает: прототип достаётся нескольким наследникам, и без дедупа
   // один и тот же экшон приезжает столько раз, сколько их в цепочке.
-  object.directives = byName(prototype.directives, object.directives);
-  object.actions = byName(prototype.actions, object.actions);
+  object.directives = byName(prototype.directives, object.directives, prototype.address);
+  object.actions = byName(prototype.actions, object.actions, prototype.address);
 }
 
 /**

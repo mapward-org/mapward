@@ -9,7 +9,9 @@ import { expect, test } from "vitest";
  */
 const ALLOWED: Record<string, string[]> = {
   "@mapward/core": [],
-  "@mapward/abstract-server": ["@mapward/core"],
+  // Текст инструмента, который едет вместе с ним: не зависит ни от кого, и зависеть не от чего.
+  "@mapward/docs": [],
+  "@mapward/abstract-server": ["@mapward/core", "@mapward/docs"],
   "@mapward/abstract-react-client": ["@mapward/core"],
 };
 

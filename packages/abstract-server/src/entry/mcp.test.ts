@@ -28,8 +28,16 @@ function fakeFiles(tree: Record<string, string>): FilesPort {
 
 const tree = {
   "/map/_index.json": JSON.stringify({ name: "Карта" }),
+  "/map/prototypes/_index.json": JSON.stringify({ name: "Прототипы" }),
+  "/map/prototypes/package/_index.json": JSON.stringify({ name: "Пакет" }),
+  "/map/prototypes/package/_actions/publish-version.md": "как выпускать версию",
+  "/map/prototypes/package/_directives/create-package.md": "как заводить пакет",
   "/map/packages/_index.json": JSON.stringify({ name: "Пакеты" }),
-  "/map/packages/core/_index.json": JSON.stringify({ name: "core" }),
+  "/map/packages/core/_index.json": JSON.stringify({
+    name: "core",
+    extends: "mapward://prototypes/package",
+  }),
+  "/map/packages/core/_actions/own.md": "свой экшон",
   "/map/packages/core/_metrics/version/config.json": JSON.stringify({
     label: "Версия",
     refresh: "on-display",
@@ -99,7 +107,104 @@ test("read_object leads up the tree as well as down", async () => {
 test("the root has no parents", async () => {
   const object = await call("read_object", {});
   expect(object.parents).toEqual([]);
-  expect(object.children).toEqual([{ address: "mapward://packages", name: "Пакеты" }]);
+  expect(object.children).toEqual([
+    { address: "mapward://prototypes", name: "Прототипы" },
+    { address: "mapward://packages", name: "Пакеты" },
+  ]);
+});
+
+test("an inherited file says where it actually lives", async () => {
+  const object = await call("read_object", { address: "mapward://packages/core" });
+
+  // Унаследованное правится у прототипа, и по ответу это должно быть видно — решение 0016.
+  expect(object.directives).toEqual([
+    {
+      name: "create-package.md",
+      path: "/map/prototypes/package/_directives/create-package.md",
+      owner: "mapward://prototypes/package",
+      status: "new",
+    },
+  ]);
+
+  // Своё владельца не называет: поле значит «лежит не здесь».
+  expect(object.actions).toEqual([
+    {
+      name: "publish-version.md",
+      path: "/map/prototypes/package/_actions/publish-version.md",
+      owner: "mapward://prototypes/package",
+    },
+    { name: "own.md", path: "/map/packages/core/_actions/own.md" },
+  ]);
+});
+
+test("fields cut the answer down to what was asked for", async () => {
+  const whole = await call("read_object", { address: "mapward://packages/core" });
+  expect(whole.props).toBeDefined();
+  expect((whole.metrics as { config?: unknown }[])[0]?.config).toBeDefined();
+
+  const slim = await call("read_object", {
+    address: "mapward://packages/core",
+    fields: ["address", "metrics.key", "metrics.label"],
+  });
+
+  expect(Object.keys(slim)).toEqual(["address", "metrics"]);
+  expect(slim.metrics).toEqual([
+    { key: "version", label: "Версия" },
+    { key: "tests", label: "Тесты" },
+  ]);
+});
+
+test("depth brings children as objects, not as names", async () => {
+  const flat = await call("read_object", { address: "mapward://packages" });
+  expect(flat.children).toEqual([{ address: "mapward://packages/core", name: "core" }]);
+
+  const deep = await call("read_object", {
+    address: "mapward://packages",
+    depth: 1,
+    fields: ["children.address", "children.metrics.key"],
+  });
+
+  expect(deep).toEqual({
+    children: [
+      {
+        address: "mapward://packages/core",
+        metrics: [{ key: "version" }, { key: "tests" }],
+      },
+    ],
+  });
+});
+
+test("the tool carries its own documentation", async () => {
+  const index = await call("read_docs", {});
+
+  // Оглавление первым делом: вываливать всю документацию в контекст незачем.
+  const names = (index.sections as { name: string }[]).map((entry) => entry.name);
+  expect(names[0]).toBe("README");
+  expect(names).toContain("index-format");
+
+  const doc = await call("read_docs", { section: "index-format" });
+  expect(String(doc.text)).toContain("_index.json");
+});
+
+test("the shipped text mentions no decisions at all", async () => {
+  const index = await call("read_docs", {});
+
+  for (const { name } of index.sections as { name: string }[]) {
+    const doc = await call("read_docs", { section: name });
+    const text = String(doc.text);
+
+    // Решений у установленного mapward нет. Номер без ссылки не лучше: он отсылает туда, куда
+    // читателю не попасть. Текст объясняет сам — решение 0016.
+    expect(text, name).not.toMatch(/\.\.\/decisions\//);
+    expect(text, name).not.toMatch(/решени[ея]\s*`?0\d{3}/i);
+    expect(text, name).not.toMatch(/\(\s*0\d{3}\s*\)/);
+  }
+});
+
+test("a map that is not there is named along with the ones that are", async () => {
+  await expect(call("read_object", { map: "mapward://" })).rejects.toThrow(
+    /Сервер отдаёт: «Карта»/,
+  );
 });
 
 const metrics = (list: unknown) =>

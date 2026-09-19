@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@mapward/core": "workspace:*",
+    "@mapward/docs": "workspace:*",
     "rxjs": "catalog:",
     "typebox": "catalog:"
   },

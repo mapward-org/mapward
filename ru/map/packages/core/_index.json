@@ -3,7 +3,7 @@
   "extends": "mapward://prototypes/package",
   "props": {
     "codePath": "packages/core",
-    "docsPath": "ru/docs/mapward/architecture.md",
+    "docsPath": "ru/docs/architecture/packages.md",
     "packageName": "@mapward/core",
     "architectureDoc": "ru/docs/architecture/core.md"
   }

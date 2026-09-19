@@ -2,11 +2,7 @@
   "label": "Доки",
   "refresh": "on-display",
   "collectors": [
-    {
-      "kind": "read-dir",
-      "basePath": "${{ mapward://@ }}/ru",
-      "exclude": ["map"]
-    }
+    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs" }
   ],
   "display": { "kind": "tree" }
 }

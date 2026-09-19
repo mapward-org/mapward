@@ -3,7 +3,7 @@
   "extends": "mapward://prototypes/package",
   "props": {
     "codePath": "packages/abstract-react-client",
-    "docsPath": "ru/docs/mapward/architecture.md",
+    "docsPath": "ru/docs/architecture/packages.md",
     "packageName": "@mapward/abstract-react-client",
     "architectureDoc": "ru/docs/architecture/abstract-react-client.md"
   },

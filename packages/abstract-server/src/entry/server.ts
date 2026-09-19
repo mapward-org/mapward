@@ -25,6 +25,12 @@ export type MapServer = ReturnType<typeof createMapServer>;
 export type ServerSettings = {
   /** Сколько метрик собирать разом; без него — без лимита (решение 0013). */
   metricsConcurrency?: number;
+  /**
+   * Сколько собранное считается свежим — умолчание для всех метрик карты, которое метрика
+   * перебивает своим (решение 0016). Без него каждое открытие пересобирает всё заново.
+   */
+  collectorsStaleTime?: number;
+  transformsStaleTime?: number;
 };
 
 export function createMapServer(ports: ServerPorts, settings: ServerSettings = {}) {

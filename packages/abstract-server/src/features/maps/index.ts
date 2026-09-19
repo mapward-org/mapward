@@ -7,4 +7,5 @@ export {
   parseConfig,
   parseSettings,
 } from "./domain/config.ts";
+export type { Settings } from "./domain/config.ts";
 export { findConfig, findMaps, mapsOfConfig } from "./application/use-cases/find-maps.ts";

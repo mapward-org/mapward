@@ -31,7 +31,16 @@ export function adoptMetric(
 
 export type DirectiveStatus = "new" | "changed" | "done";
 
-export type MapFile = { name: string; path: string; status?: DirectiveStatus };
+export type MapFile = {
+  name: string;
+  path: string;
+  status?: DirectiveStatus;
+  /**
+   * The object the file actually belongs to, set only when it came from a prototype. On its own
+   * files it is absent: present, it means one thing — edit it there, not here.
+   */
+  owner?: string;
+};
 
 /**
  * An object of the map. A folder without `_index.json` is a group: it holds children but is

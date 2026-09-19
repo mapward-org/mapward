@@ -197,6 +197,9 @@ importers:
       '@mapward/core':
         specifier: workspace:*
         version: link:../core
+      '@mapward/docs':
+        specifier: workspace:*
+        version: link:../docs
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -232,6 +235,15 @@ importers:
       unrun:
         specifier: 'catalog:'
         version: 0.3.1
+
+  packages/docs:
+    devDependencies:
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
 packages:
 

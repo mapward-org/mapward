@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { createMapServer, parseSettings, serveMcp } from "@mapward/abstract-server";
-import type { MapServer } from "@mapward/abstract-server";
+import type { MapServer, ServerSettings } from "@mapward/abstract-server";
 import { readMaps } from "@/features/maps/index.extension.ts";
 import { createPorts } from "./ports/index.ts";
 import { MapViewProvider } from "./map-view.ts";
@@ -17,22 +17,33 @@ async function createServer(): Promise<MapServer> {
   const configs =
     state.kind === "maps" ? [...new Set(state.maps.map((map) => map.configPath))] : [];
 
-  // Настройки рантайма лежат в том же `mapward.json` — решения 0007 и 0013. Сервер в окне один,
-  // а конфигов бывает несколько: берём самый осторожный лимит, иначе одна карта сняла бы
-  // ограничение, поставленное другой.
-  const limits = (
-    await Promise.all(
-      configs.map(async (configPath) => {
-        const text = await ports.files.read(configPath);
-        return text ? parseSettings(text).metricsConcurrency : undefined;
-      }),
-    )
-  ).filter((limit): limit is number => typeof limit === "number" && limit > 0);
-
-  return createMapServer(
-    ports,
-    limits.length > 0 ? { metricsConcurrency: Math.min(...limits) } : {},
+  // Настройки рантайма лежат в том же `mapward.json` — решения 0007, 0013 и 0016. Сервер в окне
+  // один, а конфигов бывает несколько: по каждой настройке берём самую осторожную, иначе одна
+  // карта сняла бы ограничение, поставленное другой. Для свежести осторожнее меньшее — реже
+  // показываем старое.
+  const settings = await Promise.all(
+    configs.map(async (configPath) => {
+      const text = await ports.files.read(configPath);
+      return text ? parseSettings(text) : {};
+    }),
   );
+
+  const strictest = (pick: (from: ServerSettings) => number | undefined) => {
+    const values = settings
+      .map(pick)
+      .filter((value): value is number => typeof value === "number" && value > 0);
+    return values.length > 0 ? Math.min(...values) : undefined;
+  };
+
+  const concurrency = strictest((from) => from.metricsConcurrency);
+  const collectors = strictest((from) => from.collectorsStaleTime);
+  const transforms = strictest((from) => from.transformsStaleTime);
+
+  return createMapServer(ports, {
+    ...(concurrency === undefined ? {} : { metricsConcurrency: concurrency }),
+    ...(collectors === undefined ? {} : { collectorsStaleTime: collectors }),
+    ...(transforms === undefined ? {} : { transformsStaleTime: transforms }),
+  });
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {

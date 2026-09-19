@@ -1,7 +1,7 @@
 # Расширение VS Code
 
 Приложение: реализует порты сервера и клиента и связывает их с редактором. Внешний контур —
-[`../mapward/architecture.md`](../mapward/architecture.md), правила слоёв — решение
+[`packages.md`](packages.md), правила слоёв — решение
 [0015](../decisions/0015-package-layout.md).
 
 ## Структура
