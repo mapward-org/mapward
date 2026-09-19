@@ -32,6 +32,10 @@
         "code-drift"
       ],
       [
+        "decisions",
+        "decisions"
+      ],
+      [
         "requirements",
         "requirements"
       ],
@@ -41,7 +45,7 @@
       ]
     ],
     "style": {
-      "gridTemplateRows": "auto auto auto auto auto 1fr",
+      "gridTemplateRows": "auto auto auto auto auto auto 1fr",
       "gap": "8px"
     }
   }

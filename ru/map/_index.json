@@ -2,17 +2,36 @@
   "name": "Mapward (ru)",
   "details-metrics-layout": {
     "areas": [
-      ["requirements-todo"],
-      ["decisions-drift"],
-      ["requirements-links"],
-      ["requirements"],
-      ["docs"],
-      ["prototypes"],
-      ["shared-metrics"],
-      ["children"]
+      [
+        "requirements-todo"
+      ],
+      [
+        "decisions"
+      ],
+      [
+        "decisions-drift"
+      ],
+      [
+        "requirements-links"
+      ],
+      [
+        "requirements"
+      ],
+      [
+        "docs"
+      ],
+      [
+        "prototypes"
+      ],
+      [
+        "shared-metrics"
+      ],
+      [
+        "children"
+      ]
     ],
     "style": {
-      "gridTemplateRows": "auto auto auto auto auto auto auto 1fr",
+      "gridTemplateRows": "auto auto auto auto auto auto auto auto 1fr",
       "gap": "8px"
     }
   }

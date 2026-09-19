@@ -1,5 +1,5 @@
 import { Observable } from "rxjs";
-import type { MapObject } from "@mapward/core";
+import type { MapMetric, MapObject } from "@mapward/core";
 import type { ServerPorts } from "../ports/index.ts";
 import { readMap } from "../features/map-object/application/use-cases/read-map.ts";
 import {
@@ -71,6 +71,25 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     /** Объект файлом, как он написан на диске — решение 0009: агент видит и мердж, и исходник. */
     readIndexFile: (objectPath: string) => ports.files.read(`${objectPath}/_index.json`),
+
+    /** Любой файл карты по пути из модели: текст директивы и экшона живут именно так. */
+    readMapFile: (path: string) => ports.files.read(path),
+
+    /**
+     * Почему метрика красная, написано в логах прогона, а не во флаге `ok`. Читаются они по
+     * просьбе: логи жирные, и в каждый ответ им не место — решение 0016.
+     */
+    readMetricLogs: async (metric: MapMetric) => {
+      const [collect, transform] = await Promise.all([
+        ports.files.read(`${metric.cachePath}/collect.logs.json`),
+        ports.files.read(`${metric.cachePath}/transform.logs.json`),
+      ]);
+      if (collect === undefined && transform === undefined) return undefined;
+      return {
+        ...(collect === undefined ? {} : { collect }),
+        ...(transform === undefined ? {} : { transform }),
+      };
+    },
 
     createDirective: (params: { objectPath: string; title: string }) =>
       createDirective(ports, params),

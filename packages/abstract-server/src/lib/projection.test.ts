@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { project } from "./projection.ts";
+import { project, projectDeep } from "./projection.ts";
 
 const object = {
   address: "mapward://packages/core",
@@ -33,6 +33,33 @@ test("asking for a branch beats asking for its leaf", () => {
 
 test("fields that are not there are skipped, not nulled", () => {
   expect(project(object, ["name", "нет-такого"])).toEqual({ name: "core" });
+});
+
+test("a deep projection applies the same fields all the way down", () => {
+  const tree = {
+    address: "mapward://",
+    name: "карта",
+    props: { a: 1 },
+    children: [
+      {
+        address: "mapward://packages",
+        name: "packages",
+        props: { b: 2 },
+        children: [{ address: "mapward://packages/core", name: "core", props: { c: 3 } }],
+      },
+    ],
+  };
+
+  // Глубина не должна стоить длины проекции: `children.children.address` никто не пишет.
+  expect(projectDeep(tree, ["address"])).toEqual({
+    address: "mapward://",
+    children: [
+      {
+        address: "mapward://packages",
+        children: [{ address: "mapward://packages/core" }],
+      },
+    ],
+  });
 });
 
 test("the heavy part is what gets left out", () => {

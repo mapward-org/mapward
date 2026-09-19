@@ -3,7 +3,8 @@ import type { MapFile, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
-import { project } from "../lib/projection.ts";
+import { projectDeep } from "../lib/projection.ts";
+import { fit } from "../lib/budget.ts";
 import type {
   MapRef,
   ReadOptions,
@@ -36,6 +37,27 @@ const fileOf = (file: MapFile) => ({
 });
 
 /**
+ * Директивы сводкой: на корне их два десятка, и почти все давно прогнаны. Выполненная
+ * директива — археология, на старте сессии она не нужна, а имя с путём у каждой стоит
+ * полтора килобайта. Нужен весь список — `directives: "all"` (решение 0016).
+ */
+function digest(files: MapFile[], all: boolean) {
+  const counts = { total: files.length, new: 0, changed: 0, done: 0 };
+  for (const file of files) {
+    if (file.status !== undefined) counts[file.status]++;
+  }
+  const shown = all ? files : files.filter((file) => file.status !== "done");
+  return { ...counts, files: shown.map((file) => ({ ...fileOf(file), status: file.status })) };
+}
+
+/**
+ * Что из объекта класть в ответ: отбор метрик по ключам, полнота списка директив и логи
+ * прогона. Логи только по просьбе — они жирные, а нужны, когда разбираются, почему метрика
+ * красная (решение 0016).
+ */
+export type View = { metrics?: string[]; directives: boolean; logs: boolean };
+
+/**
  * Объект в том виде, в каком его видит человек — решение 0009: поля после мерджа и
  * подстановок, метрики со значениями и конфигом (там же `exclude` у детей), раскладки, по
  * которым они разложены на экране.
@@ -50,14 +72,30 @@ async function describe(
   object: MapObject,
   options: ReadOptions,
   depth: number,
+  view: View,
+  top = true,
 ): Promise<Record<string, unknown>> {
-  const values = await server.readMetrics(ref, object, options);
+  // Отбор идёт до сбора: метрика, которую не просили, не должна и считаться — иначе `depth`
+  // поднимает процессы по всему поддереву ради значений, которые тут же выбрасываются.
+  const wanted =
+    view.metrics === undefined
+      ? object.metrics
+      : object.metrics.filter((metric) => view.metrics?.includes(metric.key));
+  const values = await server.readMetrics(ref, { ...object, metrics: wanted }, options);
+  const logs = view.logs
+    ? await Promise.all(wanted.map((metric) => server.readMetricLogs(metric)))
+    : undefined;
   // Вверх по дереву — решение 0016: дети у объекта уже есть, а родителя без этого не видно,
   // и агент не мог уйти к соседу иначе как обходом от корня.
-  const parents = trail(root, object.address)
-    .slice(0, -1)
-    .toReversed()
-    .map((ancestor) => ({ address: ancestor.address, name: ancestor.name }));
+  //
+  // Раскрытому ребёнку цепочка не нужна: он лежит внутри своего родителя, и повторять её у
+  // каждого значит платить за одно и то же столько раз, сколько в ответе объектов.
+  const parents = top
+    ? trail(root, object.address)
+        .slice(0, -1)
+        .toReversed()
+        .map((ancestor) => ({ address: ancestor.address, name: ancestor.name }))
+    : undefined;
 
   return {
     address: object.address,
@@ -66,25 +104,30 @@ async function describe(
     path: object.path,
     props: object.props,
     layout: { preview: object.previewLayout, details: object.detailsLayout },
-    metrics: object.metrics.map((metric) => ({
+    metrics: wanted.map((metric, at) => ({
       key: metric.key,
       address: metric.address,
       label: metric.config.label ?? metric.key,
       refresh: metric.config.refresh ?? "manual",
       display: metric.config.display?.kind,
       configPath: metric.configPath,
+      // Заведена не здесь, а у прототипа: инвариант 0015 спрашивает именно это.
+      ...(metric.owner === undefined ? {} : { owner: metric.owner }),
       // Конфиг целиком: в нём видно и коллекторы, и `exclude` у карты детей.
       config: metric.config,
       value: values[metric.address],
+      ...(logs?.[at] === undefined ? {} : { logs: logs[at] }),
     })),
-    directives: object.directives.map((file) => ({ ...fileOf(file), status: file.status })),
+    directives: digest(object.directives, view.directives),
     actions: object.actions.map(fileOf),
     /** От ближайшего родителя к корню: по ним поднимаются и уходят к соседям через их детей. */
-    parents,
+    ...(parents === undefined ? {} : { parents }),
     children:
       depth > 0
         ? await Promise.all(
-            object.children.map((child) => describe(server, ref, root, child, options, depth - 1)),
+            object.children.map((child) =>
+              describe(server, ref, root, child, options, depth - 1, view, false),
+            ),
           )
         : object.children.map((child) => ({ address: child.address, name: child.name })),
     map: ref.name,
@@ -102,8 +145,9 @@ const TOOLS = [
     description:
       "Объект карты так, как его видит человек: поля после наследования и подстановок, список метрик, директив, экшонов, родителей и детей. " +
       'С refresh: "on-display" дешёвые метрики досчитываются — зови так, чтобы увидеть то же, что человек на экране. ' +
-      "Весь контекст разом: depth уводит вглубь по детям, fields оставляет в ответе только нужные поля. " +
-      'Типовой сбор — fields: ["address","name","props","metrics.key","metrics.label","metrics.value","children.address","children.name"] с depth: 2 и refresh: "on-display".',
+      "Весь контекст разом: depth уводит вглубь по детям, metrics отбирает метрики по ключам, fields — поля в ответе. " +
+      'Начинай с обзора без метрик — { depth: 2, metrics: [] } — и только потом зови нужные: { address, metrics: ["files"], refresh: "on-display" }. ' +
+      "Почти весь вес ответа сидит в metrics.value, поэтому metrics важнее fields.",
     inputSchema: {
       type: "object",
       properties: {
@@ -115,11 +159,28 @@ const TOOLS = [
           description:
             'по умолчанию "none" — только собранное раньше; "on-display" досчитывает дешёвые метрики и дожидается их. Дорогие (refresh: manual) не запускаются никогда — для них run_metric',
         },
+        metrics: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            'какие метрики включить, по ключам: ["files", "architecture"]. Пустой список — ни одной, и это правильный обзорный вызов. Без параметра приходят все, вместе со значениями; невключённая метрика не считается вовсе',
+        },
         fields: {
           type: "array",
           items: { type: "string" },
           description:
-            'какие поля вернуть, точечными путями: "props", "metrics.value", "children.name". Без него приходит всё — тяжелее всего metrics.config, а он нужен, только когда метрику правят',
+            'какие поля вернуть, точечными путями: "address", "props", "metrics.value". Применяется на каждом уровне глубины, поэтому children перечислять не надо — дети приходят с теми же полями. Без параметра приходит всё, включая metrics.config, а он нужен, только когда метрику правят',
+        },
+        directives: {
+          type: "string",
+          enum: ["pending", "all"],
+          description:
+            'по умолчанию "pending" — счётчики и только непрогнанные с изменившимися; "all" добавляет выполненные, которых на старых объектах десятки',
+        },
+        budget: {
+          type: "number",
+          description:
+            "ориентир по размеру ответа в байтах json: пока он превышен, самые тяжёлые значения и конфиги метрик заменяются на { truncated, bytes } — ответ не пропадает целиком. Перечень метрик и поля объектов не режутся, поэтому вызов по всей карте останется большим и с маркерами; чтобы этого не было, отбирай metrics. По умолчанию 24000, ноль снимает предел",
         },
         depth: {
           type: "number",
@@ -136,12 +197,18 @@ const TOOLS = [
   {
     name: "read_index",
     description:
-      "Сырой `_index.json` объекта, как он написан на диске — до наследования и подстановок.",
+      "Сырой `_index.json` объекта, как он написан на диске — до наследования и подстановок. " +
+      "С file — текст директивы или экшона этого объекта по имени из read_object, включая доставшиеся от прототипа.",
     inputSchema: {
       type: "object",
       properties: {
         address: { type: "string", description: "mapward:// адрес; без него корень" },
         map: { type: "string", description: "имя карты; без него первая" },
+        file: {
+          type: "string",
+          description:
+            'имя директивы или экшона объекта, как в ответе read_object: "create-package.md". Без него приходит _index.json',
+        },
       },
     },
   },
@@ -196,11 +263,31 @@ const readOptions = (args: Record<string, unknown>): ReadOptions => ({
   ...(args.refresh === "on-display" ? { refresh: "on-display" as const } : {}),
 });
 
-/** Проекция приходит списком строк; всё остальное считается «полей не назвали». */
-const fields = (args: Record<string, unknown>): string[] | undefined =>
-  Array.isArray(args.fields)
-    ? args.fields.filter((item): item is string => typeof item === "string")
-    : undefined;
+/** Списки строк приходят как есть; всё остальное считается «не назвали». */
+const names = (raw: unknown): string[] | undefined =>
+  Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : undefined;
+
+/**
+ * Сколько ответ вправе весить. Умолчание есть, потому что вызов без него однажды приезжает с
+ * деревом требований внутри и пропадает целиком — решение 0016.
+ */
+const DEFAULT_BUDGET = 24_000;
+
+const budget = (args: Record<string, unknown>): number =>
+  typeof args.budget === "number" ? args.budget : DEFAULT_BUDGET;
+
+/**
+ * Логи читаются с диска, поэтому спрашиваются заранее — по самой проекции: назвал
+ * `metrics.logs`, значит они тебе и нужны. Отдельного флага для этого заводить незачем.
+ */
+const wantsLogs = (fields: string[] | undefined): boolean =>
+  fields?.some((path) => path === "metrics.logs" || path.startsWith("metrics.logs.")) ?? false;
+
+const view = (args: Record<string, unknown>): View => ({
+  metrics: names(args.metrics),
+  directives: args.directives === "all",
+  logs: wantsLogs(names(args.fields)),
+});
 
 /** Ответ инструмента: агент читает json как текст — так устроен протокол. */
 const text = (value: unknown) => ({
@@ -219,10 +306,10 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
   const mapOf = (name: unknown): MapRef => {
     const found = typeof name === "string" ? maps.find((map) => map.name === name) : maps[0];
     if (found) return found;
-    const names = maps.map((map) => `«${map.name}»`).join(", ");
+    const known = maps.map((map) => `«${map.name}»`).join(", ");
     throw new Error(
-      names.length > 0
-        ? `Карта ${String(name)} не найдена. Сервер отдаёт: ${names}. Без параметра берётся первая.`
+      known.length > 0
+        ? `Карта ${String(name)} не найдена. Сервер отдаёт: ${known}. Без параметра берётся первая.`
         : `Карта ${String(name)} не найдена: сервер не отдаёт ни одной карты.`,
     );
   };
@@ -247,10 +334,10 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
       }
       const found = section(wanted, language);
       if (!found) {
-        const names = sections(language)
+        const known = sections(language)
           .map((entry) => entry.name)
           .join(", ");
-        throw new Error(`Раздела ${wanted} нет. Есть: ${names}.`);
+        throw new Error(`Раздела ${wanted} нет. Есть: ${known}.`);
       }
       return text(found);
     }
@@ -262,9 +349,32 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
       const address = typeof args.address === "string" ? args.address : undefined;
       const object = address ? findObject(map, address) : map;
       if (!object) throw new Error(`Объект ${String(address)} не найден`);
+      // `metrics: []` выключает метрики целиком, а `fields: ["metrics.key"]` спрашивает про
+      // них же — вместе это всегда пустой список, который читается как «метрик у объекта нет».
+      // Неправда дороже отказа, поэтому здесь отказ.
+      const picked = names(args.metrics);
+      const asksMetrics = names(args.fields)?.some(
+        (path) => path === "metrics" || path.startsWith("metrics."),
+      );
+      if (picked?.length === 0 && asksMetrics === true) {
+        throw new Error(
+          "metrics: [] выключает метрики, а fields просит их поля — вместе всегда пусто. " +
+            'Нужны ключи без значений — убери metrics и оставь fields: ["metrics.key"]: ' +
+            "перечень приходит без сбора. Нужны конкретные метрики — назови их в metrics.",
+        );
+      }
+
       const depth = typeof args.depth === "number" && args.depth > 0 ? Math.floor(args.depth) : 0;
-      const described = await describe(server, ref, map, object, readOptions(args), depth);
-      return text(project(described, fields(args)));
+      const described = await describe(
+        server,
+        ref,
+        map,
+        object,
+        readOptions(args),
+        depth,
+        view(args),
+      );
+      return text(fit(projectDeep(described, names(args.fields)), budget(args)));
     }
 
     if (name === "read_index") {
@@ -272,6 +382,22 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
       const address = typeof args.address === "string" ? args.address : undefined;
       const object = address ? findObject(map, address) : map;
       if (!object) throw new Error(`Объект ${String(address)} не найден`);
+
+      // Файл берётся из модели, а не склейкой пути: так открывается и унаследованный от
+      // прототипа, и никакое имя не уводит читать что попало мимо карты.
+      if (typeof args.file === "string") {
+        const wanted = args.file;
+        const found = [...object.directives, ...object.actions].find(
+          (file) => file.name === wanted,
+        );
+        if (!found) {
+          const known = [...object.directives, ...object.actions].map((f) => f.name).join(", ");
+          throw new Error(`У объекта нет файла ${wanted}. Есть: ${known || "ни одного"}.`);
+        }
+        const body = await server.readMapFile(found.path);
+        return text({ ...fileOf(found), status: found.status, text: body ?? null });
+      }
+
       const raw = await server.readIndexFile(object.path);
       return text({ address: object.address, path: object.path, index: raw ?? null });
     }

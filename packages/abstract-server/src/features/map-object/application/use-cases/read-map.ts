@@ -243,9 +243,11 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   object.metrics = [
     ...prototype.metrics.map((metric) => {
       const mine = own.get(metric.key);
+      // Свой `config.json` есть — метрика заведена здесь, даже если часть полей от прототипа.
+      // Нет — метрика чужая, и это видно по владельцу, как у директив с экшонами.
       return mine
         ? { ...mine, config: mergeMetric(metric.config, mine.config) }
-        : adoptMetric(object, metric);
+        : { ...adoptMetric(object, metric), owner: metric.owner ?? prototype.address };
     }),
     ...object.metrics.filter((metric) => !prototype.metrics.some((p) => p.key === metric.key)),
   ];

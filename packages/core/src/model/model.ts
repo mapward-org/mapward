@@ -9,6 +9,13 @@ export type MapMetric = {
   configPath: string;
   /** Where caches and logs of this metric live — always the object's own folder. */
   cachePath: string;
+  /**
+   * The object that actually defines this metric, set only when it came from a prototype.
+   * Absent on the object's own metrics, so its presence means one thing — this one is not
+   * declared here. Decision 0015 asks for metrics on their own object; without this the
+   * question cannot be answered from the outside at all.
+   */
+  owner?: string;
   config: MetricConfig;
 };
 

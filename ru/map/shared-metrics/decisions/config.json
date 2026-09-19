@@ -1,0 +1,9 @@
+{
+  "label": "Решения",
+  "refresh": "on-display",
+  "collapsed": true,
+  "collectors": [
+    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs/decisions" }
+  ],
+  "display": { "kind": "tree", "empty": "решений нет" }
+}

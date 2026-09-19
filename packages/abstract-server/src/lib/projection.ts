@@ -47,3 +47,26 @@ export function project<T>(value: T, fields: readonly string[] | undefined): unk
   if (!fields || fields.length === 0) return value;
   return pick(value, plant([...fields]));
 }
+
+/**
+ * То же, но вглубь: один и тот же список полей применяется к объекту и к каждому его потомку.
+ *
+ * Иначе за глубину пришлось бы платить длиной проекции — `children.address`,
+ * `children.children.address` и так далее, — а на третьем уровне это уже не пишут, а копируют
+ * с ошибками. Дети при этом приходят всегда: просить глубину и не получить детей незачем.
+ */
+export function projectDeep<T>(value: T, fields: readonly string[] | undefined): unknown {
+  if (!fields || fields.length === 0) return value;
+  const root = plant([...fields]);
+
+  const walk = (item: unknown): unknown => {
+    if (item === null || typeof item !== "object") return item;
+    const source = item as Record<string, unknown>;
+    const result = pick(source, root) as Record<string, unknown>;
+    const children = source.children;
+    if (Array.isArray(children)) result.children = children.map(walk);
+    return result;
+  };
+
+  return walk(value);
+}

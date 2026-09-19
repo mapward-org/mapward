@@ -31,6 +31,11 @@ const tree = {
   "/map/prototypes/_index.json": JSON.stringify({ name: "Прототипы" }),
   "/map/prototypes/package/_index.json": JSON.stringify({ name: "Пакет" }),
   "/map/prototypes/package/_actions/publish-version.md": "как выпускать версию",
+  "/map/prototypes/package/_metrics/lint/config.json": JSON.stringify({
+    label: "Линтер",
+    collectors: [{ kind: "static", value: { ok: true } }],
+    display: { kind: "status" },
+  }),
   "/map/prototypes/package/_directives/create-package.md": "как заводить пакет",
   "/map/packages/_index.json": JSON.stringify({ name: "Пакеты" }),
   "/map/packages/core/_index.json": JSON.stringify({
@@ -49,6 +54,8 @@ const tree = {
     collectors: [{ kind: "static", value: { text: "не должно собраться" } }],
     display: { kind: "text" },
   }),
+  "/map/packages/core/_metrics/tests/collect.logs.json":
+    'No projects matched the filter "@mapward/core"',
 };
 
 const ports: ServerPorts = {
@@ -117,14 +124,20 @@ test("an inherited file says where it actually lives", async () => {
   const object = await call("read_object", { address: "mapward://packages/core" });
 
   // Унаследованное правится у прототипа, и по ответу это должно быть видно — решение 0016.
-  expect(object.directives).toEqual([
-    {
-      name: "create-package.md",
-      path: "/map/prototypes/package/_directives/create-package.md",
-      owner: "mapward://prototypes/package",
-      status: "new",
-    },
-  ]);
+  expect(object.directives).toEqual({
+    total: 1,
+    new: 1,
+    changed: 0,
+    done: 0,
+    files: [
+      {
+        name: "create-package.md",
+        path: "/map/prototypes/package/_directives/create-package.md",
+        owner: "mapward://prototypes/package",
+        status: "new",
+      },
+    ],
+  });
 
   // Своё владельца не называет: поле значит «лежит не здесь».
   expect(object.actions).toEqual([
@@ -147,8 +160,10 @@ test("fields cut the answer down to what was asked for", async () => {
     fields: ["address", "metrics.key", "metrics.label"],
   });
 
-  expect(Object.keys(slim)).toEqual(["address", "metrics"]);
+  // Дети приходят всегда: просить поля и потерять поддерево — не то, о чём просили.
+  expect(Object.keys(slim)).toEqual(["address", "metrics", "children"]);
   expect(slim.metrics).toEqual([
+    { key: "lint", label: "Линтер" },
     { key: "version", label: "Версия" },
     { key: "tests", label: "Тесты" },
   ]);
@@ -161,14 +176,18 @@ test("depth brings children as objects, not as names", async () => {
   const deep = await call("read_object", {
     address: "mapward://packages",
     depth: 1,
-    fields: ["children.address", "children.metrics.key"],
+    fields: ["address", "metrics.key"],
   });
 
+  // Те же поля на каждом уровне — глубина не требует удлинять проекцию.
   expect(deep).toEqual({
+    address: "mapward://packages",
+    metrics: [],
     children: [
       {
         address: "mapward://packages/core",
-        metrics: [{ key: "version" }, { key: "tests" }],
+        metrics: [{ key: "lint" }, { key: "version" }, { key: "tests" }],
+        children: [],
       },
     ],
   });
@@ -199,6 +218,146 @@ test("the shipped text mentions no decisions at all", async () => {
     expect(text, name).not.toMatch(/решени[ея]\s*`?0\d{3}/i);
     expect(text, name).not.toMatch(/\(\s*0\d{3}\s*\)/);
   }
+});
+
+test("metrics are picked by key, and the rest are not even collected", async () => {
+  const all = await call("read_object", {
+    address: "mapward://packages/core",
+    refresh: "on-display",
+  });
+  expect((all.metrics as { key: string }[]).map((m) => m.key)).toEqual([
+    "lint",
+    "version",
+    "tests",
+  ]);
+
+  const none = await call("read_object", {
+    address: "mapward://packages/core",
+    refresh: "on-display",
+    metrics: [],
+  });
+  // Обзорный вызов: ни одной метрики, а значит и ни одного запущенного процесса.
+  expect(none.metrics).toEqual([]);
+
+  const one = await call("read_object", {
+    address: "mapward://packages/core",
+    refresh: "on-display",
+    metrics: ["version"],
+  });
+  expect((one.metrics as { key: string; value?: { data?: unknown } }[])[0]?.value?.data).toEqual({
+    text: "0.0.0",
+  });
+  expect(one.metrics).toHaveLength(1);
+});
+
+test("asking for metric fields with metrics turned off is refused, not answered with nothing", async () => {
+  // Пустой список тут читается как «у объекта нет метрик», а это неправда — решение 0016.
+  await expect(
+    call("read_object", {
+      address: "mapward://packages/core",
+      metrics: [],
+      fields: ["metrics.key"],
+    }),
+  ).rejects.toThrow(/вместе всегда пусто/);
+
+  // Обзор без метрик остаётся законным: про метрики там и не спрашивают.
+  const overview = await call("read_object", {
+    address: "mapward://packages/core",
+    metrics: [],
+    fields: ["address"],
+  });
+  expect(overview.address).toBe("mapward://packages/core");
+
+  // Перечень без сбора — это отсутствие отбора, а не пустой отбор.
+  const keys = await call("read_object", {
+    address: "mapward://packages/core",
+    fields: ["metrics.key"],
+  });
+  expect((keys.metrics as { key: string }[]).map((m) => m.key)).toContain("version");
+});
+
+test("done directives stay out of the way until asked for", async () => {
+  const quiet = await call("read_object", { address: "mapward://packages/core" });
+  const digest = quiet.directives as { total: number; new: number; files: unknown[] };
+
+  // Счётчики есть всегда, имена — только у того, что ещё не прогоняли.
+  expect(digest.total).toBe(1);
+  expect(digest.new).toBe(1);
+  expect(digest.files).toHaveLength(1);
+
+  const full = await call("read_object", {
+    address: "mapward://packages/core",
+    directives: "all",
+  });
+  expect((full.directives as { files: unknown[] }).files).toHaveLength(1);
+});
+
+test("a heavy answer loses its heaviest value, not itself", async () => {
+  const fat = await call("read_object", {
+    address: "mapward://packages/core",
+    refresh: "on-display",
+    budget: 200,
+  });
+
+  const version = (fat.metrics as { key: string; value?: unknown }[]).find(
+    (m) => m.key === "version",
+  );
+  // Значение ушло, но ответ пришёл — и видно, что именно отрезали.
+  expect(version?.value).toMatchObject({ truncated: true });
+  expect(fat.address).toBe("mapward://packages/core");
+});
+
+test("an inherited metric says whose it is", async () => {
+  const object = await call("read_object", {
+    address: "mapward://packages/core",
+    fields: ["metrics.key", "metrics.owner"],
+  });
+
+  // Инвариант 0015 спрашивает «метрика на своём объекте» — снаружи это видно только так.
+  // Эффективный список у наследника одинаков с чужим, и без владельца об этом молчит.
+  expect(object.metrics).toEqual([
+    { key: "lint", owner: "mapward://prototypes/package" },
+    { key: "version" },
+    { key: "tests" },
+  ]);
+
+  const proto = await call("read_object", {
+    address: "mapward://prototypes/package",
+    fields: ["metrics.key", "metrics.owner"],
+  });
+  // У того, кто её завёл, владельца нет: поле значит «заведена не здесь».
+  expect(proto.metrics).toEqual([{ key: "lint" }]);
+});
+
+test("logs come only when asked for", async () => {
+  const quiet = await call("read_object", { address: "mapward://packages/core" });
+  expect((quiet.metrics as Record<string, unknown>[])[0]?.logs).toBeUndefined();
+
+  const loud = await call("read_object", {
+    address: "mapward://packages/core",
+    fields: ["metrics.key", "metrics.logs"],
+  });
+
+  // Почему метрика красная, написано в логах, а не во флаге ok.
+  expect(loud.metrics).toContainEqual({
+    key: "tests",
+    logs: { collect: 'No projects matched the filter "@mapward/core"' },
+  });
+});
+
+test("a directive can be read as text, wherever it lives", async () => {
+  const body = await call("read_index", {
+    address: "mapward://packages/core",
+    file: "create-package.md",
+  });
+
+  // Файл лежит у прототипа, а спрашивают его у наследника — и это работает.
+  expect(body.text).toBe("как заводить пакет");
+  expect(body.owner).toBe("mapward://prototypes/package");
+
+  await expect(
+    call("read_index", { address: "mapward://packages/core", file: "нет-такого.md" }),
+  ).rejects.toThrow(/Есть: create-package.md/);
 });
 
 test("a map that is not there is named along with the ones that are", async () => {
