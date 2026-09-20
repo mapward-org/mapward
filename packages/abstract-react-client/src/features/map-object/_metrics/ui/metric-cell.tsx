@@ -11,7 +11,8 @@ export function MetricCell(props: {
   ok?: boolean;
   busy: boolean;
   hidden: boolean;
-  gridArea: string;
+  /** Имя области сетки. Сетки без областей клетку не именуют — тогда её кладут треки. */
+  gridArea?: string;
   onRefresh: () => void;
   onToggle: () => void;
   onLogs?: () => void;
@@ -23,7 +24,10 @@ export function MetricCell(props: {
   children: ReactNode;
 }) {
   return (
-    <div style={{ gridArea: props.gridArea }} className="group flex min-h-0 min-w-0 flex-col">
+    <div
+      {...(props.gridArea === undefined ? {} : { style: { gridArea: props.gridArea } })}
+      className="group flex min-h-0 min-w-0 flex-col"
+    >
       <div className="relative flex shrink-0 items-center gap-1 text-[11px] uppercase opacity-70">
         <button
           type="button"

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { Layout, LinkNode, MapMetric, MapObject, MapRelation } from "@mapward/core";
 import { ago, toDisplay } from "../pure-model/display.ts";
-import { planGrid } from "../pure-model/grid.ts";
+import { planGrid, soloGrid } from "../pure-model/grid.ts";
 import { useMetrics } from "../adapters/use-metrics.ts";
 import { useViewState } from "../../../../services/state/index.ts";
 import { Display } from "../ui/displays.tsx";
@@ -26,6 +26,8 @@ export function MetricGrid(props: {
   onOpen: (link: string) => void;
   /** Открыть метрику отдельным табом; хост не умеет табы — параметра нет, и иконок тоже. */
   onOpenTab?: (metric: MapMetric) => void;
+  /** Открыть табом объект, на который ведёт ссылка внутри метрики — то же решение 0026. */
+  onOpenObjectTab?: (link: string) => void;
   /** Карту детей рисует соседний подмодуль, а сводит их вместе `map-object/compose` (0015). */
   renderMap: (
     map: { nodes: LinkNode[]; relations: MapRelation[] },
@@ -45,7 +47,7 @@ export function MetricGrid(props: {
   const now = Date.now();
 
   const plan = props.solo
-    ? undefined
+    ? soloGrid(props.solo)
     : planGrid(
         props.layout,
         props.metrics.map((metric) => metric.key),
@@ -63,6 +65,7 @@ export function MetricGrid(props: {
       style={{
         gridTemplateAreas: plan?.areas,
         gridTemplateColumns: plan?.columns,
+        gridTemplateRows: plan?.rows,
         ...plan?.style,
       }}
     >
@@ -71,7 +74,9 @@ export function MetricGrid(props: {
         return (
           <MetricCell
             key={metric.address}
-            gridArea={metric.key}
+            // Клетка называет область только там, где области есть: иначе она ищет линию с
+            // этим именем, не находит и встаёт куда придётся, вместо того чтобы занять трек.
+            {...(plan?.areas === undefined ? {} : { gridArea: metric.key })}
             label={metric.config.label ?? metric.key}
             // `updatedAt` — время получения содержимого, а не чтения (0013), поэтому время
             // осмысленно и без файлового кэша: значение живёт в сторе и переживает уход
@@ -92,6 +97,7 @@ export function MetricGrid(props: {
               collected={value?.data !== undefined}
               empty={metric.config.display?.empty}
               onOpen={props.onOpen}
+              {...(props.onOpenObjectTab === undefined ? {} : { onOpenTab: props.onOpenObjectTab })}
               renderMap={(map) => props.renderMap(map, metric.address)}
             />
           </MetricCell>

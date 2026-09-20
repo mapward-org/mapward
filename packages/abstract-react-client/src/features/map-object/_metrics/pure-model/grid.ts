@@ -2,8 +2,14 @@ import type { Layout, LayoutVariant } from "@mapward/core";
 import { layoutVariants } from "@mapward/core";
 
 export type GridPlan = {
-  areas: string;
+  /**
+   * Именованные области. Их может не быть: раскладка на одну метрику обходится треками, и
+   * тогда клетке нечего называть — `grid-area` с именем, которого в сетке нет, кладёт её
+   * по несуществующей линии вместо того, чтобы отдать ей место (решение 0026).
+   */
+  areas?: string;
   columns: string;
+  rows?: string;
   style: Record<string, string>;
   placed: Set<string>;
 };
@@ -27,5 +33,19 @@ export function planGrid(layout: Layout | undefined, keys: string[]): GridPlan |
     // A metric missing from the layout is not hidden: it falls outside the grid areas,
     // as decision 0003 says.
     placed: new Set([...placed, ...keys.filter((key) => !placed.has(key))]),
+  };
+}
+
+/**
+ * Таб одной метрики: раскладывать нечего, и раскладка тут не нужна — нужен один трек на всю
+ * ширину и на всю высоту. Метрика в табе занимает его целиком, ради этого таб и открывали
+ * (решение 0026).
+ */
+export function soloGrid(key: string): GridPlan {
+  return {
+    columns: "minmax(0, 1fr)",
+    rows: "minmax(0, 1fr)",
+    style: {},
+    placed: new Set([key]),
   };
 }
