@@ -1,0 +1,32 @@
+{
+  "updatedAt": "2026-09-20T23:00:47.418Z",
+  "ok": true,
+  "data": {
+    "items": [
+      {
+        "label": "Публичный api фичи минует compose",
+        "description": "Док: compose — точки входа в модуль, наружу фича смотрит через index. В коде index.extension.ts реэкспортит адаптеры напрямую: у features/terminals папки compose нет вовсе (только adapters + pure-model), у features/maps через index уходят readMaps и registerVirtualDocs из adapters",
+        "link": "apps/vscode-extension/src/features/terminals/index.extension.ts",
+        "status": "fail"
+      },
+      {
+        "label": "Нет второго рантайма у фич",
+        "description": "Док описывает фичу как изоморфный срез с двумя точками входа (index.extension.ts и index.webview.ts). В коде ни одного index.webview.ts нет, а apps/webview/main.tsx не импортирует features вообще — вся вебвью-часть приезжает из пакета @mapward/abstract-react-client",
+        "link": "apps/vscode-extension/src/apps/webview/main.tsx",
+        "status": "fail"
+      },
+      {
+        "label": "В apps живёт собственное состояние и логика",
+        "description": "Док: apps не реализуют бизнес-функции, только связывают фичи и запускают. apps/extension/stage-tabs.ts владеет реестром запущенных этапов (Map running) и сам сопоставляет сессию с прогоном — это функция, а не связывание; фичи terminals она не принадлежит",
+        "link": "apps/vscode-extension/src/apps/extension/stage-tabs.ts",
+        "status": "fail"
+      },
+      {
+        "label": "Неверный путь к тесту стилей",
+        "description": "Док указывает страж директивы @source как tests/webview-styles.test.ts (рядом с src приложения), фактически файл лежит в корне монорепы — mapward/tests/webview-styles.test.ts; в apps/vscode-extension папки tests нет",
+        "link": "tests/webview-styles.test.ts",
+        "status": "fail"
+      }
+    ]
+  }
+}

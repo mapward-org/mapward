@@ -4,6 +4,7 @@ import { gitColor } from "../pure-model/display.ts";
 import { fileIcon } from "../pure-model/file-icon.ts";
 import { useIcon } from "../../../../ports/icons.tsx";
 import { GitMark } from "./git-mark.tsx";
+import { MarkdownLine } from "./markdown.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
 const Chevron = (props: { open: boolean; visible: boolean }) => (
@@ -45,7 +46,8 @@ function Row(props: { node: TreeNode; depth: number; onOpen: (link: string) => v
           style={{ paddingLeft: `${props.depth * 10 + 18}px` }}
           className="text-[11px] opacity-70"
         >
-          {node.description}
+          {/* Разметкой, как и в списке: подпись под узлом объясняет расхождение (0027). */}
+          <MarkdownLine text={node.description} onOpen={props.onOpen} />
         </div>
       )}
 

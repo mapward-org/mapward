@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { MapServer } from "@mapward/abstract-server";
 import { serveBridge } from "./bridge-handler.ts";
+import { webviewHtml } from "./webview-html.ts";
 
 /**
  * The map lives in the sidebar, where the file tree usually is: the map is the way into the
@@ -13,6 +14,15 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly memento: vscode.Memento,
     private readonly server: MapServer,
+    /** Открыть объект табом — панелями владеет `object-tab`, сайдбар только просит (0026). */
+    private readonly openTab: (target: {
+      mapPath: string;
+      basePath: string;
+      name: string;
+      address: string;
+      group?: string;
+      metric?: string;
+    }) => Promise<void>,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -20,39 +30,9 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
     };
-    view.webview.html = this.html(view.webview);
+    view.webview.html = webviewHtml(view.webview, this.extensionUri);
 
-    const stop = serveBridge(this.server, view.webview, this.memento);
+    const stop = serveBridge(this.server, view.webview, this.memento, this.openTab);
     view.onDidDispose(stop);
-  }
-
-  private html(webview: vscode.Webview): string {
-    const asset = (name: string) =>
-      webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", name));
-    // A nonce lets our own script run while the CSP keeps everything else out.
-    const nonce = Array.from({ length: 32 }, () =>
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".charAt(
-        Math.floor(Math.random() * 62),
-      ),
-    ).join("");
-
-    return `<!DOCTYPE html>
-<html lang="ru">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
-    <link rel="stylesheet" href="${asset("webview.css")}" />
-    <style nonce="${nonce}">
-      @font-face {
-        font-family: codicon;
-        src: url("${asset("codicon.ttf")}") format("truetype");
-      }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" nonce="${nonce}" src="${asset("webview.mjs")}"></script>
-  </body>
-</html>`;
   }
 }

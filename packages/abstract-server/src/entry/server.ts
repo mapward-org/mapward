@@ -82,7 +82,15 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
         return stop;
       }),
 
-    watchMetrics: (params: MapRef & { address?: string }) => metrics.watch(params, params.address),
+    /**
+     * Группа — это вкладка объекта: метрики вне неё не собираются вовсе (решение 0025).
+     * Названные ключи бьют группу — так подписывается таб одной метрики (решение 0026).
+     */
+    watchMetrics: (params: MapRef & { address?: string; group?: string; metrics?: string[] }) =>
+      metrics.watch(params, params.address, {
+        ...(params.group === undefined ? {} : { group: params.group }),
+        ...(params.metrics === undefined ? {} : { metrics: params.metrics }),
+      }),
 
     runMetric: (params: MapRef & { metric: string } & RunOptions & { wait?: boolean }) =>
       metrics.run(params, params.metric, params),

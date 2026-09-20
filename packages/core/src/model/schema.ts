@@ -9,6 +9,30 @@ export const LayoutVariant = T.Object({
 
 export const Layout = T.Union([LayoutVariant, T.Record(T.String(), LayoutVariant)]);
 
+/**
+ * Группа метрик — решение 0025: вкладка объекта со своим набором метрик.
+ *
+ * Группа живёт у объекта, а не у метрики: у неё есть описание, порядок и своя раскладка, а
+ * метрике из `shared-metrics` положить их некуда — она достаётся многим объектам сразу.
+ */
+export const MetricGroup = T.Object({
+  key: T.String(),
+  /** Подпись вкладки; без неё вкладка подписана ключом. */
+  label: T.Optional(T.String()),
+  /** Что это за набор — markdown над сеткой. */
+  description: T.Optional(T.String()),
+  /** Ключи метрик. Метрика, не названная ни в одной группе, не показывается и не собирается. */
+  metrics: T.Array(T.String()),
+  /** Своя раскладка вкладки; без неё берётся `details-metrics-layout` объекта. */
+  "details-metrics-layout": T.Optional(Layout),
+});
+
+export const MetricGroups = T.Object({
+  /** Мерджить унаследованные группы по ключу или заменить их целиком — как у воркфлоу. */
+  mode: T.Optional(T.Union([T.Literal("merge"), T.Literal("replace")])),
+  groups: T.Array(MetricGroup),
+});
+
 export const ObjectIndex = T.Object({
   name: T.Optional(T.String()),
   props: T.Optional(T.Record(T.String(), T.Unknown())),
@@ -29,6 +53,9 @@ export const ObjectIndex = T.Object({
       prompt: T.Optional(T.String()),
     }),
   ),
+  // Решение 0025: вкладки объекта. Заданы — метрики вне групп не показываются и не собираются:
+  // так унаследованную метрику можно не использовать, не отказываясь от прототипа.
+  "metric-groups": T.Optional(MetricGroups),
 });
 
 /** Metric `config.json` as decision 0004 describes it. */
@@ -61,6 +88,8 @@ export const MetricConfig = T.Object({
 
 export type LayoutVariant = Static<typeof LayoutVariant>;
 export type Layout = Static<typeof Layout>;
+export type MetricGroup = Static<typeof MetricGroup>;
+export type MetricGroups = Static<typeof MetricGroups>;
 export type ObjectIndex = Static<typeof ObjectIndex>;
 export type MetricConfig = Static<typeof MetricConfig>;
 

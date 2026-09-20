@@ -70,6 +70,20 @@ const tree = {
   }),
   "/map/packages/core/_metrics/tests/collect.logs.json":
     'No projects matched the filter "@mapward/core"',
+  // Объект с вкладками — решение 0025: метрика вне групп не приходит агенту, как не приходит
+  // и человеку на экран.
+  "/map/prototypes/tabbed/_index.json": JSON.stringify({
+    name: "Со вкладками",
+    "metric-groups": {
+      groups: [
+        { key: "быстрое", label: "Быстрое", metrics: ["fast"] },
+        { key: "тяжёлое", metrics: ["heavy"] },
+      ],
+    },
+  }),
+  "/map/prototypes/tabbed/_metrics/fast/config.json": JSON.stringify({ label: "Быстро" }),
+  "/map/prototypes/tabbed/_metrics/heavy/config.json": JSON.stringify({ label: "Долго" }),
+  "/map/prototypes/tabbed/_metrics/forgotten/config.json": JSON.stringify({ label: "Забытая" }),
 };
 
 const ports: ServerPorts = {
@@ -82,7 +96,7 @@ const ports: ServerPorts = {
   clock: { now: () => new Date().toISOString() },
   timers: { every: () => () => undefined, after: () => () => undefined },
   env: { vars: () => ({}) },
-  capabilities: { terminals: false, openFile: false, ask: false, virtualDocs: false },
+  capabilities: { terminals: false, openFile: false, ask: false, virtualDocs: false, tabs: false },
 };
 
 const ref: MapRef = { mapPath: "/map", basePath: "/repo", name: "Карта" };
@@ -752,4 +766,53 @@ test("a metric that never ran says so, instead of looking empty", async () => {
   });
   const version = (filled.metrics as { value: { collected: boolean } }[])[0]?.value;
   expect(version?.collected).toBe(true);
+});
+
+/**
+ * Вкладки объекта — решение 0025. Агенту они и перечень наборов, и объяснение, почему метрик
+ * в ответе меньше, чем лежит в `_metrics`.
+ */
+test("read_object shows the groups and hides what none of them names", async () => {
+  const object = await call("read_object", { address: "mapward://prototypes/tabbed" });
+  const shown = object.metrics as { key: string }[];
+
+  expect(object.groups).toEqual([
+    { key: "быстрое", label: "Быстрое", metrics: ["fast"] },
+    { key: "тяжёлое", metrics: ["heavy"] },
+  ]);
+  // `forgotten` не названа ни в одной вкладке: её наследуют, но не используют.
+  expect(shown.map((metric) => metric.key)).toEqual(["fast", "heavy"]);
+});
+
+test("group picks one tab worth of metrics", async () => {
+  const object = await call("read_object", {
+    address: "mapward://prototypes/tabbed",
+    group: "тяжёлое",
+  });
+
+  expect((object.metrics as { key: string }[]).map((metric) => metric.key)).toEqual(["heavy"]);
+});
+
+/** Промахнуться по ключу легко, и молчаливый откат на первую вкладку отдал бы чужие метрики. */
+test("an unknown group is an error, not the first tab", async () => {
+  await expect(
+    call("read_object", { address: "mapward://prototypes/tabbed", group: "нет такой" }),
+  ).rejects.toThrow(/нет вкладки/);
+});
+
+/** Названная поимённо метрика приходит всегда: агент знает, что просит. */
+test("metrics named by key win over the groups", async () => {
+  const object = await call("read_object", {
+    address: "mapward://prototypes/tabbed",
+    metrics: ["forgotten"],
+  });
+
+  expect((object.metrics as { key: string }[]).map((metric) => metric.key)).toEqual(["forgotten"]);
+});
+
+/** У объекта без вкладок поля нет вовсе — и это значит «показываются все метрики». */
+test("an object without groups says nothing about them", async () => {
+  const object = await call("read_object", { address: "mapward://packages/core" });
+
+  expect(object.groups).toBeUndefined();
 });

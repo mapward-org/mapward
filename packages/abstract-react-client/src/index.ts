@@ -6,7 +6,7 @@
  */
 export const VERSION = "0.0.0";
 
-export { MapwardApp } from "./entry/app.tsx";
+export { MapwardApp, type TabTarget } from "./entry/app.tsx";
 export { ProviderBridgeClient, useBridgeClient } from "./ports/bridge.tsx";
 export { ProviderIcons, useIcon, type RenderIcon } from "./ports/icons.tsx";
 export { Maps } from "./features/maps/index.ts";

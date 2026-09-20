@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { LinkNode, MapObject, MapRelation } from "@mapward/core";
+import type { Layout, LinkNode, MapMetric, MapObject, MapRelation } from "@mapward/core";
 import { ago, toDisplay } from "../pure-model/display.ts";
 import { planGrid } from "../pure-model/grid.ts";
 import { useMetrics } from "../adapters/use-metrics.ts";
@@ -12,18 +12,30 @@ type Ref = { mapPath: string; basePath: string; name: string };
 export function MetricGrid(props: {
   mapRef: Ref;
   object: MapObject;
+  /** Метрики открытой вкладки: что показать, решает группа, а не сетка — решение 0025. */
+  metrics: MapMetric[];
+  /** Раскладка вкладки: своя у группы, иначе объекта. */
+  layout?: Layout;
+  /** Имя открытой вкладки — оно же едет в подписку: закрытая вкладка не собирается. */
+  group?: string;
+  /**
+   * Одна метрика во всю ширину — таб метрики (решение 0026). Сетка тогда не раскладывается:
+   * раскладывать нечего, и лишние клетки съели бы место, ради которого таб и открывали.
+   */
+  solo?: string;
   onOpen: (link: string) => void;
+  /** Открыть метрику отдельным табом; хост не умеет табы — параметра нет, и иконок тоже. */
+  onOpenTab?: (metric: MapMetric) => void;
   /** Карту детей рисует соседний подмодуль, а сводит их вместе `map-object/compose` (0015). */
   renderMap: (
     map: { nodes: LinkNode[]; relations: MapRelation[] },
     metricAddress: string,
   ) => ReactNode;
 }) {
-  const { values, busy, run } = useMetrics(
-    props.mapRef,
-    props.object.address,
-    props.object.metrics,
-  );
+  const { values, busy, run } = useMetrics(props.mapRef, props.object.address, props.metrics, {
+    ...(props.group === undefined ? {} : { group: props.group }),
+    ...(props.solo === undefined ? {} : { solo: props.solo }),
+  });
   // Hiding is a per-person convenience: the editor remembers it, the repository never sees it.
   // What the person folded by hand wins over the metric's own `collapsed` — decision 0010.
   const [folded, setFolded] = useViewState<Record<string, boolean>>(
@@ -32,13 +44,16 @@ export function MetricGrid(props: {
   );
   const now = Date.now();
 
-  const plan = planGrid(
-    props.object.detailsLayout,
-    props.object.metrics.map((metric) => metric.key),
-  );
+  const plan = props.solo
+    ? undefined
+    : planGrid(
+        props.layout,
+        props.metrics.map((metric) => metric.key),
+      );
 
   const isFolded = (key: string, collapsed: boolean | undefined) =>
-    folded[key] ?? collapsed ?? false;
+    // В табе одной метрики свёрнутость не спрашивается: таб открыт ради того, чтобы её видеть.
+    props.solo === key ? false : (folded[key] ?? collapsed ?? false);
   const toggle = (key: string, collapsed: boolean | undefined) =>
     setFolded({ ...folded, [key]: !isFolded(key, collapsed) });
 
@@ -51,7 +66,7 @@ export function MetricGrid(props: {
         ...plan?.style,
       }}
     >
-      {props.object.metrics.map((metric) => {
+      {props.metrics.map((metric) => {
         const value = values[metric.address];
         return (
           <MetricCell
@@ -68,6 +83,9 @@ export function MetricGrid(props: {
             onRefresh={() => run(metric)}
             onToggle={() => toggle(metric.key, metric.config.collapsed)}
             onLogs={() => props.onOpen(`${metric.cachePath}/collect.logs.json`)}
+            {...(props.onOpenTab === undefined || props.solo !== undefined
+              ? {}
+              : { onOpenTab: () => props.onOpenTab?.(metric) })}
           >
             <Display
               data={toDisplay(metric.config.display?.kind, value?.data)}

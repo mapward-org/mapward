@@ -11,7 +11,14 @@ import {
   parseAddress,
   readField,
 } from "@mapward/core";
-import type { ConfigLayer, MapFile, MapMetric, MapObject, MapStage } from "@mapward/core";
+import type {
+  ConfigLayer,
+  MapFile,
+  MapMetric,
+  MapObject,
+  MapStage,
+  MetricGroup,
+} from "@mapward/core";
 import type { FilesPort } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
 import { flag, frontmatter } from "../../../../lib/frontmatter.ts";
@@ -155,6 +162,7 @@ type Raw = MapObject & {
   // и считать надо от своего, а не от того, что уже получилось.
   rawLayers: ConfigLayer[];
   rawMetrics: MapMetric[];
+  rawMetricGroups: MetricGroup[];
 };
 
 /**
@@ -208,12 +216,15 @@ async function readTree(
     prompt: own.prompt,
     workflowPrompt: own["directives-workflow"]?.prompt,
     workflowMode: own["directives-workflow"]?.mode,
+    metricGroups: own["metric-groups"]?.groups ?? [],
+    metricGroupsMode: own["metric-groups"]?.mode,
     children,
     rawPrompt: own.prompt,
     rawWorkflowPrompt: own["directives-workflow"]?.prompt,
     rawExtends: own.extends,
     rawLayers: layers,
     rawMetrics: metrics,
+    rawMetricGroups: own["metric-groups"]?.groups ?? [],
   } as Raw;
 }
 
@@ -281,6 +292,18 @@ const byName = (inherited: MapFile[], own: MapFile[], from: string): MapFile[] =
       .filter((file) => !mine.has(file.name))
       .map((file) => (file.owner ? file : { ...file, owner: from })),
     ...own,
+  ];
+};
+
+/**
+ * Группы метрик сливаются по ключу: своя группа с тем же ключом переопределяет прототипову
+ * целиком — решение 0025. Порядок вкладок задаёт прототип, свои новые встают следом.
+ */
+const byGroup = (inherited: MetricGroup[], own: MetricGroup[]): MetricGroup[] => {
+  const mine = new Map(own.map((group) => [group.key, group]));
+  return [
+    ...inherited.map((group) => mine.get(group.key) ?? group),
+    ...own.filter((group) => !inherited.some((parent) => parent.key === group.key)),
   ];
 };
 
@@ -378,6 +401,13 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
     object.workflowMode === "replace"
       ? object.workflow
       : byStage(prototype.workflow, object.workflow, prototype.address);
+  // Вкладки раздаются прототипом так же, как этапы: набор метрик — свойство вида объектов,
+  // а не одного объекта. Считается от своих групп, а не от уже получившихся: прототип
+  // наследуется многими, и накопление удвоило бы его вкладки (решение 0025).
+  object.metricGroups =
+    object.metricGroupsMode === "replace"
+      ? object.rawMetricGroups
+      : byGroup(prototype.metricGroups, object.rawMetricGroups);
 }
 
 /**
@@ -422,6 +452,8 @@ function apply(root: MapObject, object: MapObject, basePath: string): void {
     ...metric,
     config: substituteDeep(metric.config, resolve),
   }));
+  // Описание вкладки — такой же текст карты, как промпт: в нём пишут пути адресами.
+  object.metricGroups = substituteDeep(object.metricGroups, resolve);
   for (const child of object.children) apply(root, child, basePath);
 }
 

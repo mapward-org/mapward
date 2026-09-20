@@ -23,7 +23,10 @@ export type StatusMark = { status?: string; color?: string; hint?: string };
 export type GitLetter = "M" | "A" | "D" | "U" | "C";
 export type GitMark = { git?: GitLetter };
 
-/** `description` — вторая строка: там проверка говорит, что именно разошлось (решение 0010). */
+/**
+ * `description` — вторая строка: там проверка говорит, что именно разошлось (решение 0010).
+ * Рисуется разметкой — жирным, кодом и ссылками, — решение 0027.
+ */
 export type LinkNode = StatusMark &
   GitMark & { label?: string; link?: string; description?: string };
 
@@ -41,6 +44,11 @@ export type MapRelation = { label?: string; link?: string; from?: string; to?: s
 /** Что дисплей получает после трансформов; `unknown` — это уже ответ клиента, не форма данных. */
 export type DisplayShape =
   | { kind: "text"; text: string }
+  /**
+   * Тот же `{ text }`, что у `text`, но нарисованный разметкой — решение 0027. Форма одна
+   * нарочно: тексты в значениях метрик уже лежат, и дисплей меняет их вид, а не их устройство.
+   */
+  | { kind: "markdown"; text: string }
   | { kind: "link"; node: LinkNode }
   | { kind: "status"; ok: boolean; summary?: string }
   | { kind: "list"; items: LinkNode[] }
@@ -53,6 +61,7 @@ export type DisplayShape =
  */
 export const SHAPES: Record<string, string> = {
   text: '{ "text": string }',
+  markdown: '{ "text": string }, где text — markdown: заголовки, списки, ссылки, код, **жирный**',
   link: '{ "label"?: string, "link"?: string, "description"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string }',
   status: '{ "ok": boolean, "summary"?: string }',
   list: '{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string }] }',

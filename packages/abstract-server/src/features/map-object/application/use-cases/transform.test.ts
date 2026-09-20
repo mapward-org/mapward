@@ -37,7 +37,13 @@ function fakePorts(shell: Partial<ServerPorts["shell"]> = {}): {
     clock: { now: () => new Date().toISOString() },
     timers: { every: () => () => undefined, after: () => () => undefined },
     env: { vars: () => ({}) },
-    capabilities: { terminals: false, openFile: false, ask: false, virtualDocs: false },
+    capabilities: {
+      terminals: false,
+      openFile: false,
+      ask: false,
+      virtualDocs: false,
+      tabs: false,
+    },
   };
 
   return { ports, written };

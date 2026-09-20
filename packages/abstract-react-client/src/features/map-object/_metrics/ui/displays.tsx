@@ -9,6 +9,7 @@ import type {
 import { gitColor, placeholder } from "../pure-model/display.ts";
 import { FileTree } from "./file-tree.tsx";
 import { GitMark } from "./git-mark.tsx";
+import { Markdown, MarkdownLine } from "./markdown.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
 function Link(props: {
@@ -63,6 +64,10 @@ export function Display(props: {
   switch (data.kind) {
     case "text":
       return <span>{data.text}</span>;
+    // Тексты в значениях метрик лежали и раньше; этот дисплей их наконец показывает как текст,
+    // а не как одну длинную строку — решение 0027.
+    case "markdown":
+      return <Markdown text={data.text} onOpen={props.onOpen} />;
     case "link":
       return <Link node={data.node} onOpen={props.onOpen} />;
     case "status":
@@ -79,7 +84,10 @@ export function Display(props: {
             <li key={`${item.label ?? index}`} className="mb-1">
               <Link node={item} onOpen={props.onOpen} />
               {item.description && (
-                <div className="pl-3 text-[11px] opacity-70">{item.description}</div>
+                <div className="pl-3 text-[11px] opacity-70">
+                  {/* Вторая строка — тоже разметка: проверке нужны жирный, код и ссылки (0027). */}
+                  <MarkdownLine text={item.description} onOpen={props.onOpen} />
+                </div>
               )}
             </li>
           ))}

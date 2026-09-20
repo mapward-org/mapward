@@ -13,6 +13,7 @@ const object = {
   directives: [],
   actions: [],
   workflow: [{ name: "Обсудить", order: 10, marksDone: false, path: "" }],
+  metricGroups: [],
   children: [],
 } as MapObject;
 

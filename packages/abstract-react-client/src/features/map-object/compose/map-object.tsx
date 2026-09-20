@@ -26,6 +26,7 @@ import {
 } from "../ui/icons.tsx";
 import { HeaderButton, ObjectHeader } from "../ui/object-header.tsx";
 import { Loading } from "../../../lib/ui/loading.tsx";
+import { Section, SectionButton } from "../../../lib/ui/section.tsx";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
@@ -183,17 +184,9 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
               />
             )}
             {/*
-              Шапка держит только то, что делают, а не то, что смотрят: новую директиву
-              и терминал. Всё остальное об объекте — за кнопкой «об объекте» (решение 0024).
+              Шапка держит только то, что делают, а не то, что смотрят (решение 0024).
+              «Новая директива» уехала к заголовку списка директив — она про него (0028).
             */}
-            {can.ask && (
-              <HeaderButton
-                title="Новая директива"
-                onClick={() => actions.createDirective(current.path)}
-              >
-                {NewDirectiveIcon}
-              </HeaderButton>
-            )}
             {openInTab && (
               <HeaderButton
                 title="Открыть отдельным табом"
@@ -202,27 +195,49 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
                 {TabIcon}
               </HeaderButton>
             )}
-            {!meta && (
-              <HeaderButton title="Об объекте" onClick={() => setMeta(true)}>
-                {MetaIcon}
-              </HeaderButton>
-            )}
+            {/*
+              Вход и выход — одна кнопка: тогл вместо стрелки «назад», которая обещала бы
+              историю переходов, а её нет (решение 0028).
+            */}
+            <HeaderButton title={meta ? "К метрикам" : "Об объекте"} onClick={() => setMeta(!meta)}>
+              {meta ? MetricsIcon : MetaIcon}
+            </HeaderButton>
           </>
         }
       />
 
       {/*
         Незакрытые директивы — на первом экране, под названием и до метрик: с ними работают
-        постоянно, а выполненные лежат в мета-экране (решение 0024).
+        постоянно, а выполненные лежат в мета-экране (решение 0024). Заголовок с границей
+        отделяет их от метрик, а плюсик заводит новую — решение 0028.
       */}
       {!meta && (
-        <div className="shrink-0">
-          <DirectiveList
-            files={activeDirectives(current.directives)}
-            stages={current.workflow}
-            {...(openDirective === undefined ? {} : { onOpen: openDirective })}
-            {...(runStage === undefined ? {} : { onRunStage: runStage })}
-          />
+        <div className="shrink-0 border-b border-[var(--mw-menu-border,#8884)] pb-1">
+          <Section
+            icon={DirectivesIcon}
+            title="Директивы"
+            {...(can.ask
+              ? {
+                  actions: (
+                    <SectionButton
+                      title="Новая директива"
+                      onClick={() => actions.createDirective(current.path)}
+                    >
+                      {NewDirectiveIcon}
+                    </SectionButton>
+                  ),
+                }
+              : {})}
+          >
+            <DirectiveList
+              compact
+              empty="незакрытых нет"
+              files={activeDirectives(current.directives)}
+              stages={current.workflow}
+              {...(openDirective === undefined ? {} : { onOpen: openDirective })}
+              {...(runStage === undefined ? {} : { onRunStage: runStage })}
+            />
+          </Section>
         </div>
       )}
 
@@ -253,7 +268,6 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
             can={can}
             icons={metaIcons}
             actions={actions}
-            onBack={() => setMeta(false)}
             directives={
               <DirectiveList
                 files={newestFirst(current.directives)}

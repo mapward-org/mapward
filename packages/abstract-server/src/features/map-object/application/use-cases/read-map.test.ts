@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import type { MapObject } from "@mapward/core";
 import type { FilesPort } from "../../../../ports/index.ts";
 import { readMap } from "./read-map.ts";
 
@@ -374,4 +375,71 @@ test("a folder starting with an underscore is service, whatever its name", async
   const map = await readMap(files, MAP, "/repo", "Карта");
 
   expect(map.children.map((child) => child.name)).toEqual(["Пакеты"]);
+});
+
+/**
+ * Группы метрик — решение 0025. Раздаёт их прототип, наследник правит свои: набор метрик —
+ * свойство вида объектов, а не одного объекта.
+ */
+const groupsTree = {
+  "/map/_index.json": JSON.stringify({ name: "Карта" }),
+  "/map/prototypes/package/_index.json": JSON.stringify({
+    name: "Пакет",
+    "metric-groups": {
+      groups: [
+        { key: "код", label: "Код", metrics: ["files"] },
+        { key: "тяжёлое", metrics: ["architecture"] },
+      ],
+    },
+  }),
+  "/map/prototypes/package/_metrics/files/config.json": JSON.stringify({ label: "Файлы" }),
+  "/map/prototypes/package/_metrics/architecture/config.json": JSON.stringify({ label: "Арх" }),
+  "/map/packages/core/_index.json": JSON.stringify({
+    name: "core",
+    extends: "mapward://prototypes/package",
+    "metric-groups": {
+      groups: [
+        { key: "код", label: "Код core", metrics: ["files", "architecture"] },
+        { key: "своё", metrics: ["files"] },
+      ],
+    },
+  }),
+  "/map/packages/docs/_index.json": JSON.stringify({
+    name: "docs",
+    extends: "mapward://prototypes/package",
+    "metric-groups": { mode: "replace", groups: [{ key: "всё", metrics: ["files"] }] },
+  }),
+};
+
+const packageOf = (map: MapObject, name: string): MapObject | undefined =>
+  map.children.flatMap((child) => child.children).find((child) => child.name === name);
+
+test("metric groups are inherited and overridden by key", async () => {
+  const map = await readMap(fakeFiles(groupsTree), MAP, "/repo", "Карта");
+  const core = packageOf(map, "core");
+
+  // Порядок вкладок задаёт прототип, свои новые встают следом.
+  expect(core?.metricGroups.map((group) => group.key)).toEqual(["код", "тяжёлое", "своё"]);
+  // Группа с тем же ключом переопределена целиком, а не слита по полям.
+  expect(core?.metricGroups[0]).toEqual({
+    key: "код",
+    label: "Код core",
+    metrics: ["files", "architecture"],
+  });
+});
+
+test("replace drops the inherited groups", async () => {
+  const map = await readMap(fakeFiles(groupsTree), MAP, "/repo", "Карта");
+
+  expect(packageOf(map, "docs")?.metricGroups.map((group) => group.key)).toEqual(["всё"]);
+});
+
+/** Прототип наследуется многими, и его вкладки не должны накапливаться у него самого. */
+test("a prototype with several heirs keeps its own groups", async () => {
+  const map = await readMap(fakeFiles(groupsTree), MAP, "/repo", "Карта");
+  const prototype = map.children
+    .flatMap((child) => child.children)
+    .find((child) => child.name === "Пакет");
+
+  expect(prototype?.metricGroups.map((group) => group.key)).toEqual(["код", "тяжёлое"]);
 });

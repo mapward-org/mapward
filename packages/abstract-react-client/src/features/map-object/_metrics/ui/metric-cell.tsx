@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { TabIcon } from "../../ui/icons.tsx";
 
 /**
  * Buttons appear on hover so a still sidebar stays quiet. The chevron sits outside the flow:
@@ -14,6 +15,11 @@ export function MetricCell(props: {
   onRefresh: () => void;
   onToggle: () => void;
   onLogs?: () => void;
+  /**
+   * Открыть метрику отдельным табом — решение 0026: ctrl + клик по названию и иконка рядом.
+   * Иконка обязательна: про ctrl + клик, которого не видно, никто не узнаёт.
+   */
+  onOpenTab?: () => void;
   children: ReactNode;
 }) {
   return (
@@ -33,7 +39,29 @@ export function MetricCell(props: {
           </svg>
         </button>
 
-        <span className="truncate">{props.label}</span>
+        {props.onOpenTab ? (
+          <button
+            type="button"
+            title="Ctrl + клик — открыть отдельным табом"
+            onClick={(event) => (event.ctrlKey || event.metaKey ? props.onOpenTab?.() : undefined)}
+            className="truncate text-left uppercase"
+          >
+            {props.label}
+          </button>
+        ) : (
+          <span className="truncate">{props.label}</span>
+        )}
+
+        {props.onOpenTab && (
+          <button
+            type="button"
+            onClick={props.onOpenTab}
+            title="Открыть отдельным табом"
+            className="hidden shrink-0 opacity-60 group-hover:block hover:opacity-100"
+          >
+            {TabIcon}
+          </button>
+        )}
 
         {props.busy && <span className="animate-pulse">…</span>}
         {!props.busy && props.ok !== undefined && (

@@ -72,6 +72,7 @@ vscode, в браузере — из своих. Поэтому в коде кл
 - `--mw-font-family`
 - `--mw-font-size`
 - `--mw-foreground`
+- `--mw-list-activeSelectionBackground`
 - `--mw-list-hoverBackground`
 - `--mw-menu-background`
 - `--mw-menu-border`
@@ -79,4 +80,6 @@ vscode, в браузере — из своих. Поэтому в коде кл
 - `--mw-testing-iconFailed`
 - `--mw-testing-iconPassed`
 - `--mw-testing-iconQueued`
+- `--mw-textBlockQuote-background`
+- `--mw-textBlockQuote-border`
 - `--mw-textLink-foreground`

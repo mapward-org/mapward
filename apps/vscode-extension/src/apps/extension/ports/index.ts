@@ -176,7 +176,7 @@ export function createPorts(): ServerPorts {
     },
     env: { vars: () => process.env },
     // Редактор умеет всё: терминалы, открыть файл, спросить строку, показать текст без файла
-    // на диске — решения 0014 и 0019.
-    capabilities: { terminals: true, openFile: true, ask: true, virtualDocs: true },
+    // на диске и открыть объект табом — решения 0014, 0019 и 0026.
+    capabilities: { terminals: true, openFile: true, ask: true, virtualDocs: true, tabs: true },
   };
 }

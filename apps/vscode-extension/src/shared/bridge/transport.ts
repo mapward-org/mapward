@@ -1,6 +1,11 @@
 import { type BridgeTransport, isEnvelope } from "@mapward/core";
 
-type VsCodeApi = { postMessage: (message: unknown) => void };
+type VsCodeApi = {
+  postMessage: (message: unknown) => void;
+  /** Состояние вебвью: редактор отдаёт его обратно, когда восстанавливает таб (решение 0026). */
+  getState: () => unknown;
+  setState: (value: unknown) => void;
+};
 type WebviewLike = {
   postMessage: (message: unknown) => unknown;
   onDidReceiveMessage: (handler: (message: unknown) => void) => { dispose: () => void };
@@ -23,10 +28,17 @@ export function webviewTransport(webview: WebviewLike): BridgeTransport {
 
 /**
  * Webview side. `acquireVsCodeApi` may be called only once per page, so the handle is taken
- * here and shared.
+ * here and shared: и мосту, и сохранению состояния таба достаётся один и тот же.
  */
+let handle: VsCodeApi | undefined;
+
+export function vsCodeApi(): VsCodeApi {
+  handle ??= (globalThis as unknown as { acquireVsCodeApi: () => VsCodeApi }).acquireVsCodeApi();
+  return handle;
+}
+
 export function extensionTransport(): BridgeTransport {
-  const api = (globalThis as unknown as { acquireVsCodeApi: () => VsCodeApi }).acquireVsCodeApi();
+  const api = vsCodeApi();
   return {
     // Not window.postMessage: this is the host handle, it takes no targetOrigin.
     // oxlint-disable-next-line unicorn/require-post-message-target-origin

@@ -1,20 +1,8 @@
 import type { ReactNode } from "react";
 import type { ConfigLayer, MapMetric, MapObject } from "@mapward/core";
-import { ListRow, type RowAction } from "../../../../lib/ui/list-row.tsx";
+import { ListRow, type MenuAction } from "../../../../lib/ui/list-row.tsx";
+import { Section } from "../../../../lib/ui/section.tsx";
 import { howCollected, layerLabel, originHint, ownerHint, propRows } from "../pure-model/meta.ts";
-
-/** Заголовок раздела: иконка та же, что стояла на кнопке этого списка в шапке. */
-function Section(props: { icon: ReactNode; title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-0.5">
-      <h2 className="flex items-center gap-1.5 px-3 pt-1 text-[11px] uppercase opacity-60">
-        <span className="shrink-0 opacity-80">{props.icon}</span>
-        {props.title}
-      </h2>
-      {props.children}
-    </section>
-  );
-}
 
 export type MetaIcons = {
   index: ReactNode;
@@ -29,6 +17,10 @@ export type MetaIcons = {
  * (решение 0024). Показывает и то, чего хост открыть не умеет: имена, происхождение
  * и `props` — это текст, а не действие, и `0014` их не запрещает.
  *
+ * Разделы сворачиваются, а действия строки лежат в меню на кнопке «слои» — решение 0028.
+ * Возврат к метрикам — та же кнопка шапки, которой сюда вошли, поэтому «назад» внутри
+ * экрана нет.
+ *
  * Директивы рисует соседний подмодуль, а сводит их вместе `map-object/compose` — так же,
  * как карту детей в сетке метрик (решение 0015).
  */
@@ -36,7 +28,6 @@ export function MetaView(props: {
   map: MapObject;
   object: MapObject;
   icons: MetaIcons;
-  onBack: () => void;
   /** Мердж конфига — документ, которого на диске нет; хост без такого умения его не получает. */
   onOpenObjectConfig?: () => void;
   onOpenMetricConfig?: (metric: MapMetric) => void;
@@ -48,32 +39,36 @@ export function MetaView(props: {
   const openObjectConfig = props.onOpenObjectConfig;
   const openMetricConfig = props.onOpenMetricConfig;
 
-  /** Кнопки слоёв под строкой: мердж читают, а правят файлы, из которых он собран. */
-  const layers = (list: ConfigLayer[]): RowAction[] | undefined =>
-    openFile === undefined
-      ? undefined
-      : list.map((layer) => ({
-          key: layer.path,
-          label: layerLabel(props.map, layer),
-          onSelect: () => openFile(layer.path),
-        }));
+  /**
+   * Меню строки: мердж читают, а правят файлы, из которых он собран. Мердж называется
+   * «собранным видом», а не «открыть»: открывают файл, а его на диске нет (решение 0028).
+   */
+  const menu = (merged: (() => void) | undefined, list: ConfigLayer[]) => {
+    const actions: MenuAction[] = [
+      ...(merged === undefined
+        ? []
+        : [{ key: "merged", label: "собранный вид", onSelect: merged }]),
+      ...(openFile === undefined
+        ? []
+        : list.map((layer) => ({
+            key: layer.path,
+            label: layerLabel(props.map, layer),
+            onSelect: () => openFile(layer.path),
+          }))),
+    ];
+    return actions.length === 0 ? undefined : { label: "слои", actions };
+  };
+
+  const objectMenu = menu(openObjectConfig, props.object.layers);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-auto pb-6">
-      <div className="flex items-center gap-1 px-2 py-1 text-[11px] opacity-70">
-        <button type="button" title="Назад" onClick={props.onBack} className="pr-1">
-          ←
-        </button>
-        <span className="truncate">Об объекте</span>
-      </div>
-
+    <div className="flex h-full min-h-0 flex-col gap-1 overflow-auto pb-6">
       <Section icon={props.icons.index} title="Объект">
         <ListRow
           label={props.object.name}
           hint={originHint(props.object.layers)}
           title={props.object.address}
-          {...(openObjectConfig === undefined ? {} : { onSelect: openObjectConfig })}
-          {...(props.object.layers.length === 0 ? {} : { actions: layers(props.object.layers) })}
+          {...(objectMenu === undefined ? {} : { menu: objectMenu })}
         />
         <dl className="flex flex-col px-3 pt-1 text-[11px] opacity-70">
           <div className="flex gap-2">
@@ -101,25 +96,28 @@ export function MetaView(props: {
 
       {props.object.metrics.length > 0 && (
         <Section icon={props.icons.metrics} title="Метрики">
-          {props.object.metrics.map((metric) => (
-            <ListRow
-              key={metric.key}
-              label={metric.config.label ?? metric.key}
-              title={howCollected(metric)}
-              hint={originHint(metric.layers)}
-              {...(openMetricConfig === undefined
-                ? {}
-                : { onSelect: () => openMetricConfig(metric) })}
-              {...(metric.layers.length === 0 ? {} : { actions: layers(metric.layers) })}
-            />
-          ))}
+          {props.object.metrics.map((metric) => {
+            const metricMenu = menu(
+              openMetricConfig === undefined ? undefined : () => openMetricConfig(metric),
+              metric.layers,
+            );
+            return (
+              <ListRow
+                key={metric.key}
+                label={metric.config.label ?? metric.key}
+                title={howCollected(metric)}
+                hint={originHint(metric.layers)}
+                {...(metricMenu === undefined ? {} : { menu: metricMenu })}
+              />
+            );
+          })}
         </Section>
       )}
 
-      <Section icon={props.icons.directives} title="Директивы">
-        {props.directives}
-      </Section>
-
+      {/*
+        Этапы стоят перед директивами: по ним читают, что у директивы вообще можно запустить,
+        а архив — это то, куда заглядывают реже.
+      */}
       {props.object.workflow.length > 0 && (
         <Section icon={props.icons.workflow} title="Этапы директив">
           {props.object.workflow.map((stage) => (
@@ -137,6 +135,10 @@ export function MetaView(props: {
           ))}
         </Section>
       )}
+
+      <Section icon={props.icons.directives} title="Директивы">
+        {props.directives}
+      </Section>
 
       {props.object.actions.length > 0 && (
         <Section icon={props.icons.actions} title="Экшоны">

@@ -17,11 +17,24 @@ import {
 } from "@/features/terminals/index.extension.ts";
 import { rememberStage } from "./stage-tabs.ts";
 
-/** Где фичи встречаются с мостом. Ниже apps никто не решает, что отвечает хост. */
+/**
+ * Где фичи встречаются с мостом. Ниже apps никто не решает, что отвечает хост.
+ *
+ * Открытие таба приходит параметром, а не импортом: панели заводит тот, кто ими владеет, и из
+ * таба открывается такой же таб — без этого мост и панели ссылались бы друг на друга (0026).
+ */
 export function serveBridge(
   server: MapServer,
   webview: vscode.Webview,
   memento: vscode.Memento,
+  openTab: (target: {
+    mapPath: string;
+    basePath: string;
+    name: string;
+    address: string;
+    group?: string;
+    metric?: string;
+  }) => Promise<void>,
 ): () => void {
   const handlers: BridgeHandlers<AppBridge> = {
     ...mapsHandlers(),
@@ -31,6 +44,9 @@ export function serveBridge(
     watchMap: (ref) => server.watchMap(ref),
     watchMetrics: (params) => server.watchMetrics(params),
     runMetric: (params) => server.runMetric(params),
+
+    /** Тот же объект во всю ширину редактора — решение 0026. */
+    openInTab: (params) => openTab(params),
 
     getMapState: (params) => server.getMapState(params),
     setMapState: (params) => server.setMapState(params),

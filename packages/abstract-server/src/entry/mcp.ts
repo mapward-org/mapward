@@ -1,5 +1,5 @@
-import { findMetric, findObject, trail } from "@mapward/core";
-import type { MapFile, MapObject } from "@mapward/core";
+import { findMetric, findObject, groupMetrics, trail } from "@mapward/core";
+import type { MapFile, MapMetric, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
@@ -85,7 +85,28 @@ function digest(files: MapFile[], all: boolean) {
  * прогона. Логи только по просьбе — они жирные, а нужны, когда разбираются, почему метрика
  * красная (решение 0016).
  */
-export type View = { metrics?: string[]; directives: boolean; logs: boolean };
+export type View = { metrics?: string[]; group?: string; directives: boolean; logs: boolean };
+
+/**
+ * Какие метрики объекта попадают в ответ — решение 0025.
+ *
+ * Ключи, названные в `metrics`, побеждают всё: агент, назвавший метрику по имени, знает, что
+ * просит, даже если она не лежит ни в одной вкладке. Названа группа — приходит она; не названа,
+ * а группы у объекта есть — приходят метрики всех вкладок, и только они: метрика вне вкладок
+ * не показывается и на экране.
+ */
+function pickMetrics(object: MapObject, view: View, top: boolean): MapMetric[] {
+  if (view.metrics !== undefined) {
+    return object.metrics.filter((metric) => view.metrics?.includes(metric.key));
+  }
+  // Вкладка спрашивается у названного объекта, а не у всего поддерева: одноимённой группы у
+  // ребёнка может не быть вовсе, и отбор по чужому ключу отдал бы случайный набор.
+  if (top && view.group !== undefined) return groupMetrics(object, view.group);
+  if (object.metricGroups.length === 0) return object.metrics;
+
+  const named = new Set(object.metricGroups.flatMap((group) => group.metrics));
+  return object.metrics.filter((metric) => named.has(metric.key));
+}
 
 /**
  * Объект в том виде, в каком его видит человек — решение 0009: поля после мерджа и
@@ -107,10 +128,7 @@ async function describe(
 ): Promise<Record<string, unknown>> {
   // Отбор идёт до сбора: метрика, которую не просили, не должна и считаться — иначе `depth`
   // поднимает процессы по всему поддереву ради значений, которые тут же выбрасываются.
-  const wanted =
-    view.metrics === undefined
-      ? object.metrics
-      : object.metrics.filter((metric) => view.metrics?.includes(metric.key));
+  const wanted = pickMetrics(object, view, top);
   const values = await server.readMetrics(ref, { ...object, metrics: wanted }, options);
   const logs = view.logs
     ? await Promise.all(wanted.map((metric) => server.readMetricLogs(metric)))
@@ -141,6 +159,21 @@ async function describe(
     // Из каких `_index.json` собран объект. Ссылками: конфиг слоя читается `read_index`
     // по названному адресу, а вложенный он повторил бы самое тяжёлое в ответе (решение 0019).
     layers: object.layers,
+    /**
+     * Вкладки объекта — решение 0025. Перечень, а не значения: он отвечает, что можно выбрать
+     * параметром `group`, и объясняет, почему метрик в ответе меньше, чем лежит в `_metrics`.
+     * У объекта без вкладок поля нет вовсе, и это значит «показываются все метрики».
+     */
+    ...(object.metricGroups.length === 0
+      ? {}
+      : {
+          groups: object.metricGroups.map((group) => ({
+            key: group.key,
+            ...(group.label === undefined ? {} : { label: group.label }),
+            ...(group.description === undefined ? {} : { description: group.description }),
+            metrics: group.metrics,
+          })),
+        }),
     metrics: wanted.map((metric, at) => ({
       key: metric.key,
       address: metric.address,
@@ -201,6 +234,8 @@ const TOOLS = [
       "layers — файлы, из которых собран мердж, у объекта и у каждой метрики: адрес и путь, от своего к дальнему прототипу. Сам конфиг слоя берётся read_index по этому адресу. " +
       'С refresh: "on-display" дешёвые метрики досчитываются — зови так, чтобы увидеть то же, что человек на экране. ' +
       "Весь контекст разом: depth уводит вглубь по детям, metrics отбирает метрики по ключам, fields — поля в ответе. " +
+      "У объекта с вкладками (поле groups) метрики разложены по группам: group отбирает одну из них, " +
+      "без него приходят метрики всех вкладок, а не названная ни в одной не приходит никогда — её не показывают и человеку. " +
       'Начинай с обзора — { depth: 2, metrics: [], fields: ["address", "name", "prototypeName", "path", "props", "directives"] } — ' +
       'и только потом зови нужные: { address, metrics: ["files"], refresh: "on-display" }. Названная одна метрика бюджетом не режется. ' +
       "Почти весь вес ответа сидит в metrics.value, поэтому metrics важнее fields. " +
@@ -221,6 +256,11 @@ const TOOLS = [
           items: { type: "string" },
           description:
             'какие метрики включить, по ключам: ["files", "architecture"]. Пустой список — ни одной, и это правильный обзорный вызов. Без параметра приходят все, вместе со значениями; невключённая метрика не считается вовсе',
+        },
+        group: {
+          type: "string",
+          description:
+            'ключ вкладки из поля groups: "тяжёлое". Приходят только её метрики — так у объекта спрашивают набор целиком, не перечисляя ключи. Вместе с metrics не нужен: перечисленные поимённо метрики приходят в любом случае',
         },
         fields: {
           type: "array",
@@ -406,6 +446,7 @@ const wantsLogs = (fields: string[] | undefined): boolean =>
 
 const view = (args: Record<string, unknown>): View => ({
   metrics: names(args.metrics),
+  ...(typeof args.group === "string" ? { group: args.group } : {}),
   directives: args.directives === "all",
   logs: wantsLogs(names(args.fields)),
 });
@@ -482,6 +523,18 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
           "metrics: [] выключает метрики, а fields просит их поля — вместе всегда пусто. " +
             'Нужны ключи без значений — убери metrics и оставь fields: ["metrics.key"]: ' +
             "перечень приходит без сбора. Нужны конкретные метрики — назови их в metrics.",
+        );
+      }
+
+      // Вкладка называется по ключу, и промахнуться по нему легко. Молчаливый откат на первую
+      // группу отдал бы чужие метрики под видом заказанных, поэтому здесь отказ с перечнем.
+      const group = typeof args.group === "string" ? args.group : undefined;
+      if (group !== undefined && !object.metricGroups.some((entry) => entry.key === group)) {
+        const known = object.metricGroups.map((entry) => `«${entry.key}»`).join(", ");
+        throw new Error(
+          known.length > 0
+            ? `У объекта нет вкладки ${group}. Есть: ${known}.`
+            : `У объекта нет вкладок: метрики у него не разложены по группам, зови без group.`,
         );
       }
 

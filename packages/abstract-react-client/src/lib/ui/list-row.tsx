@@ -1,4 +1,6 @@
+import { useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { RowMenu, useDismiss, type MenuAction } from "./row-menu.tsx";
 
 const RemoveIcon = (
   <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -6,14 +8,16 @@ const RemoveIcon = (
   </svg>
 );
 
-export type RowAction = { key?: string; label: string; onSelect: () => void };
+export type { MenuAction };
 
 /**
- * Строка списка: название, подсказка справа, ряд кнопок на наведении.
+ * Строка списка: название, подсказка справа, кнопка меню и крестик.
  *
- * Ряд лежит **под** строкой и поверх соседних: строка от наведения не растёт, и список
- * не дёргается — решение 0024. Первой кнопкой в ряду идёт «открыть», то же, что клик
- * по самой строке: ряд накрывает соседей, и рука, ушедшая вниз, не должна возвращаться.
+ * Меню открывается кликом, а не наведением — решение 0028: ряд, появлявшийся под курсором,
+ * ловил руку, идущую к следующей строке. Клик по самой строке делает то, ради чего строку
+ * читают: `onSelect`, если он задан, иначе открывает то же меню.
+ *
+ * Крестик остаётся на наведении: он справа, и мышь едет к нему поперёк списка, а не вниз.
  */
 export function ListRow(props: {
   label: string;
@@ -22,25 +26,31 @@ export function ListRow(props: {
   hint?: string;
   hintClass?: string;
   onSelect?: () => void;
-  /** Ключ отдельно от подписи: у слоёв конфига подписи повторяются, файлы — нет. */
-  actions?: RowAction[];
+  /** Подпись кнопки одна на весь список: глаз читает её один раз, а не в каждой строке. */
+  menu?: { label: ReactNode; title?: string; actions: MenuAction[] };
   /** Крестик справа, на наведении. Строка, которую убирать нечем, его не показывает. */
   onRemove?: () => void;
   children?: ReactNode;
 }) {
-  const actions = props.actions ?? [];
-  const row =
-    props.onSelect && actions.length > 0
-      ? [{ key: "open", label: "открыть", onSelect: props.onSelect }, ...actions]
-      : actions;
+  const box = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  useDismiss(box, open, () => setOpen(false));
+
+  const menu = props.menu;
+  const select = props.onSelect ?? (menu ? () => setOpen(!open) : undefined);
 
   return (
-    <div className="group/row relative">
+    <div
+      ref={box}
+      className={`group/row relative flex items-center hover:bg-[var(--mw-list-hoverBackground)] ${
+        props.onRemove ? "pr-7" : "pr-2"
+      }`}
+    >
       <button
         type="button"
-        onClick={props.onSelect}
+        onClick={select}
         {...(props.title === undefined ? {} : { title: props.title })}
-        className={`flex w-full items-center gap-2 py-0.5 pl-3 text-left hover:bg-[var(--mw-list-hoverBackground)] ${props.onRemove ? "pr-7" : "pr-3"}`}
+        className="flex min-w-0 flex-1 items-center gap-2 py-0.5 pr-2 pl-3 text-left"
       >
         <span className="truncate">{props.label}</span>
         {props.hint && (
@@ -49,6 +59,16 @@ export function ListRow(props: {
           </span>
         )}
       </button>
+
+      {menu && menu.actions.length > 0 && (
+        <RowMenu
+          label={menu.label}
+          {...(menu.title === undefined ? {} : { title: menu.title })}
+          actions={menu.actions}
+          open={open}
+          onOpen={setOpen}
+        />
+      )}
 
       {/*
         Крестик поверх строки, а не в ней: строка — кнопка целиком, и вложить в неё вторую
@@ -63,21 +83,6 @@ export function ListRow(props: {
         >
           {RemoveIcon}
         </button>
-      )}
-
-      {row.length > 0 && (
-        <span className="absolute top-full left-2 z-40 hidden w-max max-w-[22rem] flex-wrap gap-1 rounded-sm border border-[var(--mw-menu-border,#8884)] bg-[var(--mw-menu-background,var(--mw-editor-background))] px-1.5 py-1 shadow-lg group-hover/row:flex">
-          {row.map((action) => (
-            <button
-              key={action.key ?? action.label}
-              type="button"
-              onClick={action.onSelect}
-              className="rounded-sm px-1 text-[11px] opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
-            >
-              {action.label}
-            </button>
-          ))}
-        </span>
       )}
 
       {props.children}

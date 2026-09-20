@@ -19,7 +19,6 @@ export function MetaScreen(props: {
   can: { openFile: boolean; virtualDocs: boolean };
   icons: MetaIcons;
   actions: Actions;
-  onBack: () => void;
   directives: ReactNode;
 }) {
   const { object, actions } = props;
@@ -29,7 +28,6 @@ export function MetaScreen(props: {
       map={props.map}
       object={object}
       icons={props.icons}
-      onBack={props.onBack}
       directives={props.directives}
       {...(props.can.openFile ? { onOpenFile: actions.open } : {})}
       {...(props.can.virtualDocs

@@ -1,0 +1,8 @@
+{
+  "updatedAt": "2026-09-20T22:48:55.189Z",
+  "ok": true,
+  "data": {
+    "ok": false,
+    "summary": "eslint no-await-in-loop: последовательный await readFile в цикле в packages/docs/scripts/bundle-docs.mjs:36 — 1 предупреждение, 0 ошибок"
+  }
+}

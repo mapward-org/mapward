@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { adoptMetric, objectIndex } from "./model.ts";
+import { adoptMetric, groupMetrics, objectIndex, pickGroup } from "./model.ts";
 import type { MapObject } from "./model.ts";
 
 /**
@@ -53,6 +53,7 @@ const object = (fields: Partial<MapObject>): MapObject => ({
   directives: [],
   actions: [],
   workflow: [],
+  metricGroups: [],
   children: [],
   ...fields,
 });
@@ -93,4 +94,51 @@ test("empty fields do not reach the merge", () => {
   const index = objectIndex(object({}));
 
   expect(index).toEqual({ name: "core" });
+});
+
+/** Метрика ищется по ключу — в тестах групп важен только он. */
+const metric = (key: string) => ({
+  key,
+  address: `mapward://packages/core/_metrics/${key}`,
+  configPath: `d:/map/packages/core/_metrics/${key}/config.json`,
+  cachePath: `d:/map/packages/core/_metrics/${key}`,
+  layers: [],
+  config: {},
+});
+
+const withGroups = () =>
+  object({
+    metrics: [metric("files"), metric("architecture"), metric("drift")],
+    metricGroups: [
+      { key: "код", metrics: ["architecture", "files"] },
+      { key: "тяжёлое", metrics: ["drift"] },
+    ],
+  });
+
+/** Решение 0025: вкладка всегда одна — от неё зависит, что вообще собирается. */
+test("the open group falls back to the first one", () => {
+  const core = withGroups();
+
+  expect(pickGroup(core, "тяжёлое")?.key).toBe("тяжёлое");
+  expect(pickGroup(core, undefined)?.key).toBe("код");
+  // Ключа такого нет — вкладка всё равно открыта: пустой экран был бы хуже.
+  expect(pickGroup(core, "нет такой")?.key).toBe("код");
+  // Групп нет вовсе — и вкладок нет: объект работает как раньше.
+  expect(pickGroup(object({}), undefined)).toBeUndefined();
+});
+
+test("a group names its metrics and their order", () => {
+  const core = withGroups();
+
+  expect(groupMetrics(core, "код").map((found) => found.key)).toEqual(["architecture", "files"]);
+  // Метрика, не названная ни в одной группе, не приходит: так её наследуют, не используя.
+  expect(groupMetrics(core, "тяжёлое").map((found) => found.key)).toEqual(["drift"]);
+  // Без групп приходят все метрики объекта.
+  expect(groupMetrics(object({ metrics: [metric("files")] }), undefined)).toHaveLength(1);
+});
+
+test("groups come back in the merge", () => {
+  const index = objectIndex(withGroups());
+
+  expect(index["metric-groups"]?.groups.map((group) => group.key)).toEqual(["код", "тяжёлое"]);
 });

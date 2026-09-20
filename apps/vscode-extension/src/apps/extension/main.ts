@@ -4,6 +4,7 @@ import type { MapServer, ServerSettings } from "@mapward/abstract-server";
 import { readMaps, registerVirtualDocs } from "@/features/maps/index.extension.ts";
 import { createPorts } from "./ports/index.ts";
 import { MapViewProvider } from "./map-view.ts";
+import { openObjectTab, registerObjectTabs } from "./object-tab.ts";
 import { startMcpHttp } from "./mcp-http.ts";
 import { setMcpUrl } from "@/features/terminals/index.extension.ts";
 import { withStageTabs } from "./stage-tabs.ts";
@@ -63,10 +64,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Мердженный конфиг метрики показывается документом без файла — решение 0019.
   context.subscriptions.push(registerVirtualDocs());
 
+  // Табы объектов: открывает их мост, возвращает после перезапуска окна редактор — решение 0026.
+  const openTab = (target: Parameters<typeof openObjectTab>[2]) =>
+    openObjectTab(context, server, target);
+  context.subscriptions.push(registerObjectTabs(context, server));
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       MapViewProvider.viewId,
-      new MapViewProvider(context.extensionUri, context.workspaceState, server),
+      new MapViewProvider(context.extensionUri, context.workspaceState, server, openTab),
       // The map keeps where you are; rebuilding it on every sidebar switch would lose that.
       { webviewOptions: { retainContextWhenHidden: true } },
     ),

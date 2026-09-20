@@ -13,6 +13,7 @@ export function useCapabilities(): Capabilities {
     openFile: false,
     ask: false,
     virtualDocs: false,
+    tabs: false,
   });
 
   useEffect(() => {

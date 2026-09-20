@@ -79,6 +79,11 @@ export function toDisplay(kind: string | undefined, data: unknown): DisplayData 
       return typeof record.text === "string"
         ? { kind: "text", text: record.text }
         : { kind: "unknown", reason: "ждём { text }" };
+    // Форма та же, что у `text`: дисплей меняет вид текста, а не его устройство (решение 0027).
+    case "markdown":
+      return typeof record.text === "string"
+        ? { kind: "markdown", text: record.text }
+        : { kind: "unknown", reason: "ждём { text }" };
     case "link":
       return typeof record.link === "string" || typeof record.label === "string"
         ? { kind: "link", node: record as LinkNode }

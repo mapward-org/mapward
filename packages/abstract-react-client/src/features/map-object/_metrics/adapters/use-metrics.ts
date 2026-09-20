@@ -14,13 +14,28 @@ type Ref = { mapPath: string; basePath: string; name: string };
  * а отписка гасит таймеры. Поэтому переход по карте не пересобирает уже собранное, а второй
  * вид того же объекта видит то же самое, включая идущий прогон.
  */
-export function useMetrics(ref: Ref, address: string, metrics: MapMetric[]) {
+export function useMetrics(
+  ref: Ref,
+  address: string,
+  metrics: MapMetric[],
+  view: { group?: string; solo?: string } = {},
+) {
   const bridge = useBridgeClient();
+  // Вкладка — это и есть «что открыто»: её имя едет в подписку, и сервер собирает только её
+  // метрики (решение 0025). Таб одной метрики называет её ключ и поднимает её одну (0026).
+  const solo = view.solo;
+  const group = view.group;
 
   const values =
     (useObservable(
-      () => bridge.watchMetrics({ ...ref, address }),
-      [ref.mapPath, ref.basePath, ref.name, address],
+      () =>
+        bridge.watchMetrics({
+          ...ref,
+          address,
+          ...(group === undefined ? {} : { group }),
+          ...(solo === undefined ? {} : { metrics: [solo] }),
+        }),
+      [ref.mapPath, ref.basePath, ref.name, address, group, solo],
     ) as Snapshot | undefined) ?? {};
 
   const run = useCallback(

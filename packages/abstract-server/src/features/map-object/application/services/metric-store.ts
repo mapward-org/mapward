@@ -1,5 +1,5 @@
 import { Observable, Subject } from "rxjs";
-import { findMetricOwner } from "@mapward/core";
+import { findMetricOwner, groupMetrics } from "@mapward/core";
 import type { MapMetric, MapObject } from "@mapward/core";
 import type { ServerPorts } from "../../../../ports/index.ts";
 import { createCancellation } from "../../../../lib/cancellation.ts";
@@ -290,8 +290,16 @@ export function createMetricStore(
   /**
    * Подписка — это и есть «объект открыт». Пока на него смотрят, тикают интервалы; отписался
    * последний — таймеры гаснут, а прогоны с `cancelOnLeave` прерываются.
+   *
+   * С группами открыт не объект, а вкладка — решение 0025: метрики отбираются до сбора, поэтому
+   * у закрытой вкладки не тикают интервалы и не живут вотчеры встроенных шагов. Переключение
+   * вкладки — это отписка и подписка, то есть то же самое, что уход на соседний объект.
    */
-  function watch(ref: MapRef, address: string | undefined): Observable<MetricsSnapshot> {
+  function watch(
+    ref: MapRef,
+    address: string | undefined,
+    view: { group?: string; metrics?: string[] } = {},
+  ): Observable<MetricsSnapshot> {
     return new Observable<MetricsSnapshot>((subscriber) => {
       let metrics: MapMetric[] = [];
       let alive = true;
@@ -306,7 +314,13 @@ export function createMetricStore(
       void (async () => {
         const map = await readMap(ref);
         const object = (address ? findMetricOwnerObject(map, address) : map) ?? map;
-        metrics = object.metrics;
+        // Названные ключи бьют группу: так подписывается таб одной метрики — он открыт ради
+        // неё, и поднимать вместе с ней всю вкладку незачем (решение 0026).
+        const shown = groupMetrics(object, view.group);
+        metrics =
+          view.metrics === undefined
+            ? shown
+            : object.metrics.filter((metric) => view.metrics?.includes(metric.key));
         if (!alive) return;
 
         await Promise.all(metrics.map((metric) => hydrate(ref.mapPath, metric)));

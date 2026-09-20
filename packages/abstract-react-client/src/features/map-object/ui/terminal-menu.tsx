@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
+/** Тот же бокс, что у соседей по шапке: `x 3…13`, `y 3…13` — решение 0028. */
 const TerminalIcon = (
   <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.2">
-    <rect x="2" y="3" width="12" height="10" rx="1" />
-    <path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3.5" strokeLinecap="round" />
+    <rect x="3" y="3" width="10" height="10" rx="1" />
+    <path d="M5.25 6.5 7 8l-1.75 1.5M8.5 10h2.25" strokeLinecap="round" />
   </svg>
 );
 
@@ -28,13 +29,15 @@ export function TerminalMenu(props: {
   }, [open]);
 
   return (
-    <div ref={box} className="relative">
+    // `flex`, а не просто `relative`: иначе кнопка лежит внутри обёртки и не тянется
+    // до высоты соседей по шапке — те у неё прямые дети флекса и растягиваются сами.
+    <div ref={box} className="relative flex">
       <button
         type="button"
         title="Терминалы"
         // Nothing open yet — one click starts the conversation instead of showing an empty list.
         onClick={() => (props.terminals.length === 0 ? props.onOpen() : setOpen(!open))}
-        className="rounded-sm px-1 opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
+        className="rounded-sm px-1 py-0.5 opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
       >
         {TerminalIcon}
       </button>

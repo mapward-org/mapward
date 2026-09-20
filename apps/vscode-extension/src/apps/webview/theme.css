@@ -30,6 +30,7 @@
   --mw-gitDecoration-untrackedResourceForeground: var(
     --vscode-gitDecoration-untrackedResourceForeground
   );
+  --mw-list-activeSelectionBackground: var(--vscode-list-activeSelectionBackground);
   --mw-list-hoverBackground: var(--vscode-list-hoverBackground);
   --mw-menu-background: var(--vscode-menu-background);
   --mw-menu-border: var(--vscode-menu-border);
@@ -37,6 +38,9 @@
   --mw-testing-iconFailed: var(--vscode-testing-iconFailed);
   --mw-testing-iconPassed: var(--vscode-testing-iconPassed);
   --mw-testing-iconQueued: var(--vscode-testing-iconQueued);
+  /* Разметка в метрике: фон кода и полоса цитаты — решение 0027 */
+  --mw-textBlockQuote-background: var(--vscode-textBlockQuote-background);
+  --mw-textBlockQuote-border: var(--vscode-textBlockQuote-border);
   --mw-textLink-foreground: var(--vscode-textLink-foreground);
   --mw-font-family: var(--vscode-font-family);
   --mw-font-size: var(--vscode-font-size);

@@ -1,0 +1,7 @@
+{
+  "updatedAt": "2026-09-20T22:48:50.650Z",
+  "ok": true,
+  "data": {
+    "text": "! eslint(no-await-in-loop): Unexpected `await` inside a loop.\n    ,-[packages/docs/scripts/bundle-docs.mjs:36:18]\n 35 |   for (const name of names) {\n 36 |     const text = await readFile(path.join(dir, `${name}.md`), \"utf8\");\n    :                  ^^^^^\n 37 |     sections.push({ name, title: titleOf(text, name), text });\n    `----\n  help: Collect all promises into an array and use `Promise.all()` to run them in parallel, rather than awaiting each one sequentially inside the loop.\n\nFound 1 warning and 0 errors.\nFinished in 9ms on 3 files with 133 rules using 16 threads."
+  }
+}

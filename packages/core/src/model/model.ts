@@ -1,5 +1,5 @@
 import { childAddress } from "./address.ts";
-import type { Layout, MetricConfig, ObjectIndex } from "./schema.ts";
+import type { Layout, MetricConfig, MetricGroup, ObjectIndex } from "./schema.ts";
 
 /**
  * Файл, участвовавший в мердже. Мердж разрушителен: по результату не видно, из чего он
@@ -134,8 +134,46 @@ export type MapObject = {
   workflowPrompt?: string;
   /** Мерджить унаследованные этапы или заменить их целиком — решение 0017. Своё, не наследуется. */
   workflowMode?: "merge" | "replace";
+  /**
+   * Вкладки объекта — решение 0025. Пусто значит «групп нет», и тогда показываются все метрики:
+   * объект без вкладок работает как раньше.
+   */
+  metricGroups: MetricGroup[];
+  /** Мерджить унаследованные группы или заменить их целиком. Своё, не наследуется. */
+  metricGroupsMode?: "merge" | "replace";
   children: MapObject[];
 };
+
+/**
+ * Какая вкладка открыта — решение 0025. Имя названо и найдено — она; не найдено или не названо —
+ * первая: вкладка всегда одна, потому что от неё зависит, что вообще собирается.
+ */
+export function pickGroup(object: MapObject, key: string | undefined): MetricGroup | undefined {
+  if (object.metricGroups.length === 0) return undefined;
+  const wanted = key === undefined ? undefined : object.metricGroups.find((g) => g.key === key);
+  return wanted ?? object.metricGroups[0];
+}
+
+/**
+ * Метрики вкладки, в порядке, заданном группой: она перечисляет, что показать, и этим же
+ * задаёт очередь. Групп нет — приходят все метрики объекта.
+ *
+ * Метрика, не названная ни в одной группе, не приходит никогда: так унаследованную от прототипа
+ * метрику можно не использовать, не отказываясь от самого прототипа.
+ */
+export function groupMetrics(object: MapObject, key: string | undefined): MapMetric[] {
+  const group = pickGroup(object, key);
+  if (!group) return object.metrics;
+  return group.metrics
+    .map((name) => object.metrics.find((metric) => metric.key === name))
+    .filter((metric): metric is MapMetric => metric !== undefined);
+}
+
+/** Раскладка вкладки: своя, если группа её задала, иначе раскладка объекта. */
+export const groupLayout = (
+  object: MapObject,
+  group: MetricGroup | undefined,
+): Layout | undefined => group?.["details-metrics-layout"] ?? object.detailsLayout;
 
 /**
  * Мердж объекта обратно в вид `_index.json` — тот, по которому объект и нарисован. Собирается,
@@ -151,6 +189,10 @@ export function objectIndex(object: MapObject): ObjectIndex {
     ...(object.workflowPrompt === undefined ? {} : { prompt: object.workflowPrompt }),
   };
   const parent = object.layers[1]?.address;
+  const groups = {
+    ...(object.metricGroupsMode === undefined ? {} : { mode: object.metricGroupsMode }),
+    groups: object.metricGroups,
+  };
 
   return {
     name: object.name,
@@ -166,6 +208,7 @@ export function objectIndex(object: MapObject): ObjectIndex {
     ...(object.previewStyle === undefined ? {} : { "preview-style": object.previewStyle }),
     ...(object.prompt === undefined ? {} : { prompt: object.prompt }),
     ...(Object.keys(workflow).length === 0 ? {} : { "directives-workflow": workflow }),
+    ...(object.metricGroups.length === 0 ? {} : { "metric-groups": groups }),
   };
 }
 

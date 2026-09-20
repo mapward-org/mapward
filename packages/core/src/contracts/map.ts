@@ -21,6 +21,11 @@ export const Capabilities = T.Object({
   ask: T.Boolean(),
   /** Умеет ли хост показать текст без файла на диске — решение 0019. */
   virtualDocs: T.Boolean(),
+  /**
+   * Умеет ли хост открыть объект отдельным табом — решение 0026. Не умеет — иконок «в табе»
+   * нет вовсе: ссылка, которая никуда не ведёт, хуже её отсутствия (0014).
+   */
+  tabs: T.Boolean(),
 });
 
 export const mapBridge = {
@@ -30,6 +35,9 @@ export const mapBridge = {
   /**
    * Значения метрик объекта. Подписка — это и есть «объект открыт»: пока она жива, сервер
    * держит метрики свежими, отписались — гасит интервалы (решение 0013).
+   *
+   * С группами открыт не объект, а вкладка: `group` отбирает метрики до сбора, и у закрытой
+   * вкладки не тикают интервалы и не живут вотчеры — решение 0025.
    */
   watchMetrics: createBridgeSubscription(
     T.Object({
@@ -37,8 +45,30 @@ export const mapBridge = {
       basePath: T.String(),
       name: T.String(),
       address: T.Optional(T.String()),
+      group: T.Optional(T.String()),
+      /**
+       * Ключи метрик поверх группы: таб одной метрики открыт ради неё одной, и поднимать
+       * ради него всю вкладку незачем — решение 0026.
+       */
+      metrics: T.Optional(T.Array(T.String())),
     }),
     T.Unknown(),
+  ),
+  /**
+   * Открыть объект отдельным табом редактора — решение 0026. Таб всегда показывает объект;
+   * `group` говорит, какая вкладка в нём открыта, `metric` — что показана одна метрика во всю
+   * ширину, без шапки и соседей.
+   */
+  openInTab: createBridgeMethod(
+    T.Object({
+      mapPath: T.String(),
+      basePath: T.String(),
+      name: T.String(),
+      address: T.String(),
+      group: T.Optional(T.String()),
+      metric: T.Optional(T.String()),
+    }),
+    T.Void(),
   ),
   runMetric: createBridgeMethod(
     T.Object({

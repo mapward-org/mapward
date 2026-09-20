@@ -156,6 +156,12 @@ export function createPorts(): ServerPorts {
      * Ни терминала редактора, ни вкладки под текст без файла у cli нет, и клиент узнаёт об
      * этом заранее — решения 0014 и 0019.
      */
-    capabilities: { terminals: false, openFile: false, ask: false, virtualDocs: false },
+    capabilities: {
+      terminals: false,
+      openFile: false,
+      ask: false,
+      virtualDocs: false,
+      tabs: false,
+    },
   };
 }
