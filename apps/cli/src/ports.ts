@@ -125,7 +125,10 @@ export function createPorts(): ServerPorts {
 
     env: { vars: () => process.env },
 
-    /** Терминала редактора у cli нет, и клиент об этом узнаёт заранее — решение 0014. */
-    capabilities: { terminals: false, openFile: false, ask: false },
+    /**
+     * Ни терминала редактора, ни вкладки под текст без файла у cli нет, и клиент узнаёт об
+     * этом заранее — решения 0014 и 0019.
+     */
+    capabilities: { terminals: false, openFile: false, ask: false, virtualDocs: false },
   };
 }

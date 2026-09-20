@@ -1,4 +1,4 @@
-import { findObject, trail } from "@mapward/core";
+import { findMetric, findObject, trail } from "@mapward/core";
 import type { MapFile, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
@@ -35,6 +35,23 @@ const fileOf = (file: MapFile) => ({
   path: file.path,
   ...(file.owner === undefined ? {} : { owner: file.owner }),
 });
+
+/**
+ * Адрес следующего слоя конфига. Читается из самого файла, а не из модели: модель держит
+ * мердж, и в нём уже не видно, чей это `extends` — решение 0019. Сломанный json не ошибка
+ * здесь: сырое чтение обязано отдать то, что лежит, а не проверять его.
+ */
+function extendsOf(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const value = (parsed as { extends?: unknown }).extends;
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Директивы сводкой: на корне их два десятка, и почти все давно прогнаны. Выполненная
@@ -216,12 +233,19 @@ const TOOLS = [
   {
     name: "read_index",
     description:
-      "Сырой `_index.json` объекта, как он написан на диске — до наследования и подстановок. " +
+      "Сырое содержимое папки по адресу, как оно написано на диске — до наследования и подстановок: " +
+      "`_index.json` объекта и `config.json`, если он там лежит; любое из двух может отсутствовать. " +
+      "Адресом метрики (он приходит в read_object рядом с ключом) отдаётся её собственный конфиг " +
+      "и, полем extends, адрес следующего слоя — цепочка читается по одному слою за вызов. " +
       "С file — текст директивы или экшона этого объекта по имени из read_object, включая доставшиеся от прототипа.",
     inputSchema: {
       type: "object",
       properties: {
-        address: { type: "string", description: "mapward:// адрес; без него корень" },
+        address: {
+          type: "string",
+          description:
+            "mapward:// адрес объекта или метрики; без него корень. Адрес метрики — тот, что в read_object",
+        },
         map: { type: "string", description: "имя карты; без него первая" },
         file: {
           type: "string",
@@ -439,7 +463,31 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
       const map = await server.getMap(ref);
       const address = typeof args.address === "string" ? args.address : undefined;
       const object = address ? findObject(map, address) : map;
-      if (!object) throw new Error(`Объект ${String(address)} не найден`);
+
+      // `_metrics` — служебная папка, объектом она не ищется, но у метрики есть собственный
+      // адрес, и приходит он в ответе рядом с ключом. Поэтому сырой вид метрики спрашивается
+      // тем же инструментом, а не своим параметром — решение 0019.
+      if (!object) {
+        const metric = address ? findMetric(map, address) : undefined;
+        if (!metric) throw new Error(`Объект ${String(address)} не найден`);
+        if (typeof args.file === "string") {
+          throw new Error("У метрики нет директив и экшонов: file спрашивают у объекта.");
+        }
+
+        const raw = await server.readMapFile(metric.configPath);
+        const next = extendsOf(raw);
+        return text({
+          address: metric.address,
+          key: metric.key,
+          configPath: metric.configPath,
+          // Конфиг лежит у прототипа: править его надо там, и по ответу это видно.
+          ...(metric.owner === undefined ? {} : { owner: metric.owner }),
+          config: raw ?? null,
+          // Следующий слой называется адресом, а не вкладывается значением: конфиги — самое
+          // тяжёлое, что есть в ответе (0016), и цепочка повторила бы их целиком.
+          ...(next === undefined ? {} : { extends: next }),
+        });
+      }
 
       // Файл берётся из модели, а не склейкой пути: так открывается и унаследованный от
       // прототипа, и никакое имя не уводит читать что попало мимо карты.
@@ -456,8 +504,17 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
         return text({ ...fileOf(found), status: found.status, text: body ?? null });
       }
 
+      // Что в папке действительно лежит, то и отдаётся: у общих метрик это `config.json`
+      // вместо `_index.json`, и пустой ответ по существующему адресу выглядел бы отсутствием
+      // данных, а не «смотри в соседнее поле».
       const raw = await server.readIndexFile(object.path);
-      return text({ address: object.address, path: object.path, index: raw ?? null });
+      const config = await server.readMapFile(`${object.path}/config.json`);
+      return text({
+        address: object.address,
+        path: object.path,
+        index: raw ?? null,
+        config: config ?? null,
+      });
     }
 
     if (name === "run_directive" || name === "finish_directive") {

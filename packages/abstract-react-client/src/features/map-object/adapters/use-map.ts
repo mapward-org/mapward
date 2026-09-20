@@ -17,6 +17,9 @@ export function useMapActions() {
   return {
     open: (path: string) => void bridge.openPath({ path }),
     openExternal: (url: string) => void bridge.openExternal({ url }),
+    /** Текст, которого нет на диске: мердженный конфиг метрики — решение 0019. */
+    openVirtual: (title: string, text: string, language: string) =>
+      void bridge.openVirtual({ title, text, language }),
     createDirective: (objectPath: string) => void bridge.createDirective({ objectPath }),
   };
 }

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { createMapServer, parseSettings, serveMcp } from "@mapward/abstract-server";
 import type { MapServer, ServerSettings } from "@mapward/abstract-server";
-import { readMaps } from "@/features/maps/index.extension.ts";
+import { readMaps, registerVirtualDocs } from "@/features/maps/index.extension.ts";
 import { createPorts } from "./ports/index.ts";
 import { MapViewProvider } from "./map-view.ts";
 import { startMcpHttp } from "./mcp-http.ts";
@@ -59,6 +59,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     setMcpUrl(mcp.url);
     context.subscriptions.push({ dispose: mcp.stop });
   }
+
+  // Мердженный конфиг метрики показывается документом без файла — решение 0019.
+  context.subscriptions.push(registerVirtualDocs());
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(

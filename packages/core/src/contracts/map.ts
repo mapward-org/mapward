@@ -19,6 +19,8 @@ export const Capabilities = T.Object({
   terminals: T.Boolean(),
   openFile: T.Boolean(),
   ask: T.Boolean(),
+  /** Умеет ли хост показать текст без файла на диске — решение 0019. */
+  virtualDocs: T.Boolean(),
 });
 
 export const mapBridge = {

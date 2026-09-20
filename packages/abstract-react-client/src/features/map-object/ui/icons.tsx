@@ -23,6 +23,13 @@ export const ActionsIcon = (
   </svg>
 );
 
+/** Метрики: столбики шкалы — то же, чем они показаны в сетке. */
+export const MetricsIcon = (
+  <svg viewBox="0 0 16 16" className={box} fill="none" stroke="currentColor" strokeWidth="1.2">
+    <path d="M3 13V9M8 13V4M13 13v-6" strokeLinecap="round" />
+  </svg>
+);
+
 export const IndexIcon = (
   <svg viewBox="0 0 16 16" className={box} fill="currentColor">
     <circle cx="4" cy="8" r="1.1" />

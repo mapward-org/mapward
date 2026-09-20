@@ -29,6 +29,15 @@ export const configBridge = {
   openPath: createBridgeMethod(T.Object({ path: T.String() }), T.Void()),
   /** Всё, что не `mapward://` и не файл, уходит наружу — этим занимается хост. */
   openExternal: createBridgeMethod(T.Object({ url: T.String() }), T.Void()),
+  /**
+   * Показать текст, которого нет на диске: мердженный конфиг метрики собран из нескольких
+   * файлов и не лежит ни в одном — решение 0019. Своя ручка, а не путь с оговоркой: у такого
+   * документа пути нет вовсе, и метод с необязательным путём был бы двумя методами в одном.
+   */
+  openVirtual: createBridgeMethod(
+    T.Object({ title: T.String(), text: T.String(), language: T.String() }),
+    T.Void(),
+  ),
   pickFolder: createBridgeMethod(T.Void(), T.Void()),
 };
 

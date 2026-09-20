@@ -12,6 +12,7 @@ export function useCapabilities(): Capabilities {
     terminals: false,
     openFile: false,
     ask: false,
+    virtualDocs: false,
   });
 
   useEffect(() => {

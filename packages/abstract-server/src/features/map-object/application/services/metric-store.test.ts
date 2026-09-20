@@ -36,7 +36,7 @@ function fakePorts(tree: Record<string, string>): ServerPorts {
     clock: { now: () => new Date().toISOString() },
     timers: { every: () => () => undefined, after: () => () => undefined },
     env: { vars: () => ({}) },
-    capabilities: { terminals: false, openFile: false, ask: false },
+    capabilities: { terminals: false, openFile: false, ask: false, virtualDocs: false },
   };
 }
 

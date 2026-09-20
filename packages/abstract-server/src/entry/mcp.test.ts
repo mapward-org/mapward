@@ -37,6 +37,16 @@ const tree = {
     display: { kind: "status" },
   }),
   "/map/prototypes/package/_directives/create-package.md": "как заводить пакет",
+  // Общая метрика лежит объектом: в её папке `config.json` и нет `_index.json`.
+  "/map/prototypes/shared-files/config.json": JSON.stringify({
+    label: "Файлы",
+    collectors: [{ kind: "read-dir", basePath: "/repo" }],
+    display: { kind: "tree" },
+  }),
+  // А у того, кто её подключил, в файле одна строка — ради неё слои и разделяют.
+  "/map/prototypes/_metrics/files/config.json": JSON.stringify({
+    extends: "mapward://prototypes/shared-files",
+  }),
   "/map/packages/_index.json": JSON.stringify({ name: "Пакеты" }),
   "/map/packages/core/_index.json": JSON.stringify({
     name: "core",
@@ -68,7 +78,7 @@ const ports: ServerPorts = {
   clock: { now: () => new Date().toISOString() },
   timers: { every: () => () => undefined, after: () => () => undefined },
   env: { vars: () => ({}) },
-  capabilities: { terminals: false, openFile: false, ask: false },
+  capabilities: { terminals: false, openFile: false, ask: false, virtualDocs: false },
 };
 
 const ref: MapRef = { mapPath: "/map", basePath: "/repo", name: "Карта" };
@@ -358,6 +368,50 @@ test("a directive can be read as text, wherever it lives", async () => {
   await expect(
     call("read_index", { address: "mapward://packages/core", file: "нет-такого.md" }),
   ).rejects.toThrow(/Есть: create-package.md/);
+});
+
+test("a metric config is read raw, by the metric address", async () => {
+  const layer = await call("read_index", { address: "mapward://packages/core/_metrics/lint" });
+
+  // Конфиг лежит у прототипа — там его и правят, и по ответу это видно.
+  expect(layer.configPath).toBe("/map/prototypes/package/_metrics/lint/config.json");
+  expect(layer.owner).toBe("mapward://prototypes/package");
+  expect(JSON.parse(layer.config as string)).toEqual({
+    label: "Линтер",
+    collectors: [{ kind: "static", value: { ok: true } }],
+    display: { kind: "status" },
+  });
+
+  // Слоя над ним нет, и поля тоже нет: пустая ссылка была бы ответом на незаданный вопрос.
+  expect(layer.extends).toBeUndefined();
+
+  await expect(
+    call("read_index", { address: "mapward://packages/core/_metrics/lint", file: "own.md" }),
+  ).rejects.toThrow(/file спрашивают у объекта/);
+});
+
+test("the next layer is named by address, not carried by value", async () => {
+  const own = await call("read_index", { address: "mapward://prototypes/_metrics/files" });
+
+  // Свой файл — одна строка `extends`; всё остальное лежит слоем выше.
+  expect(JSON.parse(own.config as string)).toEqual({
+    extends: "mapward://prototypes/shared-files",
+  });
+  expect(own.extends).toBe("mapward://prototypes/shared-files");
+
+  // По названному адресу читается следующий слой — тем же вызовом, решение 0019.
+  const parent = await call("read_index", { address: own.extends as string });
+  expect(parent.index).toBeNull();
+  expect(JSON.parse(parent.config as string)).toMatchObject({ label: "Файлы" });
+  expect(parent.extends).toBeUndefined();
+});
+
+test("an address answers with whatever the folder holds", async () => {
+  const object = await call("read_index", { address: "mapward://packages/core" });
+
+  expect(JSON.parse(object.index as string)).toMatchObject({ name: "core" });
+  // Конфига в папке объекта нет — это ответ, а не умолчание.
+  expect(object.config).toBeNull();
 });
 
 test("a map that is not there is named along with the ones that are", async () => {

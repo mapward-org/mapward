@@ -7,6 +7,8 @@ export function MenuButton(props: {
   items: {
     key: string;
     label: string;
+    /** Подробность, которой не место в строке: висит тултипом, как у кнопок шапки. */
+    title?: string;
     hint?: string;
     hintClass?: string;
     onSelect: () => void;
@@ -63,6 +65,7 @@ export function MenuButton(props: {
                   setOpen(false);
                   item.onSelect();
                 }}
+                {...(item.title === undefined ? {} : { title: item.title })}
                 className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-[var(--mw-list-hoverBackground)]"
               >
                 <span className="truncate">{item.label}</span>
