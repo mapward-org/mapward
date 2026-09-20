@@ -10,8 +10,12 @@ import {
   closeTerminal,
   listTerminals,
   openTerminal,
+  pickSession,
+  renameForStage,
+  sendToTerminal,
   showTerminal,
 } from "@/features/terminals/index.extension.ts";
+import { rememberStage } from "./stage-tabs.ts";
 
 /** Где фичи встречаются с мостом. Ниже apps никто не решает, что отвечает хост. */
 export function serveBridge(
@@ -59,14 +63,53 @@ export function serveBridge(
       // Открывается в корне проекта: директива может тронуть что угодно в репозитории.
       return openTerminal({
         name: `mapward: ${object.name}`,
+        address: params.address,
         cwd: params.basePath,
         prompt: objectPrompt(object, params.mapPath),
         fresh: params.fresh,
       });
     },
 
+    /**
+     * Кнопка этапа: фраза уходит в живую сессию объекта, промпт агент берёт из MCP сам —
+     * решение 0017. Сессии нет — заводим её обычным путём, с промптом объекта, и фраза
+     * приезжает следом.
+     */
+    runStage: async (params) => {
+      const { text } = await server.stageRequest(params);
+      const map = await server.getMap(params);
+      const object = findObject(map, params.address) ?? map;
+
+      const existing = pickSession(params.address);
+      if (existing) sendToTerminal({ id: existing.id, text });
+
+      // Новой сессии фраза едет внутри промпта, а не строкой следом: `claude` ещё не поднялся,
+      // и отправленное вдогонку попало бы в шелл.
+      const session =
+        existing ??
+        openTerminal({
+          name: `mapward: ${object.name}`,
+          address: params.address,
+          cwd: params.basePath,
+          prompt: [objectPrompt(object, params.mapPath), "", text].join("\n"),
+        });
+      rememberStage(session.id, {
+        address: params.address,
+        directive: params.directive,
+        stage: params.stage,
+        base: object.name,
+      });
+      await renameForStage({
+        id: session.id,
+        base: object.name,
+        directive: params.directive,
+        stage: params.stage,
+      });
+      return { id: session.id, name: session.name };
+    },
+
     showTerminal: (params) => showTerminal(params),
-    listTerminals: () => listTerminals({ prefix: "mapward: " }),
+    listTerminals: (params) => listTerminals(params),
     closeTerminal: (params) => closeTerminal(params),
   };
 

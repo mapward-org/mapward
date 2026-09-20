@@ -59,8 +59,9 @@ export const directiveBridge = {
 
 /**
  * Терминал — сессия агента, и заводится он на объект, а не на директиву: директив у объекта
- * много, этапов у каждой несколько, и всё это греет один контекст — решение 0017. Запускать
- * директиву мостом больше нечем: это делает человек словами в терминале.
+ * много, этапов у каждой несколько, и всё это греет один контекст — решение 0017.
+ *
+ * Адресуется сессия идентификатором, а не именем: имя вкладки меняется, пока идёт этап.
  */
 export const terminalBridge = {
   openObjectTerminal: createBridgeMethod(
@@ -71,15 +72,31 @@ export const terminalBridge = {
       address: T.String(),
       fresh: T.Optional(T.Boolean()),
     }),
-    T.Object({ name: T.String() }),
+    T.Object({ id: T.String(), name: T.String() }),
   ),
-  /** Показать уже открытый терминал: список даёт имя, и оно не равно имени объекта. */
-  showTerminal: createBridgeMethod(T.Object({ name: T.String() }), T.Void()),
+  /**
+   * Запустить этап кнопкой: хост отправляет в живую сессию объекта фразу «выполни этап такой-то
+   * по директиве такой-то» — то же самое, что человек набрал бы руками (решение 0017). Промпт
+   * этапа кнопка не несёт: его агент берёт из MCP сам.
+   */
+  runStage: createBridgeMethod(
+    T.Object({
+      mapPath: T.String(),
+      basePath: T.String(),
+      name: T.String(),
+      address: T.String(),
+      directive: T.String(),
+      stage: T.String(),
+    }),
+    T.Object({ id: T.String(), name: T.String() }),
+  ),
+  /** Показать уже открытый терминал: список даёт идентификатор, имя — только для глаз. */
+  showTerminal: createBridgeMethod(T.Object({ id: T.String() }), T.Void()),
   listTerminals: createBridgeMethod(
     T.Object({ address: T.String() }),
-    T.Array(T.Object({ name: T.String() })),
+    T.Array(T.Object({ id: T.String(), name: T.String() })),
   ),
-  closeTerminal: createBridgeMethod(T.Object({ name: T.String() }), T.Void()),
+  closeTerminal: createBridgeMethod(T.Object({ id: T.String() }), T.Void()),
 };
 
 export type Capabilities = Static<typeof Capabilities>;

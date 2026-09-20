@@ -15,7 +15,11 @@ import {
   finishStage,
   startStage,
 } from "../features/map-object/application/use-cases/directives.ts";
-import { stagePrompt, defaultStageText } from "../features/map-object/domain/prompts.ts";
+import {
+  stagePrompt,
+  stageRequest,
+  defaultStageText,
+} from "../features/map-object/domain/prompts.ts";
 import {
   readMapState,
   writeMapState,
@@ -113,6 +117,24 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     createDirective: (params: { objectPath: string; title: string }) =>
       createDirective(ports, params),
+
+    /**
+     * Фраза для кнопки этапа: хост отправляет её в живую сессию, агент по ней зовёт
+     * `runDirective` сам. Составляет её сервер, а не кнопка, — решение 0017.
+     */
+    stageRequest: async (
+      params: MapRef & { address: string; directive: string; stage: string },
+    ) => {
+      const found = await locate(params);
+      const stage = pickStage(found.stages, params.stage);
+      if (!stage) {
+        const known = found.stages.map((entry) => `«${entry.name}»`).join(", ");
+        throw new Error(`У объекта нет этапа ${params.stage}. Есть: ${known}.`);
+      }
+      return {
+        text: stageRequest({ object: found.object, directive: found.file.name, stage: stage.name }),
+      };
+    },
 
     /**
      * Взять директиву в работу: промпт этапа плюс отметка, что прогон начался — решение 0017.

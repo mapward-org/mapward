@@ -20,8 +20,8 @@ type Ref = { mapPath: string; basePath: string; name: string };
 const statusHint = { new: "новая", changed: "изменилась", done: "выполнена" };
 
 /**
- * Кнопок запуска у директивы нет — её выполняет агент из терминала объекта (решение 0017).
- * Зато видно, какой этап на ней шёл последним: отметку ставит сам прогон.
+ * Какой этап на директиве шёл последним: отметку ставит сам прогон, а не интерфейс
+ * (решение 0017).
  */
 const runHint = (file: MapFile): string | undefined =>
   file.run === undefined
@@ -98,6 +98,20 @@ export function MapObjectView(props: { mapConfig: Ref }) {
                   hint: runHint(file) ?? statusHint[file.status ?? "new"],
                   hintClass: statusColor[file.status ?? "new"],
                   onSelect: can.openFile ? () => actions.open(file.path) : () => undefined,
+                  // Кнопка не запускает этап, а просит агента его запустить: в живую сессию
+                  // уходит фраза, промпт агент берёт из MCP сам — решение 0017. Этапы те же,
+                  // что действуют на объекте, поэтому новый файл этапа даёт новую кнопку.
+                  runs: can.terminals
+                    ? current.workflow.map((stage) => ({
+                        // Многоточие значит «идёт сейчас», поэтому смотрим не на последний
+                        // прогон, а на незакрытый: закончившийся этап помечать нечем.
+                        label:
+                          file.run?.stage === stage.name && file.run.finishedAt === undefined
+                            ? `${stage.name}…`
+                            : stage.name,
+                        onSelect: () => terminals.runStage(file.name, stage.name),
+                      }))
+                    : undefined,
                 }))}
               />
             )}

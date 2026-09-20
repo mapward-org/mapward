@@ -6,6 +6,7 @@ import { createPorts } from "./ports/index.ts";
 import { MapViewProvider } from "./map-view.ts";
 import { startMcpHttp } from "./mcp-http.ts";
 import { setMcpUrl } from "@/features/terminals/index.extension.ts";
+import { withStageTabs } from "./stage-tabs.ts";
 
 /**
  * Сборка: порты редактора, настройки карты и один сервер на окно. Стор метрик внутри него,
@@ -47,7 +48,8 @@ async function createServer(): Promise<MapServer> {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const server = await createServer();
+  // Обёртка ловит конец этапа, откуда бы он ни пришёл: сервер один и на мост, и на MCP.
+  const server = withStageTabs(await createServer());
 
   // Агент в терминале должен видеть карту так же, как человек — решение 0009. Сервер живёт,
   // пока открыта карта, и его адрес уезжает в сессии терминалов.

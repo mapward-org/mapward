@@ -15,3 +15,25 @@ export function freeName(base: string, taken: (name: string) => boolean): string
   }
   return `${base} ${Date.now()}`;
 }
+
+/**
+ * Имя вкладки на время этапа: по нему видно, кто из сессий чем занят, без заглядывания внутрь
+ * (решение 0017). Имя директивы приходит файлом — с датой, временем и расширением, — а вкладка
+ * узкая, поэтому в имя идёт только суть.
+ */
+export const shortDirective = (directive: string) =>
+  directive.replace(/\.md$/i, "").replace(/^\d{4}-\d{2}-\d{2}-\d{4}-/, "");
+
+/**
+ * Этап кончился — имя не возвращается к объекту, а помечается завершённым: чем этот разговор
+ * занимался, важно не меньше, чем чем он занят. Следующий запуск имя перетирает.
+ */
+export const stageName = (params: {
+  base: string;
+  directive: string;
+  stage: string;
+  done?: boolean;
+}) =>
+  `${params.base} · ${shortDirective(params.directive)} · ${params.stage}${
+    params.done ? " ✓" : ""
+  }`;

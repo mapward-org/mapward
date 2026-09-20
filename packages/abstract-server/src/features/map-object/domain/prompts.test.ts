@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { MapObject } from "@mapward/core";
-import { objectPrompt, stagePrompt } from "./prompts.ts";
+import { objectPrompt, stagePrompt, stageRequest } from "./prompts.ts";
 
 const object = {
   address: "mapward://packages/core",
@@ -41,4 +41,24 @@ test("the object prompt names the stages and the call that runs them", () => {
   expect(prompt).toContain("«Обсудить»");
   expect(prompt).toContain("run_directive");
   expect(prompt).toContain("finish_directive");
+});
+
+/**
+ * Кнопка шлёт фразу, а не промпт: содержательного в ней нет, и агент по ней идёт за промптом
+ * этапа в MCP — решение 0017. Поэтому во фразе должно быть ровно то, что нужно вызову:
+ * объект, директива, этап.
+ */
+test("the button phrase carries the call, not the instructions", () => {
+  const text = stageRequest({
+    object,
+    directive: "2026-09-19-2335-add-directives-hooks.md",
+    stage: "Проверка",
+  });
+
+  expect(text).toContain("2026-09-19-2335-add-directives-hooks.md");
+  expect(text).toContain("Проверка");
+  expect(text).toContain(object.address);
+  // Промпта во фразе нет: за ним агент идёт сам, иначе контракт живёт в двух местах.
+  expect(text).not.toContain("read_docs");
+  expect(text.split("\n")).toHaveLength(1);
 });

@@ -5,7 +5,7 @@ type Ref = { mapPath: string; basePath: string; name: string };
 
 export function useTerminals(ref: Ref, address: string) {
   const bridge = useBridgeClient();
-  const [terminals, setTerminals] = useState<{ name: string }[]>([]);
+  const [terminals, setTerminals] = useState<{ id: string; name: string }[]>([]);
 
   const refresh = useCallback(() => {
     void bridge.listTerminals({ address }).then(setTerminals);
@@ -19,8 +19,14 @@ export function useTerminals(ref: Ref, address: string) {
   return {
     terminals,
     open: (fresh?: boolean) => after(bridge.openObjectTerminal({ ...ref, address, fresh })),
+    /**
+     * Кнопка этапа: фраза уходит в живую сессию объекта, промпт агент берёт из MCP сам —
+     * решение 0017. Сессию выбирает хост, клиент про неё ничего не знает.
+     */
+    runStage: (directive: string, stage: string) =>
+      after(bridge.runStage({ ...ref, address, directive, stage })),
     // Показать именно тот, по которому кликнули: терминалов у объекта может быть несколько.
-    show: (name: string) => void bridge.showTerminal({ name }),
-    close: (name: string) => after(bridge.closeTerminal({ name })),
+    show: (id: string) => void bridge.showTerminal({ id }),
+    close: (id: string) => after(bridge.closeTerminal({ id })),
   };
 }

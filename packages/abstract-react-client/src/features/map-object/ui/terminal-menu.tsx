@@ -9,11 +9,11 @@ const TerminalIcon = (
 
 /** Terminals live as long as the editor keeps them: the list is what is open right now. */
 export function TerminalMenu(props: {
-  terminals: { name: string }[];
+  terminals: { id: string; name: string }[];
   onOpen: () => void;
   onFresh: () => void;
-  onClose: (name: string) => void;
-  onShow: (name: string) => void;
+  onClose: (id: string) => void;
+  onShow: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -54,12 +54,12 @@ export function TerminalMenu(props: {
             </button>
           </li>
           {props.terminals.map((terminal) => (
-            <li key={terminal.name} className="flex items-center">
+            <li key={terminal.id} className="flex items-center">
               <button
                 type="button"
                 onClick={() => {
                   setOpen(false);
-                  props.onShow(terminal.name);
+                  props.onShow(terminal.id);
                 }}
                 className="flex-1 truncate px-3 py-0.5 text-left hover:bg-[var(--mw-list-hoverBackground)]"
               >
@@ -68,7 +68,7 @@ export function TerminalMenu(props: {
               <button
                 type="button"
                 title="Закрыть"
-                onClick={() => props.onClose(terminal.name)}
+                onClick={() => props.onClose(terminal.id)}
                 className="px-2 opacity-60 hover:opacity-100"
               >
                 ×
