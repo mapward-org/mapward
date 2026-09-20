@@ -46,6 +46,14 @@ export const MetaIcon = (
   </svg>
 );
 
+/** Открыть в табе: окно со стрелкой наружу — решение 0026. */
+export const TabIcon = (
+  <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.2">
+    <path d="M8.5 3H3.5v9.5H13V7.5" strokeLinecap="round" />
+    <path d="M10 3h3v3M13 3l-4.5 4.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 export const IndexIcon = (
   <svg viewBox="0 0 16 16" className={box} fill="currentColor">
     <circle cx="4" cy="8" r="1.1" />
