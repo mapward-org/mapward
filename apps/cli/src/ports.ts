@@ -1,7 +1,7 @@
 import { exec, spawn } from "node:child_process";
-import { readdir, readFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import type {
   Cancellation,
@@ -28,7 +28,18 @@ const files = {
   async list(path: string): Promise<FileEntry[]> {
     try {
       const entries = await readdir(path, { withFileTypes: true });
-      return entries.map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory() }));
+      return await Promise.all(
+        entries.map(async (entry) => {
+          if (entry.isDirectory()) return { name: entry.name, isDirectory: true };
+          // Размера в `readdir` нет, поэтому файлы опрашиваются отдельно. Не получилось —
+          // размер просто не называется: список важнее, чем число рядом с ним.
+          const size = await stat(join(path, entry.name)).then(
+            (found) => found.size,
+            () => undefined,
+          );
+          return { name: entry.name, isDirectory: false, ...(size === undefined ? {} : { size }) };
+        }),
+      );
     } catch {
       return [];
     }

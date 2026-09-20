@@ -28,10 +28,19 @@ const files = {
 
   async list(path: string): Promise<FileEntry[]> {
     try {
-      return (await vscode.workspace.fs.readDirectory(uri(path))).map(([name, type]) => ({
-        name,
-        isDirectory: type === vscode.FileType.Directory,
-      }));
+      const entries = await vscode.workspace.fs.readDirectory(uri(path));
+      return await Promise.all(
+        entries.map(async ([name, type]) => {
+          if (type === vscode.FileType.Directory) return { name, isDirectory: true };
+          // Размера в `readDirectory` нет, поэтому файлы опрашиваются отдельно. Не получилось —
+          // размер просто не называется: список важнее, чем число рядом с ним.
+          const size = await vscode.workspace.fs.stat(uri(`${path}/${name}`)).then(
+            (found) => found.size,
+            () => undefined,
+          );
+          return { name, isDirectory: false, ...(size === undefined ? {} : { size }) };
+        }),
+      );
     } catch {
       return [];
     }

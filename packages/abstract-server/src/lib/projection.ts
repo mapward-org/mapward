@@ -53,7 +53,10 @@ export function project<T>(value: T, fields: readonly string[] | undefined): unk
  *
  * Иначе за глубину пришлось бы платить длиной проекции — `children.address`,
  * `children.children.address` и так далее, — а на третьем уровне это уже не пишут, а копируют
- * с ошибками. Дети при этом приходят всегда: просить глубину и не получить детей незачем.
+ * с ошибками.
+ *
+ * Дети приходят, когда проекция задела у них хоть одно поле. Не задела — списка нет вовсе:
+ * `children: [{}, {}, {}]` не отвечает ни на один вопрос, а длину ответа задаёт.
  */
 export function projectDeep<T>(value: T, fields: readonly string[] | undefined): unknown {
   if (!fields || fields.length === 0) return value;
@@ -64,9 +67,19 @@ export function projectDeep<T>(value: T, fields: readonly string[] | undefined):
     const source = item as Record<string, unknown>;
     const result = pick(source, root) as Record<string, unknown>;
     const children = source.children;
-    if (Array.isArray(children)) result.children = children.map(walk);
+    if (Array.isArray(children)) {
+      const kept = children.map(walk);
+      if (!kept.every(isEmpty)) result.children = kept;
+    }
     return result;
   };
 
   return walk(value);
 }
+
+/** Пустой остаток ребёнка: объект без единого поля. Пустой список детей считается тем же. */
+const isEmpty = (item: unknown): boolean =>
+  item !== null &&
+  typeof item === "object" &&
+  !Array.isArray(item) &&
+  Object.keys(item).length === 0;

@@ -33,6 +33,9 @@ const PROTOCOL = "2024-11-05";
 const fileOf = (file: MapFile) => ({
   name: file.name,
   path: file.path,
+  // Сколько весит: по нему решают, читать файл целиком или хвостом. Хост, не назвавший
+  // размера, оставляет поле пустым.
+  ...(file.bytes === undefined ? {} : { bytes: file.bytes }),
   ...(file.owner === undefined ? {} : { owner: file.owner }),
 });
 
@@ -71,6 +74,8 @@ function digest(files: MapFile[], all: boolean) {
       status: file.status,
       // Идущий этап видно с первой секунды: отметку ставит run_directive — решение 0017.
       ...(file.run === undefined ? {} : { run: file.run }),
+      // Сколько кругов директива уже прошла: третий Брейншторм и первый читаются по-разному.
+      ...(file.runs === undefined ? {} : { runs: file.runs }),
     })),
   };
 }
@@ -128,7 +133,11 @@ async function describe(
     prototypeName: object.prototypeName,
     path: object.path,
     props: object.props,
-    layout: { preview: object.previewLayout, details: object.detailsLayout },
+    // Раскладка и воркфлоу — только у верхнего объекта ответа, по тому же доводу, что и
+    // `parents`: раскрытый ребёнок лежит внутри родителя, и повторять у каждого пять этапов
+    // с путями значит платить за одно и то же столько раз, сколько в ответе объектов.
+    // Понадобились у ребёнка — он спрашивается своим вызовом, и там он верхний.
+    ...(top ? { layout: { preview: object.previewLayout, details: object.detailsLayout } } : {}),
     // Из каких `_index.json` собран объект. Ссылками: конфиг слоя читается `read_index`
     // по названному адресу, а вложенный он повторил бы самое тяжёлое в ответе (решение 0019).
     layers: object.layers,
@@ -154,13 +163,17 @@ async function describe(
      * Этапы, действующие на объекте: звать их теперь по имени, и узнать имя больше неоткуда —
      * по файлам не видно, что приехало от прототипа (решение 0017).
      */
-    workflow: object.workflow.map((stage) => ({
-      name: stage.name,
-      order: stage.order,
-      ...(stage.marksDone ? { marksDone: true } : {}),
-      ...(stage.path === "" ? { builtin: true } : { path: stage.path }),
-      ...(stage.owner === undefined ? {} : { owner: stage.owner }),
-    })),
+    ...(top
+      ? {
+          workflow: object.workflow.map((stage) => ({
+            name: stage.name,
+            order: stage.order,
+            ...(stage.marksDone ? { marksDone: true } : {}),
+            ...(stage.path === "" ? { builtin: true } : { path: stage.path }),
+            ...(stage.owner === undefined ? {} : { owner: stage.owner }),
+          })),
+        }
+      : {}),
     /** От ближайшего родителя к корню: по ним поднимаются и уходят к соседям через их детей. */
     ...(parents === undefined ? {} : { parents }),
     children:
@@ -188,8 +201,10 @@ const TOOLS = [
       "layers — файлы, из которых собран мердж, у объекта и у каждой метрики: адрес и путь, от своего к дальнему прототипу. Сам конфиг слоя берётся read_index по этому адресу. " +
       'С refresh: "on-display" дешёвые метрики досчитываются — зови так, чтобы увидеть то же, что человек на экране. ' +
       "Весь контекст разом: depth уводит вглубь по детям, metrics отбирает метрики по ключам, fields — поля в ответе. " +
-      'Начинай с обзора без метрик — { depth: 2, metrics: [] } — и только потом зови нужные: { address, metrics: ["files"], refresh: "on-display" }. ' +
-      "Почти весь вес ответа сидит в metrics.value, поэтому metrics важнее fields.",
+      'Начинай с обзора — { depth: 2, metrics: [], fields: ["address", "name", "prototypeName", "path", "props", "directives"] } — ' +
+      'и только потом зови нужные: { address, metrics: ["files"], refresh: "on-display" }. Названная одна метрика бюджетом не режется. ' +
+      "Почти весь вес ответа сидит в metrics.value, поэтому metrics важнее fields. " +
+      "layout и workflow приходят только у верхнего объекта ответа: у раскрытых детей они те же самые.",
     inputSchema: {
       type: "object",
       properties: {
@@ -222,7 +237,7 @@ const TOOLS = [
         budget: {
           type: "number",
           description:
-            "ориентир по размеру ответа в байтах json: пока он превышен, самые тяжёлые значения и конфиги метрик заменяются на { truncated, bytes } — ответ не пропадает целиком. Перечень метрик и поля объектов не режутся, поэтому вызов по всей карте останется большим и с маркерами; чтобы этого не было, отбирай metrics. По умолчанию 24000, ноль снимает предел",
+            "ориентир по размеру ответа в байтах json: пока он превышен, самые тяжёлые значения и конфиги метрик заменяются на { truncated, bytes } — ответ не пропадает целиком. Перечень метрик и поля объектов не режутся, поэтому вызов по всей карте останется большим и с маркерами; чтобы этого не было, отбирай metrics. Одна метрика, названная в metrics, не режется вовсе. По умолчанию 24000, ноль снимает предел",
         },
         depth: {
           type: "number",
@@ -243,7 +258,9 @@ const TOOLS = [
       "`_index.json` объекта и `config.json`, если он там лежит; любое из двух может отсутствовать. " +
       "Адресом метрики (он приходит в read_object рядом с ключом) отдаётся её собственный конфиг " +
       "и, полем extends, адрес следующего слоя — цепочка читается по одному слою за вызов. " +
-      "С file — текст директивы или экшона этого объекта по имени из read_object, включая доставшиеся от прототипа.",
+      "С file — текст директивы или экшона этого объекта по имени из read_object, включая доставшиеся от прототипа; " +
+      "с tail — только его хвост. " +
+      "С stage — текст этапа воркфлоу, не запуская его и не отмечая прогон.",
     inputSchema: {
       type: "object",
       properties: {
@@ -257,6 +274,16 @@ const TOOLS = [
           type: "string",
           description:
             'имя директивы или экшона объекта, как в ответе read_object: "create-package.md". Без него приходит _index.json',
+        },
+        tail: {
+          type: "number",
+          description:
+            "только последние N строк файла — директива дописывается снизу, и последний круг вопросов с ответами лежит в конце. Файл короче — приходит целиком; сколько в нём строк всего, говорит поле lines. Только вместе с file",
+        },
+        stage: {
+          type: "string",
+          description:
+            'имя этапа из workflow объекта: "Проверка". Приходит его текст, порядок и marksDone — читать этап можно, не запуская его. Запуск с отметкой о прогоне — run_directive',
         },
       },
     },
@@ -324,7 +351,8 @@ const TOOLS = [
   {
     name: "run_metric",
     description:
-      "Запустить метрику и вернуть её значение. Это тот же прогон, что по кнопке: скрипт или агент, запись кэша.",
+      "Запустить метрику и вернуть её значение. Это тот же прогон, что по кнопке: скрипт или агент, запись кэша. " +
+      "Дорогая метрика переживает вызов: с wait: false управление возвращается сразу, а результат досматривается через read_object.",
     inputSchema: {
       type: "object",
       properties: {
@@ -333,6 +361,11 @@ const TOOLS = [
         timeout: {
           type: "number",
           description: "мс на стадию сбора; перебивает то, что задано на метрике",
+        },
+        wait: {
+          type: "boolean",
+          description:
+            "по умолчанию true — вызов дожидается значения. false отдаёт busy: true сразу и не ждёт: прогон идёт у сервера, и его досматривают read_object по этому же объекту",
         },
       },
       required: ["address"],
@@ -462,7 +495,12 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
         depth,
         view(args),
       );
-      return text(fit(projectDeep(described, names(args.fields)), budget(args)));
+      const answer = projectDeep(described, names(args.fields));
+      // Одна метрика, названная по имени, не режется. Отбор и бюджет иначе спорят: агент
+      // делает ровно то, что велит дока — зовёт метрику поимённо, — и получает маркер вместо
+      // значения, за которым звал. Отказаться от него нечем: ноль в `budget` снимает предел
+      // и на соседних вызовах тоже.
+      return text(picked?.length === 1 ? answer : fit(answer, budget(args)));
     }
 
     if (name === "read_index") {
@@ -476,8 +514,10 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
       if (!object) {
         const metric = address ? findMetric(map, address) : undefined;
         if (!metric) throw new Error(`Объект ${String(address)} не найден`);
-        if (typeof args.file === "string") {
-          throw new Error("У метрики нет директив и экшонов: file спрашивают у объекта.");
+        if (typeof args.file === "string" || typeof args.stage === "string") {
+          throw new Error(
+            "У метрики нет директив, экшонов и этапов: file и stage спрашивают у объекта.",
+          );
         }
 
         const raw = await server.readMapFile(metric.configPath);
@@ -495,6 +535,16 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
         });
       }
 
+      if (typeof args.file === "string" && typeof args.stage === "string") {
+        throw new Error("file и stage спрашиваются по отдельности: это разные файлы.");
+      }
+
+      // Текст этапа без его запуска: запуск ставит отметку о прогоне, и читать соседний этап
+      // им нельзя. У дефолтного этапа файла нет вовсе, и с диска он не достаётся никак.
+      if (typeof args.stage === "string") {
+        return text(await server.readStage({ ...ref, address: object.address, stage: args.stage }));
+      }
+
       // Файл берётся из модели, а не склейкой пути: так открывается и унаследованный от
       // прототипа, и никакое имя не уводит читать что попало мимо карты.
       if (typeof args.file === "string") {
@@ -507,7 +557,23 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
           throw new Error(`У объекта нет файла ${wanted}. Есть: ${known || "ни одного"}.`);
         }
         const body = await server.readMapFile(found.path);
-        return text({ ...fileOf(found), status: found.status, text: body ?? null });
+        const head = { ...fileOf(found), status: found.status };
+
+        // Хвост вместо всего файла: многоэтапная директива дописывается снизу, и последний
+        // круг вопросов с ответами — это последние строки. Файл короче запрошенного — он
+        // и приходит целиком: обрезать нечего, а `lines` говорит, что это весь текст.
+        const tail = typeof args.tail === "number" ? Math.floor(args.tail) : undefined;
+        if (tail !== undefined && tail > 0 && body !== undefined) {
+          const lines = body.split("\n");
+          return text({
+            ...head,
+            lines: lines.length,
+            ...(lines.length > tail ? { tail } : {}),
+            text: lines.slice(-tail).join("\n"),
+          });
+        }
+
+        return text({ ...head, text: body ?? null });
       }
 
       // Что в папке действительно лежит, то и отдаётся: у общих метрик это `config.json`
@@ -539,7 +605,16 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
 
     if (name === "run_metric") {
       const address = String(args.address ?? "");
-      return text(await server.runMetric({ ...ref, metric: address, ...timeouts(args) }));
+      return text(
+        await server.runMetric({
+          ...ref,
+          metric: address,
+          ...timeouts(args),
+          // Ждать по умолчанию: прогон зовут ради значения. `wait: false` нужен дорогой
+          // метрике — прогон идёт дальше у сервера, а досматривается через read_object.
+          ...(args.wait === false ? { wait: false } : {}),
+        }),
+      );
     }
 
     throw new Error(`Инструмент ${name} не найден`);

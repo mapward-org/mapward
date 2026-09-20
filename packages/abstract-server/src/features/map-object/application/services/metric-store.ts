@@ -13,6 +13,12 @@ export type MetricValue = {
   ok?: boolean;
   data?: unknown;
   busy?: boolean;
+  /**
+   * Собиралась ли метрика хоть раз. Без этого поля несобранная метрика и метрика, собравшая
+   * пустоту, выглядят одинаково: `{ busy: false }` — и то и другое читается как ответ. Поле
+   * говорит, ответ это или его отсутствие; когда собиралась, написано в `updatedAt`.
+   */
+  collected: boolean;
 };
 
 export type MetricsSnapshot = Record<string, MetricValue>;
@@ -49,6 +55,7 @@ const valueOf = (entry: Entry): MetricValue => ({
   ok: entry.result?.ok,
   data: entry.result?.data,
   busy: entry.busy,
+  collected: entry.result !== undefined,
 });
 
 /** Отменяется только то, что об этом просили: `cancelOnLeave` у коллектора или трансформа. */
@@ -352,16 +359,23 @@ export function createMetricStore(
     return snapshot(ref.mapPath, object.metrics);
   }
 
-  /** Ручной прогон: кнопка свежесть не спрашивает, пайплайн идёт целиком. */
+  /**
+   * Ручной прогон: кнопка свежесть не спрашивает, пайплайн идёт целиком.
+   *
+   * С `wait: false` вызов возвращает управление сразу, отдав `busy: true`. Прогон от этого
+   * не прерывается — он живёт у стора, а не у вызова, — и досматривается обычным чтением.
+   * Иначе дорогая метрика запускается вызовом, который обязан упасть по таймауту.
+   */
   async function run(
     ref: MapRef,
     metricAddress: string,
-    options: RunOptions = {},
+    options: RunOptions & { wait?: boolean } = {},
   ): Promise<MetricValue> {
     const map = await readMap(ref);
     const found = findMetricOwner(map, metricAddress);
     if (!found) throw new Error(`Метрика ${metricAddress} не найдена`);
-    await waitAtMost(start(ref, found.metric, found.object, true, options), options);
+    const running = start(ref, found.metric, found.object, true, options);
+    if (options.wait !== false) await waitAtMost(running, options);
     return valueOf(entryOf(ref.mapPath, metricAddress));
   }
 

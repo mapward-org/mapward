@@ -8,6 +8,12 @@ import type { McpTransport } from "@mapward/abstract-server";
  *
  * Транспорт здесь request/response: агент шлёт вызов телом POST и ждёт ответ в нём же, поэтому
  * ответы сопоставляются с запросами по `id`.
+ *
+ * Сопоставляются по своему ключу, а не по клиентскому `id`. У http каждый вызов — отдельное
+ * соединение, и клиент вправе нумеровать их с единицы: два одновременных вызова с `id: 1`
+ * затёрли бы друг друга, первый повис бы, а его ответ уехал бы во второй. Ответ при этом
+ * правильный по форме и про чужой объект — заметить это можно только по полю `address`.
+ * Поэтому наружу возвращается тот `id`, который прислал клиент.
  */
 export type McpHttp = { url: string; stop: () => void };
 
@@ -16,6 +22,7 @@ type Pending = (message: unknown) => void;
 export function startMcpHttp(serve: (transport: McpTransport) => () => void): Promise<McpHttp> {
   const waiting = new Map<string, Pending>();
   let handler: ((message: unknown) => void) | undefined;
+  let last = 0;
 
   const transport: McpTransport = {
     onMessage(next) {
@@ -42,27 +49,37 @@ export function startMcpHttp(serve: (transport: McpTransport) => () => void): Pr
     let body = "";
     request.on("data", (chunk: Buffer) => (body += chunk.toString()));
     request.on("end", () => {
-      let parsed: { id?: unknown };
+      let parsed: Record<string, unknown>;
       try {
-        parsed = JSON.parse(body) as { id?: unknown };
+        const value: unknown = JSON.parse(body);
+        if (typeof value !== "object" || value === null) throw new TypeError("не объект");
+        parsed = value as Record<string, unknown>;
       } catch {
         response.writeHead(400).end();
         return;
       }
 
-      const id = String(parsed.id ?? "");
       // Уведомление ответа не ждёт: отдаём пустой успех и уходим.
-      if (!id) {
+      if (parsed.id === undefined || parsed.id === null) {
         handler?.(parsed);
         response.writeHead(204).end();
         return;
       }
 
-      waiting.set(id, (message) => {
+      const theirs = parsed.id;
+      last += 1;
+      const key = `http-${String(last)}`;
+
+      waiting.set(key, (message) => {
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify(message));
+        // Клиент ждёт свой номер: ключ наш, и наружу он не уезжает.
+        const answer =
+          typeof message === "object" && message !== null
+            ? { ...(message as Record<string, unknown>), id: theirs }
+            : message;
+        response.end(JSON.stringify(answer));
       });
-      handler?.(parsed);
+      handler?.({ ...parsed, id: key });
     });
   };
 

@@ -9,7 +9,12 @@ import type { Capabilities } from "@mapward/core";
 import type { Cancellation } from "../lib/cancellation.ts";
 import type { ProcessEnv } from "../lib/env.ts";
 
-export type FileEntry = { name: string; isDirectory: boolean };
+/**
+ * Размер — у файлов, и только там, где хост может его назвать дёшево. Нужен он затем, что
+ * директива в ответе приходит именем и путём, а весит иногда двадцать килобайт: не зная
+ * размера, агент либо читает её целиком, либо режет мимо карты.
+ */
+export type FileEntry = { name: string; isDirectory: boolean; size?: number };
 
 /** Пути всегда с прямыми слэшами и абсолютные — приложение приводит их к своему виду само. */
 export type FilesPort = {

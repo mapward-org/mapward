@@ -174,8 +174,9 @@ test("fields cut the answer down to what was asked for", async () => {
     fields: ["address", "metrics.key", "metrics.label"],
   });
 
-  // Дети приходят всегда: просить поля и потерять поддерево — не то, о чём просили.
-  expect(Object.keys(slim)).toEqual(["address", "metrics", "children"]);
+  // Детей у core нет, и пустого списка в ответе тоже: `children: []` длину добавляет,
+  // а ответа не даёт.
+  expect(Object.keys(slim)).toEqual(["address", "metrics"]);
   expect(slim.metrics).toEqual([
     { key: "lint", label: "Линтер" },
     { key: "version", label: "Версия" },
@@ -201,10 +202,29 @@ test("depth brings children as objects, not as names", async () => {
       {
         address: "mapward://packages/core",
         metrics: [{ key: "lint" }, { key: "version" }, { key: "tests" }],
-        children: [],
       },
     ],
   });
+});
+
+test("children the projection never touched are left out entirely", async () => {
+  const named = await call("read_object", {
+    address: "mapward://packages",
+    depth: 1,
+    fields: ["address"],
+  });
+  // Ребёнок назван: спрашивали адрес, адрес у него есть.
+  expect(named.children).toEqual([{ address: "mapward://packages/core" }]);
+
+  const untouched = await call("read_object", {
+    address: "mapward://packages",
+    depth: 1,
+    fields: ["workflow"],
+  });
+  // Воркфлоу есть только у верхнего, у ребёнка проекции взять нечего — и списка `[{}]`
+  // в ответе нет.
+  expect(untouched.workflow).toBeDefined();
+  expect(untouched.children).toBeUndefined();
 });
 
 test("the tool carries its own documentation", async () => {
@@ -391,7 +411,7 @@ test("a metric config is read raw, by the metric address", async () => {
 
   await expect(
     call("read_index", { address: "mapward://packages/core/_metrics/lint", file: "own.md" }),
-  ).rejects.toThrow(/file спрашивают у объекта/);
+  ).rejects.toThrow(/file и stage спрашивают у объекта/);
 });
 
 test("the next layer is named by address, not carried by value", async () => {
@@ -621,4 +641,115 @@ test("read_object shows the workflow acting on the object", async () => {
       path: "/map/_directives.workflow/выполнить.md",
     },
   ]);
+});
+
+test("the workflow and the layout come only with the top object", async () => {
+  const { result } = await callWith(
+    { ...workflowTree, "/map/packages/_index.json": JSON.stringify({ name: "Пакеты" }) },
+    "read_object",
+    { depth: 1, metrics: [] },
+  );
+
+  // У верхнего объекта они есть...
+  expect(result.workflow).toHaveLength(2);
+  expect(result.layout).toBeDefined();
+
+  // ...а раскрытому ребёнку те же самые не повторяются: спросят его отдельно — придут.
+  const child = (result.children as Record<string, unknown>[])[0];
+  expect(child?.address).toBe("mapward://packages");
+  expect(child?.workflow).toBeUndefined();
+  expect(child?.layout).toBeUndefined();
+});
+
+test("a stage can be read without being run", async () => {
+  const { result, writes } = await callWith({ ...workflowTree }, "read_index", {
+    address: "mapward://",
+    stage: "выполнить",
+  });
+
+  // Имя ищется как при запуске — регистр не важен, файл берётся из модели объекта.
+  expect(result.name).toBe("Выполнить");
+  expect(result.marksDone).toBe(true);
+  // Тело без frontmatter — ровно то, что уезжает в промпт прогона.
+  expect(String(result.text).trim()).toBe("сделай");
+  // Чтение — это не прогон: состояние не тронуто, отметки о запуске нет.
+  expect(Object.keys(writes)).toHaveLength(0);
+});
+
+test("a stage with no file of its own still has a text", async () => {
+  const { result } = await callWith(
+    { "/map/_index.json": JSON.stringify({ name: "Карта" }) },
+    "read_index",
+    { address: "mapward://", stage: "Обсудить" },
+  );
+
+  // У дефолтного этапа файла нет вовсе: с диска его не прочитать никак.
+  expect(result.builtin).toBe(true);
+  expect(result.path).toBeUndefined();
+  expect(String(result.text)).toContain("что о ней думаешь");
+});
+
+test("an unknown stage names the ones the object has, on reading too", async () => {
+  await expect(
+    callWith({ ...workflowTree }, "read_index", { address: "mapward://", stage: "нет такого" }),
+  ).rejects.toThrow(/Обсудить/);
+});
+
+test("a long directive can be read by its tail", async () => {
+  const lines = Array.from({ length: 40 }, (_, at) => `строка ${String(at + 1)}`).join("\n");
+  const disk = { ...workflowTree, "/map/_directives/2026-09-20-0100-проба.md": lines };
+
+  const { result } = await callWith(disk, "read_index", {
+    address: "mapward://",
+    file: "2026-09-20-0100-проба.md",
+    tail: 3,
+  });
+
+  expect(result.lines).toBe(40);
+  expect(result.tail).toBe(3);
+  expect(result.text).toBe("строка 38\nстрока 39\nстрока 40");
+});
+
+test("a file shorter than the tail comes whole, and says so", async () => {
+  const { result } = await callWith({ ...workflowTree }, "read_index", {
+    address: "mapward://",
+    file: "2026-09-20-0100-проба.md",
+    tail: 40,
+  });
+
+  expect(result.text).toBe("текст директивы");
+  expect(result.lines).toBe(1);
+  // Резать было нечего — и поля, которое говорит «отрезано», в ответе нет.
+  expect(result.tail).toBeUndefined();
+});
+
+test("the map counts how many rounds each stage has run", async () => {
+  const disk = { ...workflowTree };
+  await callWith(disk, "run_directive", { ...directive, stage: "Обсудить" });
+  await callWith(disk, "run_directive", { ...directive, stage: "Обсудить" });
+  await callWith(disk, "run_directive", { ...directive, stage: "Выполнить" });
+
+  const { result } = await callWith(disk, "read_object", { metrics: [] });
+  const files = (result.directives as { files: { runs?: Record<string, number> }[] }).files;
+
+  // Третий Брейншторм и первый читаются по-разному — счётчик про это и говорит.
+  expect(files[0]?.runs).toEqual({ Обсудить: 2, Выполнить: 1 });
+});
+
+test("a metric that never ran says so, instead of looking empty", async () => {
+  const quiet = await call("read_object", { address: "mapward://packages/core" });
+  const value = (quiet.metrics as { key: string; value: { collected: boolean } }[]).find(
+    (metric) => metric.key === "tests",
+  )?.value;
+
+  // Дорогая метрика без прогона: `{ busy: false }` выглядело бы собранной пустотой.
+  expect(value?.collected).toBe(false);
+
+  const filled = await call("read_object", {
+    address: "mapward://packages/core",
+    metrics: ["version"],
+    refresh: "on-display",
+  });
+  const version = (filled.metrics as { value: { collected: boolean } }[])[0]?.value;
+  expect(version?.collected).toBe(true);
 });

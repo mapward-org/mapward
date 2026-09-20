@@ -70,9 +70,16 @@ export type DirectiveRun = {
 export type MapFile = {
   name: string;
   path: string;
+  /** Сколько файл весит, когда хост смог это назвать: по нему решают, читать целиком или хвостом. */
+  bytes?: number;
   status?: DirectiveStatus;
   /** Последний прогон этапа. У экшонов не бывает: состояние есть только у директив. */
   run?: DirectiveRun;
+  /**
+   * Сколько раз какой этап прогоняли. Последний прогон отвечает «где директива сейчас», а этот
+   * счётчик — «сколько кругов она уже прошла»: третий Брейншторм и первый читаются по-разному.
+   */
+  runs?: Record<string, number>;
   /**
    * The object the file actually belongs to, set only when it came from a prototype. On its own
    * files it is absent: present, it means one thing — edit it there, not here.

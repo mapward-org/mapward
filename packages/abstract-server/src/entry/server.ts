@@ -84,7 +84,7 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     watchMetrics: (params: MapRef & { address?: string }) => metrics.watch(params, params.address),
 
-    runMetric: (params: MapRef & { metric: string } & RunOptions) =>
+    runMetric: (params: MapRef & { metric: string } & RunOptions & { wait?: boolean }) =>
       metrics.run(params, params.metric, params),
 
     /**
@@ -99,6 +99,42 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     /** Любой файл карты по пути из модели: текст директивы и экшона живут именно так. */
     readMapFile: (path: string) => ports.files.read(path),
+
+    /**
+     * Текст этапа без его запуска. Запуск ставит отметку о прогоне, и раньше это был
+     * единственный способ прочитать этап: агент, которому нужно было посмотреть на соседний
+     * этап, либо заводил прогон, которого не было, либо шёл читать файл мимо карты — а у
+     * дефолтного этапа файла нет вовсе.
+     *
+     * Читает сервер, а не MCP: имя этапа ищется в модели объекта, включая доставшиеся от
+     * прототипа, ровно как при запуске.
+     */
+    readStage: async (params: MapRef & { address: string; stage: string }) => {
+      const map = await read(params);
+      const object = findObject(map, params.address);
+      if (!object) throw new Error(`Объект ${params.address} не найден`);
+
+      const stage = pickStage(object.workflow, params.stage);
+      if (!stage) {
+        const known = object.workflow.map((entry) => `«${entry.name}»`).join(", ");
+        throw new Error(`У объекта нет этапа ${params.stage}. Есть: ${known || "ни одного"}.`);
+      }
+
+      const text = stage.path
+        ? ((await ports.files.read(stage.path)) ?? "")
+        : defaultStageText(stage.name);
+
+      return {
+        name: stage.name,
+        order: stage.order,
+        marksDone: stage.marksDone,
+        // У дефолтного этапа файла нет: текст лежит в самом инструменте, и править его негде.
+        ...(stage.path === "" ? { builtin: true } : { path: stage.path }),
+        ...(stage.owner === undefined ? {} : { owner: stage.owner }),
+        // Тело без frontmatter — то же, что уезжает в промпт прогона.
+        text: body(text),
+      };
+    },
 
     /**
      * Почему метрика красная, написано в логах прогона, а не во флаге `ok`. Читаются они по

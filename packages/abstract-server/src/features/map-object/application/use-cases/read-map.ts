@@ -41,7 +41,12 @@ async function readJson(files: FilesPort, path: string): Promise<unknown> {
 async function readFiles(files: FilesPort, dir: string): Promise<MapFile[]> {
   return (await files.list(dir))
     .filter((entry) => !entry.isDirectory)
-    .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }));
+    .map((entry) => ({
+      name: entry.name,
+      path: join(dir, entry.name),
+      // Хост, который размера не назвал, оставляет поле пустым: это «не знаю», а не ноль.
+      ...(entry.size === undefined ? {} : { bytes: entry.size }),
+    }));
 }
 
 /** Git may store either ending; a directive that only changed line endings has not changed. */
@@ -65,13 +70,18 @@ async function readDirectives(files: FilesPort, objectPath: string): Promise<Map
         const saved = JSON.parse(state) as {
           directive?: string;
           run?: { stage: string; startedAt: string; finishedAt?: string };
+          runs?: Record<string, number>;
         };
         const run = saved.run;
+        // Сколько кругов директива прошла. Состояние старого формата счётчика не несёт —
+        // тогда его и нет: приписывать единицу значило бы выдумать историю.
+        const runs = saved.runs;
+        const seen = { ...file, run, ...(runs === undefined ? {} : { runs }) };
         // Этап, который не помечает выполнение, копии не снимает: прогон был, а директива
         // по-прежнему не сделана — решение 0017. Без копии сравнивать не с чем.
-        if (saved.directive === undefined) return { ...file, status: "new" as const, run };
+        if (saved.directive === undefined) return { ...seen, status: "new" as const };
         const same = norm(saved.directive) === norm(text);
-        return { ...file, status: same ? ("done" as const) : ("changed" as const), run };
+        return { ...seen, status: same ? ("done" as const) : ("changed" as const) };
       } catch {
         return { ...file, status: "new" as const };
       }

@@ -47,6 +47,12 @@ export type DirectiveState = {
   status?: "done";
   ran?: string;
   run?: { stage: string; startedAt: string; finishedAt?: string };
+  /**
+   * Сколько раз какой этап начинали. Полной истории прогонов здесь нет намеренно: она растёт
+   * без предела, а спрашивают у неё одно — сколько кругов уже прошло. Счётчик отвечает на это
+   * и не меняет формат состояния, а дополняет его.
+   */
+  runs?: Record<string, number>;
 };
 
 const statePath = (objectPath: string, directive: string) =>
@@ -108,8 +114,12 @@ export async function startStage(
   params: { objectPath: string; directive: string; stage: string; now: Date },
 ): Promise<void> {
   const state = await readState(ports, params.objectPath, params.directive);
+  // Считается начало, а не конец: прогон, брошенный на середине, — тоже круг, и по счётчику
+  // это должно быть видно.
+  const runs = { ...state.runs, [params.stage]: (state.runs?.[params.stage] ?? 0) + 1 };
   await writeState(ports, params.objectPath, params.directive, {
     ...state,
+    runs,
     run: { stage: params.stage, startedAt: params.now.toISOString() },
   });
 }
