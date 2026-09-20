@@ -1,5 +1,6 @@
 import type { MapMetric, MapObject } from "@mapward/core";
 import type { Cancellation, ServerPorts } from "../../../../ports/index.ts";
+import type { Builtins } from "../services/builtin.ts";
 import { shapeHint } from "@mapward/core";
 import { objectEnv, parseAnswer } from "../../domain/agent.ts";
 import { writeCache, writeLogs, type Collected } from "./collect.ts";
@@ -13,6 +14,7 @@ import { writeCache, writeLogs, type Collected } from "./collect.ts";
  */
 async function step(
   ports: ServerPorts,
+  builtins: Builtins,
   spec: Record<string, unknown>,
   input: unknown,
   owner: MapObject,
@@ -22,6 +24,11 @@ async function step(
 ): Promise<{ value: unknown; log?: string }> {
   const env = objectEnv(owner, cwd, ports.env.vars());
   const payload = JSON.stringify(input ?? null);
+
+  // Третий вид рядом со `script` и `prompt`: тело в инструменте, конфиг называет его именем —
+  // решение 0023. Ищется до `switch`: неизвестный `kind` по-прежнему ошибка, и это ниже.
+  const builtin = builtins.step(String(spec.kind));
+  if (builtin) return builtin.run(input);
 
   switch (spec.kind) {
     case "script": {
@@ -54,6 +61,7 @@ async function step(
 
 export async function transform(
   ports: ServerPorts,
+  builtins: Builtins,
   metric: MapMetric,
   owner: MapObject,
   cwd: string,
@@ -73,6 +81,7 @@ export async function transform(
       // oxlint-disable-next-line no-await-in-loop
       const result = await step(
         ports,
+        builtins,
         spec,
         value,
         owner,

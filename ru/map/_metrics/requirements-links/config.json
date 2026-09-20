@@ -6,6 +6,6 @@
   ],
   "transforms": [
     { "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/links.mjs\"" }
-  ],
+  , { "kind": "git-status" }],
   "display": { "kind": "list", "empty": "все адреса на месте" }
 }

@@ -13,16 +13,28 @@
  */
 export type StatusMark = { status?: string; color?: string; hint?: string };
 
-/** `description` — вторая строка: там проверка говорит, что именно разошлось (решение 0010). */
-export type LinkNode = StatusMark & { label?: string; link?: string; description?: string };
+/**
+ * Что git говорит про файл узла — решение 0023. Буква, а не `status`: цвет у узла один и занят
+ * статусом метрики, а показать надо и цвет, и букву, как в редакторе.
+ *
+ * Строкой, а не объектом: поле висит на каждом узле каждого дерева и целиком уезжает агенту
+ * через MCP; расшифровку для тултипа знает клиент, и повторять её в данных незачем.
+ */
+export type GitLetter = "M" | "A" | "D" | "U" | "C";
+export type GitMark = { git?: GitLetter };
 
-export type TreeNode = StatusMark & {
-  label?: string;
-  link?: string;
-  description?: string;
-  isDir?: boolean;
-  children?: TreeNode[];
-};
+/** `description` — вторая строка: там проверка говорит, что именно разошлось (решение 0010). */
+export type LinkNode = StatusMark &
+  GitMark & { label?: string; link?: string; description?: string };
+
+export type TreeNode = StatusMark &
+  GitMark & {
+    label?: string;
+    link?: string;
+    description?: string;
+    isDir?: boolean;
+    children?: TreeNode[];
+  };
 
 export type MapRelation = { label?: string; link?: string; from?: string; to?: string };
 

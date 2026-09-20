@@ -23,8 +23,18 @@ export type FilesPort = {
   write(path: string, text: string): Promise<void>;
   /** Убрать файл. Файла нет — это тоже успех: удаление зовут ради того, чтобы его не стало. */
   remove(path: string): Promise<void>;
-  /** Следит за деревом и зовёт обратно с путём того, что изменилось. */
-  watch(root: string, onChange: (path: string) => void): () => void;
+  /**
+   * Следит за деревом и зовёт обратно с путём того, что изменилось.
+   *
+   * За чем именно следить, говорит зовущий: у карты это `json` и `md`, а у git-статуса —
+   * `.git/index` и `.git/HEAD`, под которые ни одно расширение не подходит (решение 0023).
+   * Без `include` берётся умолчание приложения — то, чем карта следилась всегда.
+   */
+  watch(
+    root: string,
+    onChange: (path: string) => void,
+    options?: { include?: string[] },
+  ): () => void;
 };
 
 export type ProcessResult = { stdout: string; stderr: string };

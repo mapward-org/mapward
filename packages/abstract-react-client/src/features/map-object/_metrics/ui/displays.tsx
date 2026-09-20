@@ -1,31 +1,44 @@
 import type { ReactNode } from "react";
-import type { DisplayData, LinkNode, MapRelation, StatusMark } from "../pure-model/display.ts";
-import { placeholder } from "../pure-model/display.ts";
+import type {
+  DisplayData,
+  GitMark as Mark,
+  LinkNode,
+  MapRelation,
+  StatusMark,
+} from "../pure-model/display.ts";
+import { gitColor, placeholder } from "../pure-model/display.ts";
 import { FileTree } from "./file-tree.tsx";
+import { GitMark } from "./git-mark.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
 function Link(props: {
-  node: StatusMark & { label?: string; link?: string };
+  node: StatusMark & Mark & { label?: string; link?: string };
   onOpen: (link: string) => void;
 }) {
   const { node } = props;
   const text = node.label ?? node.link ?? "—";
+  // Цвет git перебивает цвет ссылки: пометка про файл важнее того, что по нему можно кликнуть.
+  const color = gitColor(node);
   const body = node.link ? (
     <button
       type="button"
       onClick={() => props.onOpen(node.link ?? "")}
+      style={color ? { color } : undefined}
       className="truncate text-left text-[var(--mw-textLink-foreground)] hover:underline"
     >
       {text}
     </button>
   ) : (
-    <span className="truncate">{text}</span>
+    <span className="truncate" style={color ? { color } : undefined}>
+      {text}
+    </span>
   );
 
   return (
     <span className="flex items-center gap-1">
       <StatusDot mark={node} />
       {body}
+      <GitMark mark={node} />
     </span>
   );
 }

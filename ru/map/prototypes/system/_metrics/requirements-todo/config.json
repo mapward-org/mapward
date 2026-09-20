@@ -9,6 +9,6 @@
       "content": true
     }
   ],
-  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own --todo" }],
+  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own --todo" }, { "kind": "git-status" }],
   "display": { "kind": "tree", "empty": "всё сделано" }
 }

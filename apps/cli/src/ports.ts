@@ -54,9 +54,21 @@ const files = {
     await rm(path, { force: true });
   },
 
-  watch(root: string, onChange: (path: string) => void): () => void {
+  /** За чем следить, вправе сказать зовущий — решение 0023: имена сверяются с `include`. */
+  watch(
+    root: string,
+    onChange: (path: string) => void,
+    options?: { include?: string[] },
+  ): () => void {
+    const include = options?.include;
     const watcher = watch(root, { recursive: true }, (_event, name) => {
-      if (name) onChange(`${root}/${String(name)}`);
+      if (!name) return;
+      const path = String(name).replaceAll("\\", "/");
+      // Имена вроде `index` и `HEAD` сверяются целиком: глоб здесь не нужен, а нужен отбор.
+      if (include && !include.some((wanted) => path === wanted || path.endsWith(`/${wanted}`))) {
+        return;
+      }
+      onChange(`${root}/${path}`);
     });
     return () => watcher.close();
   },

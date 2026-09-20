@@ -1,10 +1,18 @@
-import type { DisplayShape, LinkNode, MapRelation, StatusMark, TreeNode } from "@mapward/core";
+import type {
+  DisplayShape,
+  GitLetter,
+  GitMark,
+  LinkNode,
+  MapRelation,
+  StatusMark,
+  TreeNode,
+} from "@mapward/core";
 
 /**
  * Формы приходят из `core` — они общие с сервером (решение 0014). Здесь только то, что делает
  * с ними клиент: разбор пришедшего и цвета статусов.
  */
-export type { LinkNode, MapRelation, StatusMark, TreeNode };
+export type { GitLetter, GitMark, LinkNode, MapRelation, StatusMark, TreeNode };
 
 /**
  * К формам из `core` клиент добавляет свой случай: пришло не то, и это надо показать. Формы
@@ -28,6 +36,33 @@ export function statusColor(mark: StatusMark): string | undefined {
 }
 
 export const statusHint = (mark: StatusMark): string | undefined => mark.hint ?? mark.status;
+
+/**
+ * Цвета git — те же, что в проводнике редактора: пометка переносится из него, и читаться должна
+ * так же (решение 0023). Буква рядом с цветом, потому что цвет один язык, а буква другой:
+ * дальтонику и в чёрно-белой теме остаётся буква.
+ */
+const GIT_COLOR: Record<GitLetter, string> = {
+  M: "var(--mw-gitDecoration-modifiedResourceForeground, #e2c08d)",
+  A: "var(--mw-gitDecoration-addedResourceForeground, #81b88b)",
+  D: "var(--mw-gitDecoration-deletedResourceForeground, #c74e39)",
+  U: "var(--mw-gitDecoration-untrackedResourceForeground, #73c991)",
+  C: "var(--mw-gitDecoration-conflictingResourceForeground, #e4676b)",
+};
+
+const GIT_HINT: Record<GitLetter, string> = {
+  M: "изменён",
+  A: "добавлен",
+  D: "удалён",
+  U: "не отслеживается",
+  C: "конфликт",
+};
+
+export const gitColor = (mark: GitMark): string | undefined =>
+  mark.git ? GIT_COLOR[mark.git] : undefined;
+
+export const gitHint = (mark: GitMark): string | undefined =>
+  mark.git ? GIT_HINT[mark.git] : undefined;
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};

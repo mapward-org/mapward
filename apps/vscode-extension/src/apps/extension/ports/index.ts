@@ -64,11 +64,23 @@ const files = {
 
   /**
    * Markdown считается картой наравне с json: директивы и экшоны — `.md`, и статус директивы
-   * читается из её текста.
+   * читается из её текста. За чем следить, вправе сказать зовущий — решение 0023: у `.git/index`
+   * расширения нет вовсе, и под умолчание он не подходит.
    */
-  watch(root: string, onChange: (path: string) => void): () => void {
+  watch(
+    root: string,
+    onChange: (path: string) => void,
+    options?: { include?: string[] },
+  ): () => void {
+    const include = options?.include ?? [];
+    const pattern =
+      include.length === 0
+        ? "**/*.{json,md}"
+        : include.length === 1
+          ? (include[0] as string)
+          : `{${include.join(",")}}`;
     const watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(uri(root), "**/*.{json,md}"),
+      new vscode.RelativePattern(uri(root), pattern),
     );
     const handle = (changed: vscode.Uri) => onChange(changed.fsPath);
     watcher.onDidCreate(handle);

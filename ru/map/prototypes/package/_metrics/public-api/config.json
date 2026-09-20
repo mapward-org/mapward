@@ -8,5 +8,6 @@
     }
   ],
   "collectorsCache": true,
+  "transforms": [{ "kind": "git-status" }],
   "display": { "kind": "link" }
 }

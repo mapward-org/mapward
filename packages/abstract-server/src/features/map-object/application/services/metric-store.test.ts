@@ -353,3 +353,209 @@ test("the refresh button runs after a read that skipped by freshness", async () 
 
   expect(ports.runs()).toBe(2);
 });
+
+/**
+ * Карта с метрикой, у которой встроенный шаг: коллектор статичный, чтобы стадия сбора не мешала
+ * смотреть на стадию трансформа.
+ */
+const markedTree = {
+  "/map/_index.json": JSON.stringify({ name: "Карта" }),
+  "/map/_metrics/marked/config.json": JSON.stringify({
+    label: "Файлы",
+    refresh: "on-display",
+    collectors: [{ kind: "static", value: { children: [{ label: "a.ts", link: "/repo/a.ts" }] } }],
+    transforms: [{ kind: "git-status" }],
+    // Сроки заданы нарочно большими: по ним стадия трансформа обязана считаться свежей.
+    collectorsStaleTime: 600_000,
+    transformsStaleTime: 600_000,
+    display: { kind: "tree" },
+  }),
+};
+
+/**
+ * Git отвечает по-разному на первый и второй прогон: по тому, доехала ли вторая пометка до
+ * значения, и видно, считалась стадия трансформа заново или её удержала свежесть.
+ *
+ * Часы идут вперёд на пять секунд за взгляд: кэш статуса живёт две, и без хода времени второй
+ * прогон читал бы собранное в первый.
+ */
+function gitPorts(files: Record<string, string>): ServerPorts {
+  const base = fakePorts(files);
+  let asked = 0;
+  let clock = Date.parse("2026-09-19T12:00:00.000Z");
+
+  return {
+    ...base,
+    clock: {
+      now: () => {
+        clock += 5000;
+        return new Date(clock).toISOString();
+      },
+    },
+    shell: {
+      ...base.shell,
+      run: (command, options) => {
+        if (command.startsWith("git rev-parse")) {
+          return Promise.resolve({ stdout: "/repo\n/repo/.git\n", stderr: "" });
+        }
+        if (command.startsWith("git status")) {
+          asked += 1;
+          return Promise.resolve({ stdout: asked === 1 ? "" : " M a.ts\0", stderr: "" });
+        }
+        return base.shell.run(command, options);
+      },
+    },
+  };
+}
+
+const letterOfFirstChild = (snapshot: Record<string, { data?: unknown }>): string | undefined =>
+  (snapshot["mapward://_metrics/marked"]?.data as { children?: { git?: string }[] } | undefined)
+    ?.children?.[0]?.git;
+
+test("встроенному шагу свежесть не считается: пометка обновляется, пока сбор стоит", async () => {
+  const ports = gitPorts(markedTree);
+  const store = createMetricStore(ports, () => objectOf(ports));
+
+  const first = await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+  expect(letterOfFirstChild(first)).toBeUndefined();
+
+  const second = await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+  // `transformsStaleTime` на шаг со своим состоянием не действует — решение 0023.
+  expect(letterOfFirstChild(second)).toBe("M");
+});
+
+test("обычный трансформ той же свежестью удерживается", async () => {
+  const scripted = {
+    "/map/_index.json": JSON.stringify({ name: "Карта" }),
+    "/map/_metrics/marked/config.json": JSON.stringify({
+      label: "Файлы",
+      refresh: "on-display",
+      collectors: [{ kind: "static", value: { children: [] } }],
+      transforms: [{ kind: "script", run: "cat" }],
+      collectorsStaleTime: 600_000,
+      transformsStaleTime: 600_000,
+      display: { kind: "tree" },
+    }),
+  };
+
+  const ports = gitPorts(scripted);
+  let piped = 0;
+  const counted: ServerPorts = {
+    ...ports,
+    shell: {
+      ...ports.shell,
+      pipe: (...args) => {
+        piped += 1;
+        return ports.shell.pipe(...args);
+      },
+    },
+  };
+  const store = createMetricStore(counted, () =>
+    readMap(counted.files, ref.mapPath, ref.basePath, ref.name),
+  );
+
+  await store.read(ref, await readMap(counted.files, ref.mapPath, ref.basePath, ref.name), {
+    refresh: "on-display",
+  });
+  await store.read(ref, await readMap(counted.files, ref.mapPath, ref.basePath, ref.name), {
+    refresh: "on-display",
+  });
+
+  expect(piped).toBe(1);
+});
+
+/** Крутим микротаски, пока не сойдётся условие: прогон здесь весь на моках. */
+function spin(ok: () => boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let ticks = 0;
+    const tick = () => {
+      if (ok()) {
+        resolve();
+        return;
+      }
+      if (++ticks > 2000) {
+        reject(new Error("значение так и не пришло"));
+        return;
+      }
+      void Promise.resolve().then(tick);
+    };
+    tick();
+  });
+}
+
+test("тик вотчера гонит один трансформ: коллекторы не трогаются", async () => {
+  const scripted = {
+    "/map/_index.json": JSON.stringify({ name: "Карта" }),
+    "/map/_metrics/marked/config.json": JSON.stringify({
+      label: "Файлы",
+      refresh: "on-display",
+      // Срок сбору не задан нарочно: сбор протух, и не побежал он только потому, что тик
+      // вотчера гонит одну стадию — решение 0023.
+      collectors: [{ kind: "script", run: "echo tree" }],
+      transforms: [{ kind: "git-status" }],
+      display: { kind: "tree" },
+    }),
+  };
+
+  const ports = gitPorts(scripted);
+  let collects = 0;
+  let poke: (() => void) | undefined;
+
+  const watched: ServerPorts = {
+    ...ports,
+    files: {
+      ...ports.files,
+      watch: (root, onChange, options) => {
+        // Вотчер встроенного шага узнаётся по `include`: карта следится без него.
+        if (!options?.include) return ports.files.watch(root, onChange, options);
+        poke = () => onChange("index");
+        return () => {
+          poke = undefined;
+        };
+      },
+    },
+    shell: {
+      ...ports.shell,
+      run: (command, options) => {
+        if (command.startsWith("echo")) {
+          collects += 1;
+          return Promise.resolve({
+            stdout: JSON.stringify({ children: [{ label: "a.ts", link: "/repo/a.ts" }] }),
+            stderr: "",
+          });
+        }
+        return ports.shell.run(command, options);
+      },
+    },
+    timers: {
+      ...ports.timers,
+      after: (_ms, run) => {
+        void Promise.resolve().then(run);
+        return () => undefined;
+      },
+    },
+  };
+
+  const store = createMetricStore(watched, () =>
+    readMap(watched.files, ref.mapPath, ref.basePath, ref.name),
+  );
+
+  let latest: Record<string, { data?: unknown }> = {};
+  const subscription = store.watch(ref, "mapward://").subscribe((snapshot) => {
+    latest = snapshot;
+  });
+
+  // Первый прогон: git отвечает пустым статусом, пометок нет.
+  await spin(() => latest["mapward://_metrics/marked"]?.data !== undefined);
+  expect(collects).toBe(1);
+  expect(letterOfFirstChild(latest)).toBeUndefined();
+
+  await spin(() => poke !== undefined);
+  poke?.();
+
+  await spin(() => letterOfFirstChild(latest) === "M");
+  // Стадия сбора не повторилась, хотя свежей её никто не объявлял.
+  expect(collects).toBe(1);
+
+  subscription.unsubscribe();
+});

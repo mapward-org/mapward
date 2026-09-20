@@ -6,6 +6,7 @@ import { createCancellation } from "../../../../lib/cancellation.ts";
 import { createLimit } from "../../../../lib/limit.ts";
 import { collect, readCache, writeLogs, type Collected } from "../use-cases/collect.ts";
 import { transform } from "../use-cases/transform.ts";
+import { createBuiltins } from "./builtin.ts";
 
 /** Что видно про метрику снаружи: значение, когда его собрали, чем кончилось и идёт ли прогон. */
 export type MetricValue = {
@@ -36,6 +37,15 @@ export type RunOptions = { collectorsTimeout?: number; transformsTimeout?: numbe
 export type ReadOptions = RunOptions & { refresh?: "none" | "on-display" };
 
 export type MapRef = { mapPath: string; basePath: string; name: string };
+
+/**
+ * Что форсить в прогоне — решение 0023.
+ *
+ * `false` — как раньше, по свежести; `"all"` — весь пайплайн, это кнопка обновления;
+ * `"transform"` — только стадия трансформа на уже собранных данных: так будит метрику вотчер
+ * встроенного шага, которому коллекторы перезапускать незачем.
+ */
+type Force = false | "all" | "transform";
 
 type Entry = {
   /** Результат стадии сбора — от него считается свежесть коллекторов. */
@@ -84,6 +94,9 @@ export function createMetricStore(
   const changes = new Subject<string>();
   // По умолчанию лимита нет: метрик немного, и ждать друг друга им незачем.
   const limited = createLimit(settings.metricsConcurrency);
+  // Встроенные шаги живут у стора: у них своё состояние, и на каждый прогон заводить его заново
+  // значило бы гонять git по разу на метрику — решение 0023.
+  const builtins = createBuiltins(ports);
 
   const entriesOf = (mapPath: string) => {
     const existing = maps.get(mapPath);
@@ -131,7 +144,7 @@ export function createMetricStore(
     ref: MapRef,
     metric: MapMetric,
     owner: MapObject,
-    force: boolean,
+    force: Force,
     options: RunOptions = {},
   ): Promise<void> {
     const entry = entryOf(ref.mapPath, metric.address);
@@ -141,11 +154,22 @@ export function createMetricStore(
     const collectorsStaleTime = config.collectorsStaleTime ?? settings.collectorsStaleTime;
     const transformsStaleTime = config.transformsStaleTime ?? settings.transformsStaleTime;
 
-    const needCollect = force || stale(entry.collected?.updatedAt, collectorsStaleTime);
+    // Тик вотчера гонит один трансформ: сбор за ним не идёт даже протухшим. Иначе правка в `.git`
+    // поднимала бы агента у метрики, которая собирается промптом, — решение 0023.
+    if (force === "transform" && !entry.collected) return;
+
+    const needCollect =
+      force === "all" ||
+      (force !== "transform" && stale(entry.collected?.updatedAt, collectorsStaleTime));
     const hasTransforms = (config.transforms ?? []).length > 0;
+    // Шагу со своим состоянием свежесть не считается: его ответ протухает от `.git`, а не от
+    // часов, и `transformsStaleTime` удержал бы на экране пометку вчерашнего дня — решение 0023.
     const needTransform =
       hasTransforms &&
-      (force || needCollect || stale(entry.result?.updatedAt, transformsStaleTime));
+      (force !== false ||
+        needCollect ||
+        builtins.stateful(config) ||
+        stale(entry.result?.updatedAt, transformsStaleTime));
 
     if (!needCollect && !needTransform) return;
 
@@ -191,6 +215,7 @@ export function createMetricStore(
             );
             return transform(
               ports,
+              builtins,
               metric,
               owner,
               ref.mapPath,
@@ -245,7 +270,7 @@ export function createMetricStore(
     ref: MapRef,
     metric: MapMetric,
     owner: MapObject,
-    force: boolean,
+    force: Force,
     options: RunOptions = {},
   ): Promise<void> {
     const entry = entryOf(ref.mapPath, metric.address);
@@ -288,6 +313,16 @@ export function createMetricStore(
         push();
 
         for (const metric of metrics) {
+          // Вотчер встроенного шага живёт, пока объект открыт, — как интервал, и гаснет там же.
+          // Ставится и у `manual`: кнопки ждёт сбор, а пометка про файл идёт от `.git` сама
+          // (решение 0023).
+          for (const step of builtins.stepsOf(metric.config)) {
+            const data = entryOf(ref.mapPath, metric.address).result?.data;
+            timers.push(
+              step.watch(data, object.path, () => void start(ref, metric, object, "transform")),
+            );
+          }
+
           const refresh = metric.config.refresh ?? "manual";
           if (refresh === "manual") continue;
 
@@ -298,7 +333,7 @@ export function createMetricStore(
           if (!interval) continue;
           // Интервал тикает, пока объект открыт хотя бы в одном виде.
           timers.push(
-            ports.timers.every(Number(interval), () => void start(ref, metric, object, true)),
+            ports.timers.every(Number(interval), () => void start(ref, metric, object, "all")),
           );
         }
       })();
@@ -374,7 +409,7 @@ export function createMetricStore(
     const map = await readMap(ref);
     const found = findMetricOwner(map, metricAddress);
     if (!found) throw new Error(`Метрика ${metricAddress} не найдена`);
-    const running = start(ref, found.metric, found.object, true, options);
+    const running = start(ref, found.metric, found.object, "all", options);
     if (options.wait !== false) await waitAtMost(running, options);
     return valueOf(entryOf(ref.mapPath, metricAddress));
   }

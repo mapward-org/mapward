@@ -16,6 +16,20 @@
   --mw-editor-background: var(--vscode-editor-background);
   --mw-errorForeground: var(--vscode-errorForeground);
   --mw-foreground: var(--vscode-foreground);
+  /* Пометки git — те же цвета, что у проводника: пометка должна читаться одинаково (0023) */
+  --mw-gitDecoration-addedResourceForeground: var(--vscode-gitDecoration-addedResourceForeground);
+  --mw-gitDecoration-conflictingResourceForeground: var(
+    --vscode-gitDecoration-conflictingResourceForeground
+  );
+  --mw-gitDecoration-deletedResourceForeground: var(
+    --vscode-gitDecoration-deletedResourceForeground
+  );
+  --mw-gitDecoration-modifiedResourceForeground: var(
+    --vscode-gitDecoration-modifiedResourceForeground
+  );
+  --mw-gitDecoration-untrackedResourceForeground: var(
+    --vscode-gitDecoration-untrackedResourceForeground
+  );
   --mw-list-hoverBackground: var(--vscode-list-hoverBackground);
   --mw-menu-background: var(--vscode-menu-background);
   --mw-menu-border: var(--vscode-menu-border);

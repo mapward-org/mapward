@@ -1,7 +1,9 @@
 import { useState } from "react";
 import type { TreeNode } from "../pure-model/display.ts";
+import { gitColor } from "../pure-model/display.ts";
 import { fileIcon } from "../pure-model/file-icon.ts";
 import { useIcon } from "../../../../ports/icons.tsx";
+import { GitMark } from "./git-mark.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
 const Chevron = (props: { open: boolean; visible: boolean }) => (
@@ -30,7 +32,11 @@ function Row(props: { node: TreeNode; depth: number; onOpen: (link: string) => v
       >
         <Chevron open={open} visible={folder} />
         {icon(fileIcon(node.label ?? "", folder), "shrink-0 opacity-80")}
-        <span className="truncate">{node.label}</span>
+        {/* Имя красится цветом git — так же, как в проводнике редактора (решение 0023). */}
+        <span className="truncate" style={{ color: gitColor(node) }}>
+          {node.label}
+        </span>
+        <GitMark mark={node} folder={folder} />
         <StatusDot mark={node} />
       </button>
 

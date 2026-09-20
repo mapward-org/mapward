@@ -4,5 +4,6 @@
   "collectors": [
     { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs" }
   ],
+  "transforms": [{ "kind": "git-status" }],
   "display": { "kind": "tree" }
 }

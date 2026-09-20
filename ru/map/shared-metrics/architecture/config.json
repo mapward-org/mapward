@@ -4,5 +4,6 @@
   "collectors": [
     { "kind": "static", "value": { "label": "${{ mapward://~#props.architectureDoc }}", "link": "${{ mapward://@ }}/${{ mapward://~#props.architectureDoc }}" } }
   ],
+  "transforms": [{ "kind": "git-status" }],
   "display": { "kind": "link" }
 }

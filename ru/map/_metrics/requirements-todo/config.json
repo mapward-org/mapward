@@ -4,6 +4,6 @@
   "collectors": [
     { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }
   ],
-  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --todo" }],
+  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --todo" }, { "kind": "git-status" }],
   "display": { "kind": "tree", "empty": "всё сделано" }
 }

@@ -4,5 +4,6 @@
   "collectors": [
     { "kind": "static", "value": { "label": "packages.md", "link": "${{ mapward://@ }}/ru/docs/architecture/packages.md" } }
   ],
+  "transforms": [{ "kind": "git-status" }],
   "display": { "kind": "link" }
 }

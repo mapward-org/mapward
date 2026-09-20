@@ -10,6 +10,6 @@
       "content": true
     }
   ],
-  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own" }],
+  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own" }, { "kind": "git-status" }],
   "display": { "kind": "tree", "empty": "требований нет" }
 }

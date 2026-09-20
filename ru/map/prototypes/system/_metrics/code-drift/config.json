@@ -8,5 +8,6 @@
       "prompt": "Реестр требований — ${{ mapward://~#props.requirementsPath }}, код объекта — ${{ mapward://~#props.fullPath }}. Твои требования те, у кого в frontmatter object совпадает с адресом объекта выше. Прочитай из них каждое со статусом implemented или implementing и проверь по коду, правда ли оно выполнено. Верни только те, где код разошёлся с требованием: label — заголовок требования, description — в чём именно расхождение, link — путь к файлу требования, status — fail. Если расхождений нет, верни пустой список."
     }
   ],
+  "transforms": [{ "kind": "git-status" }],
   "display": { "kind": "list", "empty": "не проверялось" }
 }

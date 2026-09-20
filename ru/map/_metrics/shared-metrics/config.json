@@ -7,5 +7,6 @@
       "basePath": "${{ mapward:// }}/shared-metrics"
     }
   ],
+  "transforms": [{ "kind": "git-status" }],
   "display": { "kind": "tree" }
 }

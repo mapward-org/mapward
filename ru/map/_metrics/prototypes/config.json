@@ -7,5 +7,6 @@
       "basePath": "${{ mapward:// }}/prototypes"
     }
   ],
+  "transforms": [{ "kind": "git-status" }],
   "display": { "kind": "tree" }
 }
