@@ -14,6 +14,10 @@ export function useStored<T>(store: Store, key: string, initial: T): [T, (value:
 
   useEffect(() => {
     let alive = true;
+    // Сменился ключ — это состояние другого объекта. Не сбросив своё, компонент показывал бы
+    // чужое: стор про новый ключ может не знать ничего, и тогда прежнее осталось бы навсегда,
+    // а первая же запись сохранила бы чужие ключи под новым адресом.
+    setValue(initial);
     void store.get(key).then((stored) => {
       if (alive && stored !== undefined) setValue(stored as T);
     });

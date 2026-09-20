@@ -58,7 +58,10 @@ export function MetricGrid(props: {
             key={metric.address}
             gridArea={metric.key}
             label={metric.config.label ?? metric.key}
-            freshness={metric.config.collectorsCache ? ago(value?.updatedAt, now) : undefined}
+            // `updatedAt` — время получения содержимого, а не чтения (0013), поэтому время
+            // осмысленно и без файлового кэша: значение живёт в сторе и переживает уход
+            // с объекта. Нет значения — `ago` сам вернёт ничего.
+            freshness={ago(value?.updatedAt, now)}
             ok={value?.ok}
             busy={busy.has(metric.address)}
             hidden={isFolded(metric.key, metric.config.collapsed)}

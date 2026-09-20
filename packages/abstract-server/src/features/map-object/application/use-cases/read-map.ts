@@ -24,7 +24,8 @@ const DIRECTIVES = "_directives";
 const ACTIONS = "_actions";
 const STATE = "_directives.state";
 const WORKFLOW = "_directives.workflow";
-const SERVICE = new Set([METRICS, DIRECTIVES, ACTIONS, STATE, WORKFLOW]);
+/** Служебное начинается с `_` — решение 0002. Остальное в папке карты это её содержимое. */
+const isService = (name: string) => name.startsWith("_");
 
 async function readJson(files: FilesPort, path: string): Promise<unknown> {
   const text = await files.read(path);
@@ -154,7 +155,7 @@ async function readTree(
 
   const children: MapObject[] = [];
   for (const entry of await files.list(path)) {
-    if (!entry.isDirectory || SERVICE.has(entry.name)) continue;
+    if (!entry.isDirectory || isService(entry.name)) continue;
     // Depth first: children are read in the order they will be listed.
     // oxlint-disable-next-line no-await-in-loop
     const node = await readTree(
@@ -175,6 +176,7 @@ async function readTree(
     previewSize: own["preview-size"],
     previewLayout: own["preview-metrics-layout"],
     detailsLayout: own["details-metrics-layout"],
+    previewStyle: own["preview-style"],
     metrics: await readMetrics(files, path, address),
     directives: await readDirectives(files, path),
     actions: await readFiles(files, join(path, ACTIONS)),
@@ -293,6 +295,7 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
       "preview-size": prototype.previewSize,
       "preview-metrics-layout": prototype.previewLayout,
       "details-metrics-layout": prototype.detailsLayout,
+      "preview-style": prototype.previewStyle,
     },
     {
       name: object.name,
@@ -300,6 +303,7 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
       "preview-size": object.previewSize,
       "preview-metrics-layout": object.previewLayout,
       "details-metrics-layout": object.detailsLayout,
+      "preview-style": object.previewStyle,
     },
   );
 
@@ -308,6 +312,7 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   object.previewSize = merged["preview-size"];
   object.previewLayout = merged["preview-metrics-layout"];
   object.detailsLayout = merged["details-metrics-layout"];
+  object.previewStyle = merged["preview-style"];
 
   // Metrics of the prototype come along; a metric of the same key overrides its parent.
   const own = new Map(object.metrics.map((metric) => [metric.key, metric]));

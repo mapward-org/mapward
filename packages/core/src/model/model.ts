@@ -87,6 +87,8 @@ export type MapObject = {
   previewSize?: { w: number; h: number };
   previewLayout?: Layout;
   detailsLayout?: Layout;
+  /** Стили карточки превью поверх умолчаний — решение 0003. */
+  previewStyle?: Record<string, string>;
   metrics: MapMetric[];
   directives: MapFile[];
   actions: MapFile[];

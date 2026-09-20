@@ -23,7 +23,11 @@ function matches(address: string, glob: string): boolean {
  * decision 0004. Groups have no `_index.json` of their own, so their children rise a level:
  * a group is a folder, not a thing on the map.
  */
-export function childrenMap(object: MapObject, exclude: string[] = []): ChildrenMap {
+export function childrenMap(
+  object: MapObject,
+  exclude: string[] = [],
+  include: string[] = [],
+): ChildrenMap {
   const nodes: MapNode[] = [];
   const relations: MapRelation[] = [];
 
@@ -34,6 +38,11 @@ export function childrenMap(object: MapObject, exclude: string[] = []): Children
       for (const inner of child.children) visit(inner);
       return;
     }
+
+    // `exclude` режет ветку целиком, а `include` спрашивается только у того, кто попал бы на
+    // карту: группа — это папка, её адрес на карте не показывается, и отбор по нему вырезал бы
+    // всё вместе с ней. Пустой `include` не отбирает ничего — иначе он значил бы «ничего».
+    if (include.length > 0 && !include.some((glob) => matches(child.address, glob))) return;
 
     const { from, to } = child.props as { from?: string; to?: string };
     if (from && to) relations.push({ label: child.name, link: child.address, from, to });

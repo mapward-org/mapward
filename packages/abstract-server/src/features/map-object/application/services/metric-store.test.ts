@@ -254,3 +254,98 @@ test("an expired timeout is a failure, not a cancel", async () => {
   expect(value?.ok).toBe(false);
   expect(value?.updatedAt).toBeDefined();
 });
+
+test("an expired timeout says so in the log", async () => {
+  const writes: Record<string, string> = {};
+  const base = fakePorts({
+    ...tree,
+    "/map/_metrics/version/config.json": JSON.stringify({
+      label: "Версия",
+      refresh: "on-display",
+      collectorsTimeout: 5,
+      collectors: [{ kind: "script", run: "sleep forever" }],
+      display: { kind: "text" },
+    }),
+  });
+
+  const ports: ServerPorts = {
+    ...base,
+    files: {
+      ...base.files,
+      write: (path, text) => {
+        writes[path] = text;
+        return Promise.resolve();
+      },
+    },
+    shell: {
+      ...base.shell,
+      run: (_command, options) =>
+        new Promise((_resolve, reject) => {
+          options.cancel?.onCancel(() => reject(new Error("убит")));
+        }),
+    },
+    timers: {
+      ...base.timers,
+      after: (_ms, run) => {
+        void Promise.resolve().then(run);
+        return () => undefined;
+      },
+    },
+  };
+
+  const store = createMetricStore(ports, () => objectOf(ports));
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+
+  // Снятый по времени прогон падает отменой и до своей записи не доходит, поэтому причину
+  // пишет стор: без неё красная точка ведёт в пустоту.
+  expect(writes["/map/_metrics/version/collect.logs.json"]).toContain("время вышло");
+  expect(writes["/map/_metrics/version/collect.logs.json"]).toContain("5");
+});
+
+test("a failed collect keeps the value that was already shown", async () => {
+  const base = fakePorts({
+    ...tree,
+    // Кэша на диске нет намеренно: прошлое значение живёт только в сторе.
+    "/map/_metrics/version/config.json": JSON.stringify({
+      label: "Версия",
+      collectors: [{ kind: "script", run: "echo hi" }],
+      display: { kind: "text" },
+    }),
+  });
+
+  let attempt = 0;
+  const ports: ServerPorts = {
+    ...base,
+    shell: {
+      ...base.shell,
+      run: (...args) => {
+        attempt += 1;
+        return attempt === 1 ? base.shell.run(...args) : Promise.reject(new Error("скрипт упал"));
+      },
+    },
+  };
+
+  const store = createMetricStore(ports, () => objectOf(ports));
+  const first = await store.run(ref, "mapward://_metrics/version");
+  expect(first.data).toEqual({ text: "из скрипта" });
+
+  const second = await store.run(ref, "mapward://_metrics/version");
+  expect(second.ok).toBe(false);
+  // Значение было верным, обновить его не смогли — это честнее пустоты (решение 0004).
+  expect(second.data).toEqual({ text: "из скрипта" });
+});
+
+test("the refresh button runs after a read that skipped by freshness", async () => {
+  const ports = countingPorts(tree);
+  const store = createMetricStore(ports, () => objectOf(ports), { collectorsStaleTime: 600_000 });
+
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+  await store.read(ref, await objectOf(ports), { refresh: "on-display" });
+  expect(ports.runs()).toBe(1);
+
+  // Пропуск по свежести — это тоже конец прогона: не сняв отметку, метрика замерла бы навсегда
+  // и кнопка обновления перестала бы работать вместе с тиками интервала.
+  await store.run(ref, "mapward://_metrics/version");
+
+  expect(ports.runs()).toBe(2);
+});

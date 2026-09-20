@@ -235,3 +235,17 @@ test("an object without stages of its own gets the default workflow", async () =
   expect(core?.workflow.every((stage) => stage.path === "")).toBe(true);
   expect(core?.workflow.find((stage) => stage.marksDone)?.name).toBe("Выполнить");
 });
+
+test("a folder starting with an underscore is service, whatever its name", async () => {
+  const files = fakeFiles({
+    "/map/_index.json": JSON.stringify({ name: "Карта" }),
+    "/map/packages/_index.json": JSON.stringify({ name: "Пакеты" }),
+    // Служебное перечислять по именам нельзя: правило про `_` шире того, что уже придумано.
+    "/map/_drafts/черновик.md": "не объект",
+    "/map/_directives.logs/вчера.json": "{}",
+  });
+
+  const map = await readMap(files, MAP, "/repo", "Карта");
+
+  expect(map.children.map((child) => child.name)).toEqual(["Пакеты"]);
+});

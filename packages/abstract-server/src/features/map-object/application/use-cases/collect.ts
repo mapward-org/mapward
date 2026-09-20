@@ -129,7 +129,8 @@ async function collector(
     }
     case "object-children-map": {
       const exclude = strings(spec.exclude) ?? [];
-      return { value: childrenMap(owner, exclude) };
+      const include = strings(spec.include) ?? [];
+      return { value: childrenMap(owner, exclude, include) };
     }
     default:
       throw new Error(`Коллектор ${String(spec.kind)} ещё не поддержан`);
@@ -187,11 +188,17 @@ export async function collect(
   owner: MapObject,
   cwd: string,
   cancel?: Cancellation,
+  previous?: Collected,
 ): Promise<Collected> {
   const specs = metric.config.collectors ?? [];
-  const previous = metric.config.collectorsCache
-    ? await readCache(ports.files, metric, "collect.json")
-    : undefined;
+  // Прошлое значение — сперва то, что уже показано, потом кэш на диске. У метрики без
+  // `collectorsCache` диска нет вовсе, но показанное значение было, и неудача его не отменяет:
+  // правило «при неуспехе данные не затираются» не про то, где они лежали.
+  const before =
+    previous ??
+    (metric.config.collectorsCache
+      ? await readCache(ports.files, metric, "collect.json")
+      : undefined);
 
   try {
     const results = await Promise.all(
@@ -220,7 +227,7 @@ export async function collect(
     const failed: Collected = {
       updatedAt: ports.clock.now(),
       ok: false,
-      data: previous?.data,
+      data: before?.data,
     };
     await write(ports, metric, failed, error instanceof Error ? error.message : String(error));
     return failed;

@@ -1,7 +1,8 @@
 {
-  "updatedAt": "2026-09-18T23:50:41.564Z",
+  "updatedAt": "2026-09-20T13:31:26.869Z",
   "ok": true,
   "data": {
-    "ok": true
+    "ok": false,
+    "summary": "12 предупреждений, 0 ошибок. oxc(no-map-spread) — 8: mcp.ts:52 и :115, read-map.ts:57 (4 раза), :253, :264; eslint(no-await-in-loop) — 4: mcp.test.ts:94, :212, :434 и read-map.ts:208."
   }
 }

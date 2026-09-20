@@ -4,7 +4,7 @@ import type { MapMetric, MapObject } from "@mapward/core";
 import type { ServerPorts } from "../../../../ports/index.ts";
 import { createCancellation } from "../../../../lib/cancellation.ts";
 import { createLimit } from "../../../../lib/limit.ts";
-import { collect, readCache, type Collected } from "../use-cases/collect.ts";
+import { collect, readCache, writeLogs, type Collected } from "../use-cases/collect.ts";
 import { transform } from "../use-cases/transform.ts";
 
 /** Что видно про метрику снаружи: значение, когда его собрали, чем кончилось и идёт ли прогон. */
@@ -149,12 +149,12 @@ export function createMetricStore(
 
     // Истёкшее время отменяет прогон теми же средствами, что кнопка, но неудачей считается
     // только оно: отмене нечего записать, а здесь ответ обещали и не дали — решение 0016.
-    let expired = false;
-    const deadline = (ms: number | undefined): (() => void) =>
+    let expired: { stage: "collect" | "transform"; ms: number } | undefined;
+    const deadline = (stage: "collect" | "transform", ms: number | undefined): (() => void) =>
       ms === undefined
         ? noop
         : ports.timers.after(ms, () => {
-            expired = true;
+            expired = { stage, ms };
             cancel();
           });
 
@@ -165,15 +165,23 @@ export function createMetricStore(
       const collected =
         needCollect || !entry.collected
           ? await limited(() => {
-              stopDeadline = deadline(options.collectorsTimeout ?? config.collectorsTimeout);
-              return collect(ports, metric, owner, ref.mapPath, token).finally(stopDeadline);
+              stopDeadline = deadline(
+                "collect",
+                options.collectorsTimeout ?? config.collectorsTimeout,
+              );
+              return collect(ports, metric, owner, ref.mapPath, token, entry.collected).finally(
+                stopDeadline,
+              );
             })
           : entry.collected;
       entry.collected = collected;
 
       entry.result = hasTransforms
         ? await limited(() => {
-            stopDeadline = deadline(options.transformsTimeout ?? config.transformsTimeout);
+            stopDeadline = deadline(
+              "transform",
+              options.transformsTimeout ?? config.transformsTimeout,
+            );
             return transform(
               ports,
               metric,
@@ -188,6 +196,16 @@ export function createMetricStore(
     } catch (error) {
       // Отмена — не неудача: значение остаётся прежним, писать нечего. Таймаут — неудача.
       if (expired) {
+        // Снятый по времени прогон до своего лога не доходит: он падает отменой, минуя запись.
+        // Поэтому причину пишем здесь — иначе красная точка ведёт в лог прошлого прогона или
+        // в пустоту, а «время вышло» не написано нигде.
+        await writeLogs(
+          ports.files,
+          metric,
+          expired.stage === "collect" ? "collect.logs.json" : "transform.logs.json",
+          `${expired.stage === "collect" ? "Сбор" : "Трансформ"} снят: время вышло, ` +
+            `предел ${expired.ms} мс.`,
+        );
         entry.result = {
           updatedAt: ports.clock.now(),
           ok: false,
@@ -204,12 +222,18 @@ export function createMetricStore(
       stopDeadline();
       entry.busy = false;
       entry.cancel = undefined;
-      entry.running = undefined;
       changes.next(ref.mapPath);
     }
   }
 
-  /** Один прогон на метрику: второй подписчик присоединяется к идущему, а не заводит свой. */
+  /**
+   * Один прогон на метрику: второй подписчик присоединяется к идущему, а не заводит свой.
+   *
+   * Отметку о прогоне снимает тот, кто её поставил, и снимает всегда: `runOnce` выходит и до
+   * своего `finally` — например когда значение свежее и делать нечего. Снимай её там, отметка
+   * пережила бы такой выход и залипла навсегда: `start` отдавал бы давно разрешённый промис,
+   * и ни кнопка обновления, ни тик интервала больше ничего бы не запускали.
+   */
   function start(
     ref: MapRef,
     metric: MapMetric,
@@ -219,7 +243,9 @@ export function createMetricStore(
   ): Promise<void> {
     const entry = entryOf(ref.mapPath, metric.address);
     if (entry.running) return entry.running;
-    const running = runOnce(ref, metric, owner, force, options);
+    const running: Promise<void> = runOnce(ref, metric, owner, force, options).finally(() => {
+      if (entry.running === running) entry.running = undefined;
+    });
     entry.running = running;
     return running;
   }
