@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { linkKind } from "@mapward/core";
 import { findObject, trail } from "@mapward/core";
+import type { MapFile } from "@mapward/core";
 import { useMap, useMapActions } from "../adapters/use-map.ts";
 import { useTerminals } from "../adapters/use-terminals.ts";
 import { useCapabilities } from "../adapters/use-capabilities.ts";
@@ -8,7 +9,7 @@ import { TerminalMenu } from "../ui/terminal-menu.tsx";
 import { MetricGrid } from "../_metrics/compose/metric-grid.tsx";
 import { ChildrenMapView } from "../_children-map/compose/children-map.tsx";
 import { Breadcrumbs } from "../ui/breadcrumbs.tsx";
-import { ActionsIcon, DirectivesIcon, IndexIcon } from "../ui/icons.tsx";
+import { ActionsIcon, DirectivesIcon, IndexIcon, WorkflowIcon } from "../ui/icons.tsx";
 import { MenuButton } from "../ui/menu-button.tsx";
 import { HeaderButton, ObjectHeader } from "../ui/object-header.tsx";
 import { Loading } from "../../../lib/ui/loading.tsx";
@@ -17,6 +18,17 @@ type Ref = { mapPath: string; basePath: string; name: string };
 
 /** Three states, straight from decision 0002: no copy, a different copy, the same copy. */
 const statusHint = { new: "новая", changed: "изменилась", done: "выполнена" };
+
+/**
+ * Кнопок запуска у директивы нет — её выполняет агент из терминала объекта (решение 0017).
+ * Зато видно, какой этап на ней шёл последним: отметку ставит сам прогон.
+ */
+const runHint = (file: MapFile): string | undefined =>
+  file.run === undefined
+    ? undefined
+    : file.run.finishedAt === undefined
+      ? `${file.run.stage}…`
+      : file.run.stage.toLowerCase();
 
 const statusColor = {
   new: "text-[var(--mw-charts-blue,#4a9)]",
@@ -64,7 +76,7 @@ export function MapObjectView(props: { mapConfig: Ref }) {
                 terminals={terminals.terminals}
                 onOpen={() => terminals.open()}
                 onFresh={() => terminals.open(true)}
-                onShow={() => terminals.open()}
+                onShow={terminals.show}
                 onClose={terminals.close}
               />
             )}
@@ -83,22 +95,28 @@ export function MapObjectView(props: { mapConfig: Ref }) {
                 items={current.directives.toReversed().map((file) => ({
                   key: file.path,
                   label: file.name,
-                  hint: statusHint[file.status ?? "new"],
+                  hint: runHint(file) ?? statusHint[file.status ?? "new"],
                   hintClass: statusColor[file.status ?? "new"],
                   onSelect: can.openFile ? () => actions.open(file.path) : () => undefined,
-                  runs: !can.terminals
-                    ? undefined
-                    : [
-                        { label: "проверить", onSelect: () => terminals.run(file.path, "check") },
-                        {
-                          label: "сухой прогон",
-                          onSelect: () => terminals.run(file.path, "dry-run"),
-                        },
-                        { label: "выполнить", onSelect: () => terminals.run(file.path, "run") },
-                      ],
                 }))}
               />
             )}
+            <MenuButton
+              title="Этапы директив"
+              icon={WorkflowIcon}
+              items={current.workflow.map((stage) => ({
+                key: stage.name,
+                label: stage.name,
+                // Откуда этап взялся: свой, от прототипа или дефолт инструмента. Иначе по
+                // экрану не отличить настроенный воркфлоу от встроенного (решение 0017).
+                hint: stage.path === "" ? "по умолчанию" : (stage.owner ?? "свой"),
+                hintClass: stage.marksDone ? statusColor.done : undefined,
+                onSelect:
+                  can.openFile && stage.path !== ""
+                    ? () => actions.open(stage.path)
+                    : () => undefined,
+              }))}
+            />
             {can.openFile && (
               <MenuButton
                 title="Экшоны"

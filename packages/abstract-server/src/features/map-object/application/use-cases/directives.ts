@@ -33,3 +33,88 @@ export async function createDirective(
   await ports.files.write(path, "\n## \n\n");
   return { path };
 }
+
+/**
+ * Состояние прогона пишет сервер, а не агент — решение 0017. Агент сообщает событие: этап
+ * начался, этап кончился. Формат состояния и копия текста — внутреннее дело карты.
+ *
+ * Копия снимается только этапом, которому поручено помечать выполнение: по ней потом видно,
+ * менялась ли директива после того, как её сделали. Этап без такого поручения оставляет след
+ * о прогоне, но директива остаётся незакрытой.
+ */
+export type DirectiveState = {
+  directive?: string;
+  status?: "done";
+  ran?: string;
+  run?: { stage: string; startedAt: string; finishedAt?: string };
+};
+
+const statePath = (objectPath: string, directive: string) =>
+  join(objectPath, "_directives.state", `${directive.replace(/\.md$/, "")}.state.json`);
+
+async function readState(
+  ports: ServerPorts,
+  objectPath: string,
+  directive: string,
+): Promise<DirectiveState> {
+  const raw = await ports.files.read(statePath(objectPath, directive));
+  if (raw === undefined) return {};
+  try {
+    return JSON.parse(raw) as DirectiveState;
+  } catch {
+    return {};
+  }
+}
+
+const writeState = (
+  ports: ServerPorts,
+  objectPath: string,
+  directive: string,
+  state: DirectiveState,
+) => ports.files.write(statePath(objectPath, directive), `${JSON.stringify(state, null, 2)}\n`);
+
+export async function startStage(
+  ports: ServerPorts,
+  params: { objectPath: string; directive: string; stage: string; now: Date },
+): Promise<void> {
+  const state = await readState(ports, params.objectPath, params.directive);
+  await writeState(ports, params.objectPath, params.directive, {
+    ...state,
+    run: { stage: params.stage, startedAt: params.now.toISOString() },
+  });
+}
+
+export async function finishStage(
+  ports: ServerPorts,
+  params: {
+    objectPath: string;
+    directivePath: string;
+    directive: string;
+    stage: string;
+    marksDone: boolean;
+    now: Date;
+  },
+): Promise<void> {
+  const state = await readState(ports, params.objectPath, params.directive);
+  const run = {
+    stage: params.stage,
+    startedAt: state.run?.stage === params.stage ? state.run.startedAt : params.now.toISOString(),
+    finishedAt: params.now.toISOString(),
+  };
+
+  if (!params.marksDone) {
+    await writeState(ports, params.objectPath, params.directive, { ...state, run });
+    return;
+  }
+
+  // Копия нужна побайтно: пересказ ломает сравнение, по которому выполненная директива
+  // отличается от изменившейся.
+  const text = await ports.files.read(params.directivePath);
+  await writeState(ports, params.objectPath, params.directive, {
+    ...state,
+    directive: text ?? "",
+    status: "done",
+    ran: params.now.toISOString(),
+    run,
+  });
+}

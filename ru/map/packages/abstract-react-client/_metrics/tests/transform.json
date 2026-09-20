@@ -1,8 +1,8 @@
 {
-  "updatedAt": "2026-09-19T23:33:37.113Z",
+  "updatedAt": "2026-09-20T01:29:42.233Z",
   "ok": true,
   "data": {
     "ok": true,
-    "summary": "Vitest 4.1.11 отработал в D:/my-space/mapward: тестовых файлов не найдено, выход с кодом 0"
+    "summary": "Vitest 4.1.11 отработал в D:/my-space/mapward, тестовых файлов не найдено, код выхода 0"
   }
 }

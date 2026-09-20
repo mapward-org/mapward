@@ -1,5 +1,5 @@
 export { readMap } from "./application/use-cases/read-map.ts";
-export { directivePrompt, objectPrompt } from "./domain/prompts.ts";
+export { objectPrompt, stagePrompt, defaultStages } from "./domain/prompts.ts";
 export {
   collect,
   readCache,

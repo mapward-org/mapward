@@ -17,6 +17,14 @@ export const ObjectIndex = T.Object({
   "preview-metrics-layout": T.Optional(Layout),
   "details-metrics-layout": T.Optional(Layout),
   "preview-style": T.Optional(T.Record(T.String(), T.String())),
+  // Решение 0017: чем этапы объекта отличаются от унаследованных и что примешивается
+  // к промпту любого из них. Сами этапы — файлы в `_directives.workflow/`.
+  "directives-workflow": T.Optional(
+    T.Object({
+      mode: T.Optional(T.Union([T.Literal("merge"), T.Literal("replace")])),
+      prompt: T.Optional(T.String()),
+    }),
+  ),
 });
 
 /** Metric `config.json` as decision 0004 describes it. */

@@ -10,10 +10,12 @@ import {
   parseAddress,
   readField,
 } from "@mapward/core";
-import type { MapFile, MapMetric, MapObject } from "@mapward/core";
+import type { MapFile, MapMetric, MapObject, MapStage } from "@mapward/core";
 import type { FilesPort } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
+import { flag, frontmatter } from "../../../../lib/frontmatter.ts";
 import { mergeIndex, mergeMetric } from "../../domain/merge.ts";
+import { defaultStages } from "../../domain/prompts.ts";
 import { substituteDeep } from "../../domain/substitution.ts";
 
 const INDEX = "_index.json";
@@ -21,7 +23,8 @@ const METRICS = "_metrics";
 const DIRECTIVES = "_directives";
 const ACTIONS = "_actions";
 const STATE = "_directives.state";
-const SERVICE = new Set([METRICS, DIRECTIVES, ACTIONS, STATE]);
+const WORKFLOW = "_directives.workflow";
+const SERVICE = new Set([METRICS, DIRECTIVES, ACTIONS, STATE, WORKFLOW]);
 
 async function readJson(files: FilesPort, path: string): Promise<unknown> {
   const text = await files.read(path);
@@ -57,14 +60,48 @@ async function readDirectives(files: FilesPort, objectPath: string): Promise<Map
 
       const text = await files.read(file.path);
       try {
-        const copy = (JSON.parse(state) as { directive?: string }).directive;
-        const same = norm(copy) === norm(text);
-        return { ...file, status: same ? ("done" as const) : ("changed" as const) };
+        const saved = JSON.parse(state) as {
+          directive?: string;
+          run?: { stage: string; startedAt: string; finishedAt?: string };
+        };
+        const run = saved.run;
+        // Этап, который не помечает выполнение, копии не снимает: прогон был, а директива
+        // по-прежнему не сделана — решение 0017. Без копии сравнивать не с чем.
+        if (saved.directive === undefined) return { ...file, status: "new" as const, run };
+        const same = norm(saved.directive) === norm(text);
+        return { ...file, status: same ? ("done" as const) : ("changed" as const), run };
       } catch {
         return { ...file, status: "new" as const };
       }
     }),
   );
+}
+
+/**
+ * Этапы воркфлоу: файл на этап, frontmatter задаёт имя, порядок и то, ставит ли этап отметку
+ * о выполнении — решение 0017. Порядок читается здесь, а не из имени файла: имя смысловое,
+ * его меняют, а порядок переставляют отдельно.
+ */
+async function readWorkflow(files: FilesPort, objectPath: string): Promise<MapStage[]> {
+  const dir = join(objectPath, WORKFLOW);
+  const stages: MapStage[] = [];
+
+  for (const entry of await files.list(dir)) {
+    if (entry.isDirectory || !entry.name.endsWith(".md")) continue;
+    const path = join(dir, entry.name);
+    // oxlint-disable-next-line no-await-in-loop
+    const text = await files.read(path);
+    const fields = text === undefined ? {} : frontmatter(text).fields;
+    const order = Number(fields.order);
+    stages.push({
+      name: fields.name ?? entry.name.replace(/\.md$/, ""),
+      order: Number.isFinite(order) ? order : 0,
+      marksDone: flag(fields["marks-done"]),
+      path,
+    });
+  }
+
+  return stages.toSorted((a, b) => a.order - b.order);
 }
 
 async function readMetrics(
@@ -93,7 +130,7 @@ async function readMetrics(
   return metrics;
 }
 
-type Raw = MapObject & { rawExtends?: string };
+type Raw = MapObject & { rawExtends?: string; rawWorkflowMode?: "merge" | "replace" };
 
 /**
  * Reads the tree as written on disk. Inheritance and substitution come after — they need the
@@ -134,7 +171,10 @@ async function readTree(
     metrics: await readMetrics(files, path, address),
     directives: await readDirectives(files, path),
     actions: await readFiles(files, join(path, ACTIONS)),
+    workflow: await readWorkflow(files, path),
+    workflowPrompt: own["directives-workflow"]?.prompt,
     children,
+    rawWorkflowMode: own["directives-workflow"]?.mode,
     rawExtends: own.extends,
   } as Raw;
 }
@@ -203,6 +243,17 @@ const byName = (inherited: MapFile[], own: MapFile[], from: string): MapFile[] =
   ];
 };
 
+/** Этапы сливаются по имени, как файлы, и пересортировываются: порядок задан frontmatter. */
+const byStage = (inherited: MapStage[], own: MapStage[], from: string): MapStage[] => {
+  const mine = new Set(own.map((stage) => stage.name));
+  return [
+    ...inherited
+      .filter((stage) => !mine.has(stage.name))
+      .map((stage) => (stage.owner ? stage : { ...stage, owner: from })),
+    ...own,
+  ].toSorted((a, b) => a.order - b.order);
+};
+
 /** `extends` resolves recursively; a cycle is an error, not a hang. */
 function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   for (const child of object.children as Raw[]) inherit(root, child, new Set());
@@ -255,6 +306,15 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   // один и тот же экшон приезжает столько раз, сколько их в цепочке.
   object.directives = byName(prototype.directives, object.directives, prototype.address);
   object.actions = byName(prototype.actions, object.actions, prototype.address);
+  // Хук примешивается к любому этапу объекта. Через `mergeIndex` он не ходит: там заявленным
+  // считается присутствие ключа, а `{ prompt: undefined }` у наследника затёрло бы прототип.
+  object.workflowPrompt = object.workflowPrompt ?? prototype.workflowPrompt;
+  // Этапы наследуются, как экшоны, но объект может сказать `mode: "replace"` — тогда
+  // унаследованные не приезжают вовсе. Решение 0017: переопределять можно целиком и частями.
+  object.workflow =
+    object.rawWorkflowMode === "replace"
+      ? object.workflow
+      : byStage(prototype.workflow, object.workflow, prototype.address);
 }
 
 /**
@@ -298,6 +358,16 @@ function apply(root: MapObject, object: MapObject, basePath: string): void {
   for (const child of object.children) apply(root, child, basePath);
 }
 
+/**
+ * Объект, у которого своих этапов нет ни где, ни у прототипов, работает по дефолту — и дефолт
+ * кладётся прямо в модель. Иначе его подставлял бы каждый, кто читает карту, и клиент с агентом
+ * однажды показали бы разное (решение 0017).
+ */
+function fillWorkflow(object: MapObject): void {
+  if (object.workflow.length === 0) object.workflow = defaultStages();
+  for (const child of object.children) fillWorkflow(child);
+}
+
 /** Reads a map into the shape the sidebar draws: tree, inheritance, substitution. */
 export async function readMap(
   files: FilesPort,
@@ -308,6 +378,7 @@ export async function readMap(
   const root = (await readTree(files, mapPath, MAP_ROOT, name)) as Raw;
   await inheritMetrics(files, root, mapPath);
   inherit(root, root);
+  fillWorkflow(root);
   apply(root, root, basePath);
   return root;
 }

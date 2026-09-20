@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { useBridgeClient } from "../../../ports/bridge.tsx";
-import type { DirectiveMode } from "@mapward/core";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
@@ -20,8 +19,8 @@ export function useTerminals(ref: Ref, address: string) {
   return {
     terminals,
     open: (fresh?: boolean) => after(bridge.openObjectTerminal({ ...ref, address, fresh })),
+    // Показать именно тот, по которому кликнули: терминалов у объекта может быть несколько.
+    show: (name: string) => void bridge.showTerminal({ name }),
     close: (name: string) => after(bridge.closeTerminal({ name })),
-    run: (directive: string, mode: DirectiveMode, fresh?: boolean) =>
-      after(bridge.runDirective({ ...ref, address, directive, mode, fresh })),
   };
 }

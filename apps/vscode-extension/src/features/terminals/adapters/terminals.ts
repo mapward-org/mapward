@@ -1,11 +1,14 @@
 import * as vscode from "vscode";
 import type { Shell } from "../pure-model/shell.ts";
 import { quoteArg, quotePrompt, shellOf, singleLine } from "../pure-model/shell.ts";
+import { freeName } from "../pure-model/names.ts";
 
 /**
- * A terminal is the session. Nothing is stored on disk: while the terminal lives, the agent
- * remembers the conversation; closing it ends the session. That is why a repeated run of one
- * directive reuses its terminal — check, dry run and run warm the same context.
+ * Терминал — сессия: пока он открыт, агент помнит разговор, закрыли — сессия кончилась.
+ * На диск ничего не пишется.
+ *
+ * Заводится он на объект (решение 0017), и объект переживает не один разговор. Поэтому имя
+ * несёт номер: второй терминал того же объекта — это второй терминал, а не перезапуск первого.
  */
 const byName = new Map<string, vscode.Terminal>();
 
@@ -38,8 +41,6 @@ export function openTerminal(params: {
   prompt: string;
   fresh?: boolean;
 }): { name: string } {
-  if (params.fresh) alive(params.name)?.dispose();
-
   const existing = params.fresh ? undefined : alive(params.name);
   if (existing) {
     existing.show();
@@ -49,8 +50,11 @@ export function openTerminal(params: {
     return { name: params.name };
   }
 
-  const terminal = vscode.window.createTerminal({ name: params.name, cwd: params.cwd });
-  byName.set(params.name, terminal);
+  // Старый не трогаем: разговор в нём мог идти час, и «новый терминал» — просьба добавить,
+  // а не начать заново. Закрыть его можно из того же меню.
+  const name = freeName(params.name, (candidate) => alive(candidate) !== undefined);
+  const terminal = vscode.window.createTerminal({ name, cwd: params.cwd });
+  byName.set(name, terminal);
 
   terminal.show();
   // One argument, quoted the way this shell wants it — decision 0002 counts on the agent
@@ -59,7 +63,12 @@ export function openTerminal(params: {
   // следующий позиционный аргумент — промпт уезжал бы в него вместо агента.
   const shell = shellOf(vscode.env.shell);
   terminal.sendText(`claude ${quotePrompt(params.prompt, shell)}${mcpFlag(shell)}`);
-  return { name: params.name };
+  return { name };
+}
+
+/** Показать уже открытый терминал по имени, ничего в него не отправляя. */
+export function showTerminal(params: { name: string }): void {
+  alive(params.name)?.show();
 }
 
 export function listTerminals(params: { prefix: string }): { name: string }[] {

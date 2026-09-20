@@ -1,5 +1,6 @@
 {
   "name": "Mapward (ru)",
+  "extends": "mapward://prototypes/base",
   "details-metrics-layout": {
     "areas": [
       [

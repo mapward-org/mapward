@@ -1,5 +1,6 @@
 {
   "name": "Система",
+  "extends": "mapward://prototypes/base",
   "props": {
     "requirementsPath": "${{ mapward://@ }}/ru/requirements"
   },

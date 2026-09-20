@@ -47,7 +47,15 @@ function digest(files: MapFile[], all: boolean) {
     if (file.status !== undefined) counts[file.status]++;
   }
   const shown = all ? files : files.filter((file) => file.status !== "done");
-  return { ...counts, files: shown.map((file) => ({ ...fileOf(file), status: file.status })) };
+  return {
+    ...counts,
+    files: shown.map((file) => ({
+      ...fileOf(file),
+      status: file.status,
+      // Идущий этап видно с первой секунды: отметку ставит run_directive — решение 0017.
+      ...(file.run === undefined ? {} : { run: file.run }),
+    })),
+  };
 }
 
 /**
@@ -120,6 +128,17 @@ async function describe(
     })),
     directives: digest(object.directives, view.directives),
     actions: object.actions.map(fileOf),
+    /**
+     * Этапы, действующие на объекте: звать их теперь по имени, и узнать имя больше неоткуда —
+     * по файлам не видно, что приехало от прототипа (решение 0017).
+     */
+    workflow: object.workflow.map((stage) => ({
+      name: stage.name,
+      order: stage.order,
+      ...(stage.marksDone ? { marksDone: true } : {}),
+      ...(stage.path === "" ? { builtin: true } : { path: stage.path }),
+      ...(stage.owner === undefined ? {} : { owner: stage.owner }),
+    })),
     /** От ближайшего родителя к корню: по ним поднимаются и уходят к соседям через их детей. */
     ...(parents === undefined ? {} : { parents }),
     children:
@@ -231,6 +250,45 @@ const TOOLS = [
           description: 'язык документации; пока только "ru", он же по умолчанию',
         },
       },
+    },
+  },
+  {
+    name: "run_directive",
+    description:
+      "Взять директиву в работу: вернуть промпт этапа и отметить, что прогон начался. " +
+      "Кнопок у директивы нет — этим вызовом она и выполняется. " +
+      "Какие этапы есть у объекта, видно в read_object, поле workflow; без stage берётся первый.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "mapward:// адрес объекта директивы" },
+        directive: {
+          type: "string",
+          description: 'имя файла директивы, как в read_object: "2026-09-19-2335-name.md"',
+        },
+        stage: {
+          type: "string",
+          description: "имя этапа из workflow объекта; без него — первый по порядку",
+        },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["address", "directive"],
+    },
+  },
+  {
+    name: "finish_directive",
+    description:
+      "Отметить, что этап закончен. Этап, которому это поручено (marksDone), помечает директиву выполненной: " +
+      "копию текста и время снимает сервер, писать _directives.state руками не надо.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "mapward:// адрес объекта директивы" },
+        directive: { type: "string", description: "имя файла директивы" },
+        stage: { type: "string", description: "имя этапа; без него — первый по порядку" },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["address", "directive"],
     },
   },
   {
@@ -400,6 +458,20 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
 
       const raw = await server.readIndexFile(object.path);
       return text({ address: object.address, path: object.path, index: raw ?? null });
+    }
+
+    if (name === "run_directive" || name === "finish_directive") {
+      const params = {
+        ...ref,
+        address: String(args.address ?? ""),
+        directive: String(args.directive ?? ""),
+        ...(typeof args.stage === "string" ? { stage: args.stage } : {}),
+      };
+      return text(
+        name === "run_directive"
+          ? await server.runDirective(params)
+          : await server.finishDirective(params),
+      );
     }
 
     if (name === "run_metric") {

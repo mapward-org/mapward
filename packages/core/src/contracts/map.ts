@@ -57,7 +57,11 @@ export const directiveBridge = {
   ),
 };
 
-/** Terminals are the agent's sessions; the sidebar only asks the host to open or close one. */
+/**
+ * Терминал — сессия агента, и заводится он на объект, а не на директиву: директив у объекта
+ * много, этапов у каждой несколько, и всё это греет один контекст — решение 0017. Запускать
+ * директиву мостом больше нечем: это делает человек словами в терминале.
+ */
 export const terminalBridge = {
   openObjectTerminal: createBridgeMethod(
     T.Object({
@@ -69,18 +73,8 @@ export const terminalBridge = {
     }),
     T.Object({ name: T.String() }),
   ),
-  runDirective: createBridgeMethod(
-    T.Object({
-      mapPath: T.String(),
-      basePath: T.String(),
-      name: T.String(),
-      address: T.String(),
-      directive: T.String(),
-      mode: T.Union([T.Literal("check"), T.Literal("dry-run"), T.Literal("run")]),
-      fresh: T.Optional(T.Boolean()),
-    }),
-    T.Object({ name: T.String() }),
-  ),
+  /** Показать уже открытый терминал: список даёт имя, и оно не равно имени объекта. */
+  showTerminal: createBridgeMethod(T.Object({ name: T.String() }), T.Void()),
   listTerminals: createBridgeMethod(
     T.Object({ address: T.String() }),
     T.Array(T.Object({ name: T.String() })),
@@ -89,6 +83,3 @@ export const terminalBridge = {
 };
 
 export type Capabilities = Static<typeof Capabilities>;
-
-/** Три кнопки директивы: прочитать, рассказать, сделать — решение 0002. */
-export type DirectiveMode = "check" | "dry-run" | "run";

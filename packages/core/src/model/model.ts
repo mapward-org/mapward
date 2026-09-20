@@ -38,14 +38,38 @@ export function adoptMetric(
 
 export type DirectiveStatus = "new" | "changed" | "done";
 
+/** Где директива сейчас: этап начат вызовом MCP и им же закрывается — решение 0017. */
+export type DirectiveRun = {
+  stage: string;
+  startedAt: string;
+  finishedAt?: string;
+};
+
 export type MapFile = {
   name: string;
   path: string;
   status?: DirectiveStatus;
+  /** Последний прогон этапа. У экшонов не бывает: состояние есть только у директив. */
+  run?: DirectiveRun;
   /**
    * The object the file actually belongs to, set only when it came from a prototype. On its own
    * files it is absent: present, it means one thing — edit it there, not here.
    */
+  owner?: string;
+};
+
+/**
+ * Этап воркфлоу — файл в `_directives.workflow/`, frontmatter которого задаёт имя, порядок и
+ * то, ставит ли этап отметку о выполнении. Решение 0017: способ работы с директивой задаёт
+ * карта, а не код, поэтому этап — такой же наследуемый файл, как экшон.
+ */
+export type MapStage = {
+  name: string;
+  order: number;
+  /** Этап, которому поручено помечать директиву выполненной. В дефолте это «Выполнить». */
+  marksDone: boolean;
+  path: string;
+  /** Приехал от прототипа — как у директив и экшонов, и по той же причине. */
   owner?: string;
 };
 
@@ -66,6 +90,10 @@ export type MapObject = {
   metrics: MapMetric[];
   directives: MapFile[];
   actions: MapFile[];
+  /** Этапы, действующие на этом объекте: свои плюс унаследованные, по порядку. */
+  workflow: MapStage[];
+  /** Промпт, примешиваемый к любому этапу этого объекта — хук из `_index.json`. */
+  workflowPrompt?: string;
   children: MapObject[];
 };
 

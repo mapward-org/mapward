@@ -385,3 +385,124 @@ test("read_object fills cheap metrics only when asked", async () => {
   // Дорогое ручное так не запускается ни у человека, ни у агента.
   expect(metrics(filled.metrics).tests).toBeUndefined();
 });
+
+/**
+ * Запуск директивы — решение 0017: промпт этапа приходит вызовом, а состояние пишет сервер.
+ * Записи здесь собираются, потому что проверяется именно то, что пишет карта, а не агент.
+ */
+const workflowTree = {
+  "/map/_index.json": JSON.stringify({
+    name: "Карта",
+    "directives-workflow": { prompt: "и напиши отзыв" },
+  }),
+  "/map/_directives.workflow/обсудить.md":
+    "---\nname: Обсудить\norder: 10\n---\n\nскажи, что думаешь\n",
+  "/map/_directives.workflow/выполнить.md":
+    "---\nname: Выполнить\norder: 20\nmarks-done: true\n---\n\nсделай\n",
+  "/map/_directives/2026-09-20-0100-проба.md": "текст директивы",
+};
+
+async function callWith(
+  disk: Record<string, string>,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ result: Record<string, unknown>; writes: Record<string, string> }> {
+  const writes: Record<string, string> = {};
+  const files = fakeFiles(disk);
+  const server = createMapServer({
+    ...ports,
+    files: {
+      ...files,
+      write: (path, text) => {
+        writes[path] = text;
+        disk[path] = text;
+        return Promise.resolve();
+      },
+    },
+  });
+
+  let handler: ((message: unknown) => void) | undefined;
+  const replies: Record<string, unknown>[] = [];
+  serveMcp(server, [ref], {
+    onMessage: (next) => {
+      handler = next;
+      return () => undefined;
+    },
+    send: (message) => replies.push(message as Record<string, unknown>),
+  });
+  handler?.({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } });
+  for (let tick = 0; tick < 1000 && replies.length === 0; tick++) await Promise.resolve();
+
+  const reply = replies[0];
+  if (!reply) throw new Error("ответа не было");
+  if (reply.error) throw new Error(String((reply.error as { message?: string }).message));
+  const content = (reply.result as { content: { text: string }[] }).content;
+  return { result: JSON.parse(content[0]?.text ?? "{}") as Record<string, unknown>, writes };
+}
+
+const directive = { address: "mapward://", directive: "2026-09-20-0100-проба.md" };
+
+test("run_directive gives the stage prompt and marks the run started", async () => {
+  const { result, writes } = await callWith({ ...workflowTree }, "run_directive", {
+    ...directive,
+    stage: "Обсудить",
+  });
+
+  const prompt = String(result.prompt);
+  expect(prompt).toContain("скажи, что думаешь");
+  // Хук приклеен к промпту этапа, а не отправлен отдельно: для агента это один текст.
+  expect(prompt).toContain("и напиши отзыв");
+  // Голова про MCP одна на все этапы — без неё агент уходит сканировать репозиторий.
+  expect(prompt).toContain("read_docs");
+
+  const state = JSON.parse(
+    writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
+  );
+  expect(state.run.stage).toBe("Обсудить");
+  expect(state.run.finishedAt).toBeUndefined();
+  // Этап без поручения копию не снимает: прогон был, а директива не выполнена.
+  expect(state.directive).toBeUndefined();
+});
+
+test("only the stage told to do so marks the directive done", async () => {
+  const talk = await callWith({ ...workflowTree }, "finish_directive", {
+    ...directive,
+    stage: "Обсудить",
+  });
+  const after = JSON.parse(
+    talk.writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
+  );
+  expect(after.status).toBeUndefined();
+  expect(after.run.finishedAt).toBeDefined();
+
+  const done = await callWith({ ...workflowTree }, "finish_directive", {
+    ...directive,
+    stage: "Выполнить",
+  });
+  const state = JSON.parse(
+    done.writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
+  );
+  expect(state.status).toBe("done");
+  // Копия побайтная: по ней выполненная директива отличается от изменившейся.
+  expect(state.directive).toBe("текст директивы");
+});
+
+test("an unknown stage names the ones the object has", async () => {
+  await expect(
+    callWith({ ...workflowTree }, "run_directive", { ...directive, stage: "нет такого" }),
+  ).rejects.toThrow(/Обсудить/);
+});
+
+test("read_object shows the workflow acting on the object", async () => {
+  const { result } = await callWith({ ...workflowTree }, "read_object", { metrics: [] });
+
+  expect(result.workflow).toEqual([
+    { name: "Обсудить", order: 10, path: "/map/_directives.workflow/обсудить.md" },
+    {
+      name: "Выполнить",
+      order: 20,
+      marksDone: true,
+      path: "/map/_directives.workflow/выполнить.md",
+    },
+  ]);
+});

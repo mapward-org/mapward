@@ -1,8 +1,7 @@
 {
-  "updatedAt": "2026-09-19T23:33:42.293Z",
+  "updatedAt": "2026-09-20T01:29:21.380Z",
   "ok": true,
   "data": {
-    "ok": true,
-    "summary": "Тестов не найдено, vitest завершился с кодом 0"
+    "ok": true
   }
 }

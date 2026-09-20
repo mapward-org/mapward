@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { appBridge, findObject, type BridgeHandlers } from "@mapward/core";
 import type { AppBridge } from "@mapward/core";
-import { directivePrompt, objectPrompt } from "@mapward/abstract-server";
+import { objectPrompt } from "@mapward/abstract-server";
 import type { MapServer } from "@mapward/abstract-server";
 import { mapsHandlers } from "@/features/maps/index.extension.ts";
 import { createBridgeServer } from "@mapward/core";
@@ -10,6 +10,7 @@ import {
   closeTerminal,
   listTerminals,
   openTerminal,
+  showTerminal,
 } from "@/features/terminals/index.extension.ts";
 
 /** Где фичи встречаются с мостом. Ниже apps никто не решает, что отвечает хост. */
@@ -53,7 +54,9 @@ export function serveBridge(
     openObjectTerminal: async (params) => {
       const map = await server.getMap(params);
       const object = findObject(map, params.address) ?? map;
-      // Терминал открывается в корне проекта: директива может тронуть что угодно в репозитории.
+      // Терминал на объект, а не на директиву — решение 0017: директив у объекта много,
+      // этапов у каждой несколько, и всё это греет один контекст.
+      // Открывается в корне проекта: директива может тронуть что угодно в репозитории.
       return openTerminal({
         name: `mapward: ${object.name}`,
         cwd: params.basePath,
@@ -62,19 +65,7 @@ export function serveBridge(
       });
     },
 
-    runDirective: async (params) => {
-      const map = await server.getMap(params);
-      const object = findObject(map, params.address) ?? map;
-      const file = params.directive.replaceAll("\\\\", "/").split("/").at(-1) ?? params.directive;
-      // Один терминал на директиву: проверка, сухой прогон и выполнение греют один контекст.
-      return openTerminal({
-        name: `mapward: ${file}`,
-        cwd: params.basePath,
-        prompt: directivePrompt(params.mode, params.directive, object, params.mapPath),
-        fresh: params.fresh,
-      });
-    },
-
+    showTerminal: (params) => showTerminal(params),
     listTerminals: () => listTerminals({ prefix: "mapward: " }),
     closeTerminal: (params) => closeTerminal(params),
   };

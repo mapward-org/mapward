@@ -93,3 +93,84 @@ test("substitution resolves against the object that inherited the expression", a
 
   expect(core?.props.fullPath).toBe("/repo/packages/core");
 });
+
+/**
+ * Воркфлоу — решение 0017. Этапы наследуются, как экшоны, но объект может сказать
+ * `mode: "replace"`, и тогда унаследованные не приезжают вовсе.
+ */
+const workflowTree = {
+  "/map/_index.json": JSON.stringify({ name: "Карта" }),
+  "/map/prototypes/base/_index.json": JSON.stringify({
+    name: "Базовый",
+    "directives-workflow": { prompt: "и напиши отзыв" },
+  }),
+  "/map/prototypes/base/_directives.workflow/обсудить.md":
+    "---\nname: Обсудить\norder: 10\n---\n\nскажи, что думаешь\n",
+  "/map/prototypes/base/_directives.workflow/выполнить.md":
+    "---\nname: Выполнить\norder: 20\nmarks-done: true\n---\n\nсделай\n",
+  "/map/apps/editor/_index.json": JSON.stringify({
+    name: "Редактор",
+    extends: "mapward://prototypes/base",
+  }),
+  "/map/apps/editor/_directives.workflow/проверка.md":
+    "---\nname: Проверка\norder: 15\n---\n\nпроверь\n",
+  "/map/apps/own/_index.json": JSON.stringify({
+    name: "Свой",
+    extends: "mapward://prototypes/base",
+    "directives-workflow": { mode: "replace" },
+  }),
+  "/map/apps/own/_directives.workflow/сделать.md": "---\nname: Сделать\norder: 10\n---\n\nсделай\n",
+};
+
+const appOf = (map: Awaited<ReturnType<typeof readMap>>, name: string) =>
+  map.children.flatMap((child) => child.children).find((child) => child.name === name);
+
+test("stages are inherited like actions and sorted by order", async () => {
+  const map = await readMap(fakeFiles(workflowTree), MAP, "/repo", "Карта");
+  const editor = appOf(map, "Редактор");
+
+  // Свой этап встал между унаследованными: порядок задаёт frontmatter, а не имя файла.
+  expect(editor?.workflow.map((stage) => stage.name)).toEqual([
+    "Обсудить",
+    "Проверка",
+    "Выполнить",
+  ]);
+  // Унаследованный помечен владельцем, свой — нет: признак тот же, что у директив.
+  expect(editor?.workflow.map((stage) => stage.owner)).toEqual([
+    "mapward://prototypes/base",
+    undefined,
+    "mapward://prototypes/base",
+  ]);
+  // Отметку о выполнении ставит тот этап, которому это поручено.
+  expect(editor?.workflow.find((stage) => stage.marksDone)?.name).toBe("Выполнить");
+  // Хук приезжает полем `_index.json`, по обычному правилу наследования.
+  expect(editor?.workflowPrompt).toBe("и напиши отзыв");
+});
+
+test("replace drops the inherited stages but keeps the hook", async () => {
+  const map = await readMap(fakeFiles(workflowTree), MAP, "/repo", "Карта");
+  const own = appOf(map, "Свой");
+
+  expect(own?.workflow.map((stage) => stage.name)).toEqual(["Сделать"]);
+  expect(own?.workflowPrompt).toBe("и напиши отзыв");
+});
+
+test("the workflow folder is settings, not a child object", async () => {
+  const map = await readMap(fakeFiles(workflowTree), MAP, "/repo", "Карта");
+  const base = map.children.flatMap((child) => child.children).find((c) => c.name === "Базовый");
+
+  expect(base?.children).toEqual([]);
+});
+
+test("an object without stages of its own gets the default workflow", async () => {
+  const map = await readMap(fakeFiles(tree), MAP, "/repo", "Карта");
+  const core = map.children
+    .flatMap((child) => child.children)
+    .find((child) => child.address === "mapward://packages/core");
+
+  // Дефолт лежит в самой модели, поэтому клиент и агент видят один и тот же список.
+  expect(core?.workflow.map((stage) => stage.name)).toEqual(["Обсудить", "Выполнить"]);
+  // У встроенного этапа нет файла — по этому его и отличают от заведённого картой.
+  expect(core?.workflow.every((stage) => stage.path === "")).toBe(true);
+  expect(core?.workflow.find((stage) => stage.marksDone)?.name).toBe("Выполнить");
+});

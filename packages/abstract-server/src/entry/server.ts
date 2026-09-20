@@ -1,14 +1,21 @@
 import { Observable } from "rxjs";
-import type { MapMetric, MapObject } from "@mapward/core";
+import { findObject } from "@mapward/core";
+import type { MapMetric, MapObject, MapStage } from "@mapward/core";
 import type { ServerPorts } from "../ports/index.ts";
 import { readMap } from "../features/map-object/application/use-cases/read-map.ts";
+import { frontmatter } from "../lib/frontmatter.ts";
 import {
   createMetricStore,
   type MapRef,
   type ReadOptions,
   type RunOptions,
 } from "../features/map-object/application/services/metric-store.ts";
-import { createDirective } from "../features/map-object/application/use-cases/directives.ts";
+import {
+  createDirective,
+  finishStage,
+  startStage,
+} from "../features/map-object/application/use-cases/directives.ts";
+import { stagePrompt, defaultStageText } from "../features/map-object/domain/prompts.ts";
 import {
   readMapState,
   writeMapState,
@@ -36,6 +43,19 @@ export type ServerSettings = {
 export function createMapServer(ports: ServerPorts, settings: ServerSettings = {}) {
   const read = (ref: MapRef) => readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
   const metrics = createMetricStore(ports, read, settings);
+
+  /** Объект, директива и действующие на нём этапы — всё из модели, а не склейкой путей. */
+  const locate = async (params: MapRef & { address: string; directive: string }) => {
+    const map = await read(params);
+    const object = findObject(map, params.address);
+    if (!object) throw new Error(`Объект ${params.address} не найден`);
+    const file = object.directives.find((entry) => entry.name === params.directive);
+    if (!file) {
+      const known = object.directives.map((entry) => entry.name).join(", ");
+      throw new Error(`У объекта нет директивы ${params.directive}. Есть: ${known || "ни одной"}.`);
+    }
+    return { object, file, stages: object.workflow };
+  };
 
   return {
     capabilities: () => ports.capabilities,
@@ -94,10 +114,80 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     createDirective: (params: { objectPath: string; title: string }) =>
       createDirective(ports, params),
 
+    /**
+     * Взять директиву в работу: промпт этапа плюс отметка, что прогон начался — решение 0017.
+     * Один вызов вместо двух потому, что промпт без отметки означал бы прогон, которого карта
+     * не видит, а это ровно то, от чего уходили.
+     */
+    runDirective: async (
+      params: MapRef & { address: string; directive: string; stage?: string },
+    ) => {
+      const found = await locate(params);
+      const stage = pickStage(found.stages, params.stage);
+      if (!stage) {
+        const known = found.stages.map((entry) => `«${entry.name}»`).join(", ");
+        throw new Error(`У объекта нет этапа ${String(params.stage)}. Есть: ${known}.`);
+      }
+
+      const text = stage.path
+        ? ((await ports.files.read(stage.path)) ?? "")
+        : defaultStageText(stage.name);
+
+      await startStage(ports, {
+        objectPath: found.object.path,
+        directive: found.file.name,
+        stage: stage.name,
+        now: new Date(),
+      });
+
+      return {
+        stage: stage.name,
+        marksDone: stage.marksDone,
+        directive: found.file.path,
+        prompt: stagePrompt({
+          stage,
+          text: body(text),
+          hook: found.object.workflowPrompt,
+          directivePath: found.file.path,
+          object: found.object,
+          mapPath: params.mapPath,
+        }),
+      };
+    },
+
+    /** Этап закончен. Помечает ли это директиву выполненной, решает сам этап. */
+    finishDirective: async (
+      params: MapRef & { address: string; directive: string; stage?: string },
+    ) => {
+      const found = await locate(params);
+      const stage = pickStage(found.stages, params.stage);
+      if (!stage) throw new Error(`У объекта нет этапа ${String(params.stage)}`);
+
+      await finishStage(ports, {
+        objectPath: found.object.path,
+        directivePath: found.file.path,
+        directive: found.file.name,
+        stage: stage.name,
+        marksDone: stage.marksDone,
+        now: new Date(),
+      });
+
+      return { stage: stage.name, done: stage.marksDone };
+    },
+
     getMapState: (params: { mapPath: string }) => readMapState(ports, params),
     setMapState: (params: { mapPath: string; value: unknown }) => writeMapState(ports, params),
   };
 }
+
+/** Этап зовут по имени; без имени берётся первый по порядку. Регистр не важен. */
+const pickStage = (stages: MapStage[], wanted: string | undefined): MapStage | undefined =>
+  wanted === undefined
+    ? stages[0]
+    : stages.find((stage) => stage.name.toLowerCase() === wanted.trim().toLowerCase());
+
+/** Тело файла этапа без frontmatter: в промпт едет промпт, а не его настройки. */
+const body = (text: string) => frontmatter(text).body;
 
 /** Файлы, которые пишет сама карта: их изменение не повод перечитывать её заново. */
 const ourOwnWrite = (path: string) =>
