@@ -30,6 +30,13 @@ export const MetricsIcon = (
   </svg>
 );
 
+/** Крестик: убрать строку из списка. Мельче остальных — он живёт внутри пункта, а не в шапке. */
+export const RemoveIcon = (
+  <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" strokeLinecap="round" />
+  </svg>
+);
+
 export const IndexIcon = (
   <svg viewBox="0 0 16 16" className={box} fill="currentColor">
     <circle cx="4" cy="8" r="1.1" />

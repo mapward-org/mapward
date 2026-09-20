@@ -57,6 +57,14 @@ export const directiveBridge = {
     T.Object({ objectPath: T.String() }),
     T.Object({ path: T.String() }),
   ),
+  /**
+   * Удаление — такая же работа хоста: он спрашивает, точно ли, а файл и состояние прогонов
+   * убирает сервер. Отказались от удаления или файла у объекта нет — приходит `deleted: false`.
+   */
+  deleteDirective: createBridgeMethod(
+    T.Object({ objectPath: T.String(), directive: T.String() }),
+    T.Object({ deleted: T.Boolean() }),
+  ),
 };
 
 /**

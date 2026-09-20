@@ -8,6 +8,7 @@ const object = {
   name: "core",
   isGroup: false,
   props: {},
+  layers: [],
   metrics: [],
   directives: [],
   actions: [],

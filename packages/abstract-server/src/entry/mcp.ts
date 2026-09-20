@@ -129,6 +129,9 @@ async function describe(
     path: object.path,
     props: object.props,
     layout: { preview: object.previewLayout, details: object.detailsLayout },
+    // Из каких `_index.json` собран объект. Ссылками: конфиг слоя читается `read_index`
+    // по названному адресу, а вложенный он повторил бы самое тяжёлое в ответе (решение 0019).
+    layers: object.layers,
     metrics: wanted.map((metric, at) => ({
       key: metric.key,
       address: metric.address,
@@ -138,6 +141,8 @@ async function describe(
       configPath: metric.configPath,
       // Заведена не здесь, а у прототипа: инвариант 0015 спрашивает именно это.
       ...(metric.owner === undefined ? {} : { owner: metric.owner }),
+      /** Файлы, из которых собран конфиг: первый — `configPath`, дальше прототип и `extends`. */
+      layers: metric.layers,
       // Конфиг целиком: в нём видно и коллекторы, и `exclude` у карты детей.
       config: metric.config,
       value: values[metric.address],
@@ -180,6 +185,7 @@ const TOOLS = [
     name: "read_object",
     description:
       "Объект карты так, как его видит человек: поля после наследования и подстановок, список метрик, директив, экшонов, родителей и детей. " +
+      "layers — файлы, из которых собран мердж, у объекта и у каждой метрики: адрес и путь, от своего к дальнему прототипу. Сам конфиг слоя берётся read_index по этому адресу. " +
       'С refresh: "on-display" дешёвые метрики досчитываются — зови так, чтобы увидеть то же, что человек на экране. ' +
       "Весь контекст разом: depth уводит вглубь по детям, metrics отбирает метрики по ключам, fields — поля в ответе. " +
       'Начинай с обзора без метрик — { depth: 2, metrics: [] } — и только потом зови нужные: { address, metrics: ["files"], refresh: "on-display" }. ' +

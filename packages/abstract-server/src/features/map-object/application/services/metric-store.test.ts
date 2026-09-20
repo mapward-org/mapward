@@ -21,6 +21,10 @@ function fakeFiles(tree: Record<string, string>): FilesPort {
       return Promise.resolve([...names].map(([name, isDirectory]) => ({ name, isDirectory })));
     },
     write: () => Promise.resolve(),
+    remove: (path) => {
+      delete tree[path];
+      return Promise.resolve();
+    },
     watch: () => () => undefined,
   };
 }

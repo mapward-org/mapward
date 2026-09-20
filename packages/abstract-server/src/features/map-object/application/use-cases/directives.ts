@@ -52,6 +52,36 @@ export type DirectiveState = {
 const statePath = (objectPath: string, directive: string) =>
   join(objectPath, "_directives.state", `${directive.replace(/\.md$/, "")}.state.json`);
 
+/**
+ * Директива зовётся именем файла, а не путём: сложенный из чужих кусков путь увёл бы удаление
+ * за пределы папки объекта.
+ */
+const isDirectiveName = (name: string) =>
+  name.endsWith(".md") && !name.includes("..") && !/[\\/]/.test(name);
+
+/**
+ * Удалить директиву целиком: вместе с файлом уходит состояние её прогонов — где оно лежит,
+ * знает карта, и чистит его сервер, а не хост.
+ *
+ * Удаляется только своя: доставшаяся от прототипа лежит в чужой папке, и в `_directives`
+ * этого объекта её нет — тогда удалять нечего, и это не ошибка, а ответ `deleted: false`.
+ */
+export async function deleteDirective(
+  ports: ServerPorts,
+  params: { objectPath: string; directive: string },
+): Promise<{ deleted: boolean }> {
+  if (!isDirectiveName(params.directive)) {
+    throw new Error(`Не имя директивы: ${params.directive}`);
+  }
+
+  const path = join(params.objectPath, "_directives", params.directive);
+  if ((await ports.files.read(path)) === undefined) return { deleted: false };
+
+  await ports.files.remove(path);
+  await ports.files.remove(statePath(params.objectPath, params.directive));
+  return { deleted: true };
+}
+
 async function readState(
   ports: ServerPorts,
   objectPath: string,

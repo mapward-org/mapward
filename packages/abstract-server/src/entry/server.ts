@@ -12,6 +12,7 @@ import {
 } from "../features/map-object/application/services/metric-store.ts";
 import {
   createDirective,
+  deleteDirective,
   finishStage,
   startStage,
 } from "../features/map-object/application/use-cases/directives.ts";
@@ -117,6 +118,13 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     createDirective: (params: { objectPath: string; title: string }) =>
       createDirective(ports, params),
+
+    /**
+     * Случайно созданная директива должна уметь исчезнуть, иначе список копит мусор. Вместе
+     * с файлом уходит и состояние её прогонов: оно про директиву, которой больше нет.
+     */
+    deleteDirective: (params: { objectPath: string; directive: string }) =>
+      deleteDirective(ports, params),
 
     /**
      * Фраза для кнопки этапа: хост отправляет её в живую сессию, агент по ней зовёт

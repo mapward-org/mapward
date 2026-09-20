@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { linkKind, parseAddress } from "@mapward/core";
-import { findObject, trail } from "@mapward/core";
-import type { MapFile, MapMetric, MapObject } from "@mapward/core";
+import { linkKind } from "@mapward/core";
+import { findObject, objectIndex, trail } from "@mapward/core";
+import type { ConfigLayer, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { useMap, useMapActions } from "../adapters/use-map.ts";
 import { useTerminals } from "../adapters/use-terminals.ts";
 import { useCapabilities } from "../adapters/use-capabilities.ts";
@@ -31,22 +31,33 @@ const runHint = (file: MapFile): string | undefined =>
       : file.run.stage.toLowerCase();
 
 /**
- * Слои конфига метрики: свой файл и тот, на который он ссылается. Модель их не хранит — ссылки
- * в ней уже есть, и большего для кнопок не нужно (решение 0019). У метрики от прототипа
- * `configPath` и так указывает на прототипов файл, поэтому слой один, и он чужой.
+ * Откуда конфиг — одним словом. Своё молчит: подсказка стоит в той же строке, что название,
+ * и забирает ширину у него первой. Какой именно прототип и какая общая — написано на кнопках
+ * слоёв под пунктом, там место есть (решение 0019).
  */
-function layersOf(map: MapObject, mapPath: string, metric: MapMetric) {
-  const owner =
-    metric.owner === undefined ? undefined : (findObject(map, metric.owner)?.name ?? metric.owner);
-  const own = { label: owner ?? "свой", path: metric.configPath };
-
-  const parent = metric.config.extends;
-  const parsed = parent === undefined ? undefined : parseAddress(parent);
-  if (parsed === undefined || parsed.scope !== "map") return [own];
-
-  const where = parsed.path.join("/");
-  return [own, { label: where, path: `${mapPath}/${where}/config.json` }];
+function originHint(layers: ConfigLayer[]): string | undefined {
+  if (layers.some((layer) => layer.from === "prototype")) return "из прототипа";
+  return layers.some((layer) => layer.from === "extends") ? "из общей" : undefined;
 }
+
+/** Адрес слоя метрики ведёт в её папку, а файл написал объект — он двумя сегментами выше. */
+const layerOwner = (address: string) => address.replace(/\/_metrics\/[^/]+$/, "");
+
+/** Подпись кнопки слоя: чей это файл. Своё так и зовётся, чужое — именем объекта или адресом. */
+function layerLabel(map: MapObject, layer: ConfigLayer): string {
+  if (layer.from === "own") return "свой";
+  const where = layerOwner(layer.address);
+  if (layer.from === "prototype") return findObject(map, where)?.name ?? where;
+  return where.replace("mapward://", "");
+}
+
+/** Кнопки слоёв под пунктом: мердж читают, а правят файлы, из которых он собран. */
+const layerRuns = (map: MapObject, layers: ConfigLayer[], open: (path: string) => void) =>
+  layers.map((layer) => ({
+    key: layer.path,
+    label: layerLabel(map, layer),
+    onSelect: () => open(layer.path),
+  }));
 
 /** Вид коллектора схемой не сужен — он просто строка (решение 0004), поэтому берём её осторожно. */
 const kinds = (list?: Record<string, unknown>[]) =>
@@ -146,6 +157,13 @@ export function MapObjectView(props: { mapConfig: Ref }) {
                         onSelect: () => terminals.runStage(file.name, stage.name),
                       }))
                     : undefined,
+                  // Крестик — только у своей директивы: унаследованная лежит в папке прототипа,
+                  // и убирают её там. Спросить «точно?» умеет хост, поэтому без `ask` его нет:
+                  // удаление — единственное необратимое, что делает этот экран (решение 0014).
+                  onRemove:
+                    can.ask && file.owner === undefined
+                      ? () => actions.deleteDirective(current.path, file.name)
+                      : undefined,
                 }))}
               />
             )}
@@ -186,42 +204,61 @@ export function MapObjectView(props: { mapConfig: Ref }) {
               <MenuButton
                 title="Метрики"
                 icon={MetricsIcon}
-                items={current.metrics.map((metric) => {
-                  const layers = layersOf(map, props.mapConfig.mapPath, metric);
-                  return {
-                    key: metric.key,
-                    label: metric.config.label ?? metric.key,
-                    title: howCollected(metric),
-                    hint: layers.at(-1)?.label,
-                    // Мерджа нет файлом: его собирает карта из нескольких, и показывается он
-                    // документом, которого на диске не существует.
-                    onSelect: () =>
-                      actions.openVirtual(
-                        `${current.name}/${metric.key}.json`,
-                        JSON.stringify(metric.config, null, 2),
-                        "json",
-                      ),
-                    // Мердж читают, а правят слои — по кнопке на файл.
-                    ...(can.openFile
-                      ? {
-                          runs: layers.map((layer) => ({
-                            label: layer.label,
-                            onSelect: () => actions.open(layer.path),
-                          })),
-                        }
-                      : {}),
-                  };
-                })}
+                items={current.metrics.map((metric) => ({
+                  key: metric.key,
+                  label: metric.config.label ?? metric.key,
+                  title: howCollected(metric),
+                  hint: originHint(metric.layers),
+                  // Мерджа нет файлом: его собирает карта из нескольких, и показывается он
+                  // документом, которого на диске не существует.
+                  onSelect: () =>
+                    actions.openVirtual(
+                      `${current.name}/${metric.key}.json`,
+                      JSON.stringify(metric.config, null, 2),
+                      "json",
+                    ),
+                  ...(can.openFile ? { runs: layerRuns(map, metric.layers, actions.open) } : {}),
+                }))}
               />
             )}
-            {can.openFile && (
-              <HeaderButton
-                title="Открыть _index.json"
-                onClick={() => actions.open(`${current.path}/_index.json`)}
-              >
-                {IndexIcon}
-              </HeaderButton>
-            )}
+            {/*
+              У объекта та же болезнь, что у метрики: в `_index.json` наследника часто одна
+              строка `extends`, а смысл у прототипа. Поэтому и форма та же — пункт открывает
+              мердж, кнопки под ним открывают слои (решение 0019). Группе показывать нечего:
+              `_index.json` у неё нет, поэтому нет и слоёв.
+            */}
+            {current.layers.length > 0 &&
+              (can.virtualDocs ? (
+                <MenuButton
+                  title="Конфигурация объекта"
+                  icon={IndexIcon}
+                  items={[
+                    {
+                      key: current.address,
+                      label: current.name,
+                      hint: originHint(current.layers),
+                      onSelect: () =>
+                        actions.openVirtual(
+                          `${current.name}/_index.json`,
+                          JSON.stringify(objectIndex(current), null, 2),
+                          "json",
+                        ),
+                      ...(can.openFile
+                        ? { runs: layerRuns(map, current.layers, actions.open) }
+                        : {}),
+                    },
+                  ]}
+                />
+              ) : (
+                can.openFile && (
+                  <HeaderButton
+                    title="Открыть _index.json"
+                    onClick={() => actions.open(`${current.path}/_index.json`)}
+                  >
+                    {IndexIcon}
+                  </HeaderButton>
+                )
+              ))}
           </>
         }
       />

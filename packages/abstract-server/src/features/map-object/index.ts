@@ -14,5 +14,9 @@ export {
   type MetricValue,
   type MetricsSnapshot,
 } from "./application/services/metric-store.ts";
-export { createDirective, directiveName } from "./application/use-cases/directives.ts";
+export {
+  createDirective,
+  deleteDirective,
+  directiveName,
+} from "./application/use-cases/directives.ts";
 export { readMapState, writeMapState } from "./application/use-cases/map-state.ts";

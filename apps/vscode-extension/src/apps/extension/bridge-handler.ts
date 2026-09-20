@@ -55,6 +55,21 @@ export function serveBridge(
       return created;
     },
 
+    /**
+     * Спрашивает редактор, удаляет сервер. Вопрос здесь обязателен: крестик стоит в ряду с
+     * названием, и промахнуться по нему — обычное дело.
+     */
+    deleteDirective: async (params) => {
+      const yes = "Удалить";
+      const answer = await vscode.window.showWarningMessage(
+        `Удалить директиву ${params.directive}?`,
+        { modal: true, detail: "Вместе с ней уйдёт состояние её прогонов." },
+        yes,
+      );
+      if (answer !== yes) return { deleted: false };
+      return server.deleteDirective(params);
+    },
+
     openObjectTerminal: async (params) => {
       const map = await server.getMap(params);
       const object = findObject(map, params.address) ?? map;

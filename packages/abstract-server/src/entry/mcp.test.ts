@@ -22,6 +22,10 @@ function fakeFiles(tree: Record<string, string>): FilesPort {
       return Promise.resolve([...names].map(([name, isDirectory]) => ({ name, isDirectory })));
     },
     write: () => Promise.resolve(),
+    remove: (path) => {
+      delete tree[path];
+      return Promise.resolve();
+    },
     watch: () => () => undefined,
   };
 }
@@ -404,6 +408,64 @@ test("the next layer is named by address, not carried by value", async () => {
   expect(parent.index).toBeNull();
   expect(JSON.parse(parent.config as string)).toMatchObject({ label: "Файлы" });
   expect(parent.extends).toBeUndefined();
+});
+
+/**
+ * Слои — решение 0019: из чего собран мердж, видно из того же ответа, а конфиг слоя берётся
+ * по названному адресу. Без этого агент знает только, что мердж откуда-то взялся.
+ */
+test("the answer says which files the merge was put together from", async () => {
+  const object = await call("read_object", {
+    address: "mapward://packages/core",
+    metrics: ["lint"],
+    fields: ["layers", "metrics.key", "metrics.layers"],
+  });
+
+  expect(object.layers).toEqual([
+    { address: "mapward://packages/core", path: "/map/packages/core/_index.json", from: "own" },
+    {
+      address: "mapward://prototypes/package",
+      path: "/map/prototypes/package/_index.json",
+      from: "prototype",
+    },
+  ]);
+
+  // У метрики от прототипа свой слой прототипов, и путь ведёт туда, где её правят.
+  expect(object.metrics).toEqual([
+    {
+      key: "lint",
+      layers: [
+        {
+          address: "mapward://prototypes/package/_metrics/lint",
+          path: "/map/prototypes/package/_metrics/lint/config.json",
+          from: "prototype",
+        },
+      ],
+    },
+  ]);
+
+  // Конфига слоя в ответе нет — есть адрес, по которому он читается.
+  const shared = await call("read_object", {
+    address: "mapward://prototypes",
+    metrics: ["files"],
+    fields: ["metrics.layers"],
+  });
+  expect(shared.metrics).toEqual([
+    {
+      layers: [
+        {
+          address: "mapward://prototypes/_metrics/files",
+          path: "/map/prototypes/_metrics/files/config.json",
+          from: "own",
+        },
+        {
+          address: "mapward://prototypes/shared-files",
+          path: "/map/prototypes/shared-files/config.json",
+          from: "extends",
+        },
+      ],
+    },
+  ]);
 });
 
 test("an address answers with whatever the folder holds", async () => {

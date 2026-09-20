@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { RemoveIcon } from "./icons.tsx";
 
 /** A row of names is noise until you want it; behind a button it costs nothing. */
 export function MenuButton(props: {
@@ -12,7 +13,10 @@ export function MenuButton(props: {
     hint?: string;
     hintClass?: string;
     onSelect: () => void;
-    runs?: { label: string; onSelect: () => void }[];
+    /** Ключ отдельно от подписи: у слоёв конфига подписи повторяются, файлы — нет. */
+    runs?: { key?: string; label: string; onSelect: () => void }[];
+    /** Крестик справа: убрать эту строку. Строка, которую убирать нечем, его не показывает. */
+    onRemove?: () => void;
   }[];
   lead?: { label: string; onSelect: () => void };
 }) {
@@ -58,7 +62,7 @@ export function MenuButton(props: {
             </li>
           )}
           {props.items.map((item) => (
-            <li key={item.key} className="group/item">
+            <li key={item.key} className="group/item relative">
               <button
                 type="button"
                 onClick={() => {
@@ -66,7 +70,7 @@ export function MenuButton(props: {
                   item.onSelect();
                 }}
                 {...(item.title === undefined ? {} : { title: item.title })}
-                className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-[var(--mw-list-hoverBackground)]"
+                className={`flex w-full items-center gap-2 py-0.5 pl-3 text-left hover:bg-[var(--mw-list-hoverBackground)] ${item.onRemove ? "pr-7" : "pr-3"}`}
               >
                 <span className="truncate">{item.label}</span>
                 {item.hint && (
@@ -75,11 +79,29 @@ export function MenuButton(props: {
                   </span>
                 )}
               </button>
+              {/*
+                Крестик поверх строки, а не в ней: строка — кнопка целиком, и вложить в неё
+                вторую нельзя. Показывается он на наведении — иначе список читался бы через
+                ряд крестиков.
+              */}
+              {item.onRemove && (
+                <button
+                  type="button"
+                  title="Удалить"
+                  onClick={() => {
+                    setOpen(false);
+                    item.onRemove?.();
+                  }}
+                  className="absolute top-1 right-2 hidden opacity-60 group-hover/item:block hover:opacity-100"
+                >
+                  {RemoveIcon}
+                </button>
+              )}
               {item.runs && (
                 <span className="hidden gap-2 px-3 pb-1 opacity-70 group-hover/item:flex">
                   {item.runs.map((run) => (
                     <button
-                      key={run.label}
+                      key={run.key ?? run.label}
                       type="button"
                       onClick={() => {
                         setOpen(false);

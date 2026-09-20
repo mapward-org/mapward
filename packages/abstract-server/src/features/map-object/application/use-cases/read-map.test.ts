@@ -24,6 +24,10 @@ function fakeFiles(tree: Record<string, string>): FilesPort {
       return Promise.resolve([...names].map(([name, isDirectory]) => ({ name, isDirectory })));
     },
     write: () => Promise.resolve(),
+    remove: (path) => {
+      delete tree[path];
+      return Promise.resolve();
+    },
     watch: () => () => undefined,
   };
 }
@@ -234,6 +238,128 @@ test("an object without stages of its own gets the default workflow", async () =
   // У встроенного этапа нет файла — по этому его и отличают от заведённого картой.
   expect(core?.workflow.every((stage) => stage.path === "")).toBe(true);
   expect(core?.workflow.find((stage) => stage.marksDone)?.name).toBe("Выполнить");
+});
+
+/**
+ * Слои конфига — решение 0019. Цепочка здесь трёхслойная нарочно: клиент по ссылкам ходить
+ * не умеет, и если модель отдаст только ближний слой, «дальше ничего нет» не отличить
+ * от «дальше не посмотрели».
+ */
+const layersTree = {
+  "/map/_index.json": JSON.stringify({ name: "Карта" }),
+  "/map/shared-metrics/dir/config.json": JSON.stringify({
+    refresh: "on-display",
+    collectors: [{ kind: "read-dir" }],
+  }),
+  "/map/shared-metrics/files/config.json": JSON.stringify({
+    label: "Файлы",
+    extends: "mapward://shared-metrics/dir",
+  }),
+  "/map/prototypes/system/_index.json": JSON.stringify({ name: "Система" }),
+  "/map/prototypes/package/_index.json": JSON.stringify({
+    name: "Пакет",
+    extends: "mapward://prototypes/system",
+  }),
+  "/map/prototypes/package/_metrics/files/config.json": JSON.stringify({
+    extends: "mapward://shared-metrics/files",
+  }),
+  "/map/packages/core/_index.json": JSON.stringify({
+    name: "core",
+    extends: "mapward://prototypes/package",
+  }),
+  "/map/packages/cli/_index.json": JSON.stringify({
+    name: "cli",
+    extends: "mapward://prototypes/package",
+  }),
+  // Наследник дописал метрике одно поле: свой файл встаёт первым слоем, прототипов следом.
+  "/map/packages/cli/_metrics/files/config.json": JSON.stringify({ label: "Исходники" }),
+  // Вторая метрика, продолжающая ту же общую: цепочка у неё своя и обрываться не должна.
+  "/map/apps/site/_index.json": JSON.stringify({ name: "Сайт" }),
+  "/map/apps/site/_metrics/files/config.json": JSON.stringify({
+    extends: "mapward://shared-metrics/files",
+  }),
+};
+
+const objectOf = (map: Awaited<ReturnType<typeof readMap>>, address: string) =>
+  map.children.flatMap((child) => child.children).find((child) => child.address === address);
+
+test("a metric carries every file its config was merged from", async () => {
+  const map = await readMap(fakeFiles(layersTree), MAP, "/repo", "Карта");
+  const files = objectOf(map, "mapward://packages/core")?.metrics[0];
+
+  // Своего файла у наследника нет: цепочка начинается прототиповым и уходит в общие.
+  expect(files?.layers.map((layer) => layer.from)).toEqual(["prototype", "extends", "extends"]);
+  expect(files?.layers.map((layer) => layer.path)).toEqual([
+    "/map/prototypes/package/_metrics/files/config.json",
+    "/map/shared-metrics/files/config.json",
+    "/map/shared-metrics/dir/config.json",
+  ]);
+  // Первый слой — тот же файл, что `configPath`: это вход в цепочку, а не второе имя.
+  expect(files?.layers[0]?.path).toBe(files?.configPath);
+});
+
+test("the heir's own file becomes the first layer, the prototype's the next", async () => {
+  const map = await readMap(fakeFiles(layersTree), MAP, "/repo", "Карта");
+  const files = objectOf(map, "mapward://packages/cli")?.metrics[0];
+
+  expect(files?.layers.map((layer) => layer.from)).toEqual([
+    "own",
+    "prototype",
+    "extends",
+    "extends",
+  ]);
+  expect(files?.layers[0]?.path).toBe("/map/packages/cli/_metrics/files/config.json");
+  // Своё выигрывает, дальнее доезжает: иначе по слоям не видно, зачем они.
+  expect(files?.config.label).toBe("Исходники");
+  expect(files?.config.refresh).toBe("on-display");
+});
+
+/**
+ * Защита от циклов должна быть своя на каждую цепочку. Общая на всю карту обрывала вторую
+ * метрику, продолжающую ту же общую, на первом её слое — и молча, потому что ближний слой
+ * при этом приезжал.
+ */
+test("a second metric extending the same shared one gets the whole chain", async () => {
+  const map = await readMap(fakeFiles(layersTree), MAP, "/repo", "Карта");
+  const site = objectOf(map, "mapward://apps/site")?.metrics[0];
+
+  // Свой файл, общая и то, что общая продолжает: третий слой и терялся.
+  expect(site?.layers.map((layer) => layer.path)).toEqual([
+    "/map/apps/site/_metrics/files/config.json",
+    "/map/shared-metrics/files/config.json",
+    "/map/shared-metrics/dir/config.json",
+  ]);
+  expect(site?.config.label).toBe("Файлы");
+  expect(site?.config.refresh).toBe("on-display");
+});
+
+test("an object carries the `_index.json` of every prototype in its chain", async () => {
+  const map = await readMap(fakeFiles(layersTree), MAP, "/repo", "Карта");
+
+  expect(objectOf(map, "mapward://packages/core")?.layers).toEqual([
+    {
+      address: "mapward://packages/core",
+      path: "/map/packages/core/_index.json",
+      from: "own",
+    },
+    {
+      address: "mapward://prototypes/package",
+      path: "/map/prototypes/package/_index.json",
+      from: "prototype",
+    },
+    {
+      address: "mapward://prototypes/system",
+      path: "/map/prototypes/system/_index.json",
+      from: "prototype",
+    },
+  ]);
+});
+
+/** У группы `_index.json` нет, и слоя тоже: пустой путь выглядел бы несуществующим файлом. */
+test("a group has no layers", async () => {
+  const map = await readMap(fakeFiles(layersTree), MAP, "/repo", "Карта");
+
+  expect(map.children.find((child) => child.name === "shared-metrics")?.layers).toEqual([]);
 });
 
 test("a folder starting with an underscore is service, whatever its name", async () => {

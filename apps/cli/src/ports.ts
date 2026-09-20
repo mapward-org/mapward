@@ -1,5 +1,5 @@
 import { exec, spawn } from "node:child_process";
-import { readdir, readFile, mkdir, writeFile } from "node:fs/promises";
+import { readdir, readFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { dirname } from "node:path";
 import process from "node:process";
@@ -37,6 +37,10 @@ const files = {
   async write(path: string, text: string): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, text, "utf8");
+  },
+
+  async remove(path: string): Promise<void> {
+    await rm(path, { force: true });
   },
 
   watch(root: string, onChange: (path: string) => void): () => void {

@@ -3,6 +3,7 @@ import {
   adoptMetric,
   childAddress,
   findObject,
+  fromPrototype,
   MAP_ROOT,
   mapAddress,
   MetricConfig,
@@ -10,7 +11,7 @@ import {
   parseAddress,
   readField,
 } from "@mapward/core";
-import type { MapFile, MapMetric, MapObject, MapStage } from "@mapward/core";
+import type { ConfigLayer, MapFile, MapMetric, MapObject, MapStage } from "@mapward/core";
 import type { FilesPort } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
 import { flag, frontmatter } from "../../../../lib/frontmatter.ts";
@@ -119,11 +120,14 @@ async function readMetrics(
     // oxlint-disable-next-line no-await-in-loop
     const raw = await readJson(files, configPath);
     if (raw === undefined) continue;
+    const own = `${childAddress(address, METRICS)}/${entry.name}`;
     metrics.push({
       key: entry.name,
-      address: `${childAddress(address, METRICS)}/${entry.name}`,
+      address: own,
       configPath,
       cachePath: join(dir, entry.name),
+      // Первый слой — тот файл, с которого мердж начинается; остальные припишет `extends`.
+      layers: [{ address: own, path: configPath, from: "own" }],
       config: Check(MetricConfig, raw) ? raw : {},
     });
   }
@@ -133,11 +137,14 @@ async function readMetrics(
 
 type Raw = MapObject & {
   rawExtends?: string;
-  rawWorkflowMode?: "merge" | "replace";
   // Промптовые поля склеиваются, а не подменяются, поэтому своё приходится помнить отдельно:
   // прототип наследуется не один раз, и склейка поверх уже склеенного удвоила бы общее.
   rawPrompt?: string;
   rawWorkflowPrompt?: string;
+  // По той же причине — слои и метрики: они не подменяются, а дописываются прототиповыми,
+  // и считать надо от своего, а не от того, что уже получилось.
+  rawLayers: ConfigLayer[];
+  rawMetrics: MapMetric[];
 };
 
 /**
@@ -167,6 +174,12 @@ async function readTree(
     children.push(node);
   }
 
+  // У группы `_index.json` нет вовсе, и слоя тоже нет: показывать нечего, а пустой путь
+  // выглядел бы файлом, которого не существует.
+  const layers: ConfigLayer[] =
+    index === undefined ? [] : [{ address, path: join(path, INDEX), from: "own" }];
+  const metrics = await readMetrics(files, path, address);
+
   return {
     address,
     path,
@@ -177,17 +190,20 @@ async function readTree(
     previewLayout: own["preview-metrics-layout"],
     detailsLayout: own["details-metrics-layout"],
     previewStyle: own["preview-style"],
-    metrics: await readMetrics(files, path, address),
+    layers,
+    metrics,
     directives: await readDirectives(files, path),
     actions: await readFiles(files, join(path, ACTIONS)),
     workflow: await readWorkflow(files, path),
     prompt: own.prompt,
     workflowPrompt: own["directives-workflow"]?.prompt,
+    workflowMode: own["directives-workflow"]?.mode,
     children,
-    rawWorkflowMode: own["directives-workflow"]?.mode,
     rawPrompt: own.prompt,
     rawWorkflowPrompt: own["directives-workflow"]?.prompt,
     rawExtends: own.extends,
+    rawLayers: layers,
+    rawMetrics: metrics,
   } as Raw;
 }
 
@@ -199,45 +215,48 @@ async function readTree(
  * Metric inheritance runs before object inheritance, so an object inherits metrics that are
  * already whole.
  */
-async function inheritMetrics(
-  files: FilesPort,
-  object: Raw,
-  mapPath: string,
-  seen = new Set<string>(),
-): Promise<void> {
-  for (const child of object.children as Raw[]) await inheritMetrics(files, child, mapPath, seen);
+async function inheritMetrics(files: FilesPort, object: Raw, mapPath: string): Promise<void> {
+  for (const child of object.children as Raw[]) await inheritMetrics(files, child, mapPath);
 
   for (const metric of object.metrics) {
-    const address = metric.config.extends;
-    if (!address || seen.has(metric.address)) continue;
-    seen.add(metric.address);
-
-    const parsed = parseAddress(address);
-    if (!parsed || parsed.scope !== "map") continue;
-
-    const configPath = join(mapPath, ...parsed.path, "config.json");
+    // Цепочка у каждой метрики своя, поэтому и защита от циклов своя: общий на всю карту набор
+    // обрывал бы вторую метрику, продолжающую ту же общую, на первом же её слое.
     // oxlint-disable-next-line no-await-in-loop
-    const raw = await readJson(files, configPath);
-    if (!Check(MetricConfig, raw)) continue;
-
-    const parent: MapMetric = {
-      key: metric.key,
-      address,
-      configPath,
-      // Only the config is taken from the parent; the cache stays where the metric itself lives.
-      cachePath: metric.cachePath,
-      config: raw,
-    };
-    // The parent may extend something in turn.
-    // oxlint-disable-next-line no-await-in-loop
-    await inheritMetrics(
-      files,
-      { ...object, metrics: [parent], children: [] } as Raw,
-      mapPath,
-      seen,
-    );
-    metric.config = mergeMetric(parent.config, metric.config);
+    await extendMetric(files, metric, mapPath, new Set());
   }
+}
+
+/** Слой за слоем, пока `extends` не кончится: конфиг мерджится, а файл записывается в цепочку. */
+async function extendMetric(
+  files: FilesPort,
+  metric: MapMetric,
+  mapPath: string,
+  seen: Set<string>,
+): Promise<void> {
+  const address = metric.config.extends;
+  if (!address || seen.has(metric.address)) return;
+  seen.add(metric.address);
+
+  const parsed = parseAddress(address);
+  if (!parsed || parsed.scope !== "map") return;
+
+  const configPath = join(mapPath, ...parsed.path, "config.json");
+  const raw = await readJson(files, configPath);
+  if (!Check(MetricConfig, raw)) return;
+
+  const parent: MapMetric = {
+    key: metric.key,
+    address,
+    configPath,
+    // Only the config is taken from the parent; the cache stays where the metric itself lives.
+    cachePath: metric.cachePath,
+    layers: [{ address, path: configPath, from: "extends" }],
+    config: raw,
+  };
+  // The parent may extend something in turn.
+  await extendMetric(files, parent, mapPath, seen);
+  metric.layers = [...metric.layers, ...parent.layers];
+  metric.config = mergeMetric(parent.config, metric.config);
 }
 
 /**
@@ -314,18 +333,25 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   object.detailsLayout = merged["details-metrics-layout"];
   object.previewStyle = merged["preview-style"];
 
+  // `_index.json` прототипа — следующий слой объекта, ровно как `extends` у метрики.
+  object.layers = [...object.rawLayers, ...fromPrototype(prototype.layers)];
+
   // Metrics of the prototype come along; a metric of the same key overrides its parent.
-  const own = new Map(object.metrics.map((metric) => [metric.key, metric]));
+  const own = new Map(object.rawMetrics.map((metric) => [metric.key, metric]));
   object.metrics = [
     ...prototype.metrics.map((metric) => {
       const mine = own.get(metric.key);
       // Свой `config.json` есть — метрика заведена здесь, даже если часть полей от прототипа.
       // Нет — метрика чужая, и это видно по владельцу, как у директив с экшонами.
       return mine
-        ? { ...mine, config: mergeMetric(metric.config, mine.config) }
+        ? {
+            ...mine,
+            config: mergeMetric(metric.config, mine.config),
+            layers: [...mine.layers, ...fromPrototype(metric.layers)],
+          }
         : { ...adoptMetric(object, metric), owner: metric.owner ?? prototype.address };
     }),
-    ...object.metrics.filter((metric) => !prototype.metrics.some((p) => p.key === metric.key)),
+    ...object.rawMetrics.filter((metric) => !prototype.metrics.some((p) => p.key === metric.key)),
   ];
   // По имени, и своё выигрывает: прототип достаётся нескольким наследникам, и без дедупа
   // один и тот же экшон приезжает столько раз, сколько их в цепочке.
@@ -339,7 +365,7 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   // Этапы наследуются, как экшоны, но объект может сказать `mode: "replace"` — тогда
   // унаследованные не приезжают вовсе. Решение 0017: переопределять можно целиком и частями.
   object.workflow =
-    object.rawWorkflowMode === "replace"
+    object.workflowMode === "replace"
       ? object.workflow
       : byStage(prototype.workflow, object.workflow, prototype.address);
 }

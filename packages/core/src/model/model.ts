@@ -1,5 +1,23 @@
 import { childAddress } from "./address.ts";
-import type { Layout, MetricConfig } from "./schema.ts";
+import type { Layout, MetricConfig, ObjectIndex } from "./schema.ts";
+
+/**
+ * Файл, участвовавший в мердже. Мердж разрушителен: по результату не видно, из чего он
+ * собран, — а правят как раз слои. Поэтому цепочка лежит в модели, но лежит ссылками: адрес
+ * и путь, без содержимого (решение 0019).
+ */
+export type ConfigLayer = {
+  /** Чей это файл: адрес объекта или адрес метрики. */
+  address: string;
+  /** Сам файл: `config.json` у метрики, `_index.json` у объекта. */
+  path: string;
+  /** Откуда слой достался: свой файл, файл прототипа, файл по `extends`. */
+  from: "own" | "prototype" | "extends";
+};
+
+/** Слои, доставшиеся от прототипа: то, что у него было своим, для наследника — прототипово. */
+export const fromPrototype = (layers: ConfigLayer[]): ConfigLayer[] =>
+  layers.map((layer) => (layer.from === "own" ? { ...layer, from: "prototype" as const } : layer));
 
 /** A metric as the sidebar needs it: config plus where it came from. */
 export type MapMetric = {
@@ -16,6 +34,8 @@ export type MapMetric = {
    * question cannot be answered from the outside at all.
    */
   owner?: string;
+  /** Файлы, из которых собран конфиг, от своего к дальнему прототипу. Первый — `configPath`. */
+  layers: ConfigLayer[];
   config: MetricConfig;
 };
 
@@ -33,6 +53,8 @@ export function adoptMetric(
     ...metric,
     address: `${childAddress(object.address, "_metrics")}/${metric.key}`,
     cachePath: `${object.path}/_metrics/${metric.key}`,
+    // Файлы слоёв остаются прототиповы: конфиг взят у него, там его и правят.
+    layers: fromPrototype(metric.layers),
   };
 }
 
@@ -89,6 +111,8 @@ export type MapObject = {
   detailsLayout?: Layout;
   /** Стили карточки превью поверх умолчаний — решение 0003. */
   previewStyle?: Record<string, string>;
+  /** `_index.json`, из которых собран объект, от своего к дальнему прототипу. У группы пусто. */
+  layers: ConfigLayer[];
   metrics: MapMetric[];
   directives: MapFile[];
   actions: MapFile[];
@@ -101,8 +125,42 @@ export type MapObject = {
   prompt?: string;
   /** Промпт, примешиваемый к любому этапу этого объекта — хук из `_index.json`. */
   workflowPrompt?: string;
+  /** Мерджить унаследованные этапы или заменить их целиком — решение 0017. Своё, не наследуется. */
+  workflowMode?: "merge" | "replace";
   children: MapObject[];
 };
+
+/**
+ * Мердж объекта обратно в вид `_index.json` — тот, по которому объект и нарисован. Собирается,
+ * а не хранится: готовый мердж означал бы `props` в двух местах сразу, а подстановка идёт
+ * по обоим, и они разъехались бы на первой же правке (решение 0019).
+ *
+ * `extends` берётся из слоёв: второй слой — это и есть прототип. Не разрешившийся `extends`
+ * слоя не даёт, но такой объект и не унаследован вовсе, так что мердж о нём молчит честно.
+ */
+export function objectIndex(object: MapObject): ObjectIndex {
+  const workflow = {
+    ...(object.workflowMode === undefined ? {} : { mode: object.workflowMode }),
+    ...(object.workflowPrompt === undefined ? {} : { prompt: object.workflowPrompt }),
+  };
+  const parent = object.layers[1]?.address;
+
+  return {
+    name: object.name,
+    ...(parent === undefined ? {} : { extends: parent }),
+    ...(Object.keys(object.props).length === 0 ? {} : { props: object.props }),
+    ...(object.previewSize === undefined ? {} : { "preview-size": object.previewSize }),
+    ...(object.previewLayout === undefined
+      ? {}
+      : { "preview-metrics-layout": object.previewLayout }),
+    ...(object.detailsLayout === undefined
+      ? {}
+      : { "details-metrics-layout": object.detailsLayout }),
+    ...(object.previewStyle === undefined ? {} : { "preview-style": object.previewStyle }),
+    ...(object.prompt === undefined ? {} : { prompt: object.prompt }),
+    ...(Object.keys(workflow).length === 0 ? {} : { "directives-workflow": workflow }),
+  };
+}
 
 export function findObject(root: MapObject, address: string): MapObject | undefined {
   if (root.address === address) return root;

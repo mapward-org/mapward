@@ -16,6 +16,8 @@ export type FilesPort = {
   read(path: string): Promise<string | undefined>;
   list(path: string): Promise<FileEntry[]>;
   write(path: string, text: string): Promise<void>;
+  /** Убрать файл. Файла нет — это тоже успех: удаление зовут ради того, чтобы его не стало. */
+  remove(path: string): Promise<void>;
   /** Следит за деревом и зовёт обратно с путём того, что изменилось. */
   watch(root: string, onChange: (path: string) => void): () => void;
 };
