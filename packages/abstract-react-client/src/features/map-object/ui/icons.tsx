@@ -30,10 +30,19 @@ export const MetricsIcon = (
   </svg>
 );
 
-/** Крестик: убрать строку из списка. Мельче остальных — он живёт внутри пункта, а не в шапке. */
-export const RemoveIcon = (
-  <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.6">
-    <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" strokeLinecap="round" />
+/** Новая директива: тот же лист, что у списка, с плюсом — действие, а не список. */
+export const NewDirectiveIcon = (
+  <svg viewBox="0 0 16 16" className={box} fill="none" stroke="currentColor" strokeWidth="1.2">
+    <path d="M4 2.5h6l2.5 2.5v8.5H4z" />
+    <path d="M8 6.5v5M5.5 9h5" strokeLinecap="round" />
+  </svg>
+);
+
+/** Об объекте: карточка с полями — всё, что объект о себе знает (решение 0024). */
+export const MetaIcon = (
+  <svg viewBox="0 0 16 16" className={box} fill="none" stroke="currentColor" strokeWidth="1.2">
+    <rect x="2.5" y="3" width="11" height="10" rx="1" />
+    <path d="M5 6h6M5 8.5h6M5 11h3.5" strokeLinecap="round" />
   </svg>
 );
 

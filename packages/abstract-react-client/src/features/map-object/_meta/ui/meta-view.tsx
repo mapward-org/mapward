@@ -1,0 +1,157 @@
+import type { ReactNode } from "react";
+import type { ConfigLayer, MapMetric, MapObject } from "@mapward/core";
+import { ListRow, type RowAction } from "../../../../lib/ui/list-row.tsx";
+import { howCollected, layerLabel, originHint, ownerHint, propRows } from "../pure-model/meta.ts";
+
+/** Заголовок раздела: иконка та же, что стояла на кнопке этого списка в шапке. */
+function Section(props: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-0.5">
+      <h2 className="flex items-center gap-1.5 px-3 pt-1 text-[11px] uppercase opacity-60">
+        <span className="shrink-0 opacity-80">{props.icon}</span>
+        {props.title}
+      </h2>
+      {props.children}
+    </section>
+  );
+}
+
+export type MetaIcons = {
+  index: ReactNode;
+  metrics: ReactNode;
+  directives: ReactNode;
+  workflow: ReactNode;
+  actions: ReactNode;
+};
+
+/**
+ * Второй режим объекта: всё, что объект о себе знает, — вместо ряда меню в шапке
+ * (решение 0024). Показывает и то, чего хост открыть не умеет: имена, происхождение
+ * и `props` — это текст, а не действие, и `0014` их не запрещает.
+ *
+ * Директивы рисует соседний подмодуль, а сводит их вместе `map-object/compose` — так же,
+ * как карту детей в сетке метрик (решение 0015).
+ */
+export function MetaView(props: {
+  map: MapObject;
+  object: MapObject;
+  icons: MetaIcons;
+  onBack: () => void;
+  /** Мердж конфига — документ, которого на диске нет; хост без такого умения его не получает. */
+  onOpenObjectConfig?: () => void;
+  onOpenMetricConfig?: (metric: MapMetric) => void;
+  /** Файл слоя — единственное, что можно править. */
+  onOpenFile?: (path: string) => void;
+  directives: ReactNode;
+}) {
+  const openFile = props.onOpenFile;
+  const openObjectConfig = props.onOpenObjectConfig;
+  const openMetricConfig = props.onOpenMetricConfig;
+
+  /** Кнопки слоёв под строкой: мердж читают, а правят файлы, из которых он собран. */
+  const layers = (list: ConfigLayer[]): RowAction[] | undefined =>
+    openFile === undefined
+      ? undefined
+      : list.map((layer) => ({
+          key: layer.path,
+          label: layerLabel(props.map, layer),
+          onSelect: () => openFile(layer.path),
+        }));
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-auto pb-6">
+      <div className="flex items-center gap-1 px-2 py-1 text-[11px] opacity-70">
+        <button type="button" title="Назад" onClick={props.onBack} className="pr-1">
+          ←
+        </button>
+        <span className="truncate">Об объекте</span>
+      </div>
+
+      <Section icon={props.icons.index} title="Объект">
+        <ListRow
+          label={props.object.name}
+          hint={originHint(props.object.layers)}
+          title={props.object.address}
+          {...(openObjectConfig === undefined ? {} : { onSelect: openObjectConfig })}
+          {...(props.object.layers.length === 0 ? {} : { actions: layers(props.object.layers) })}
+        />
+        <dl className="flex flex-col px-3 pt-1 text-[11px] opacity-70">
+          <div className="flex gap-2">
+            <dt className="w-28 shrink-0 truncate">адрес</dt>
+            <dd className="truncate">{props.object.address}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-28 shrink-0 truncate">на диске</dt>
+            <dd className="truncate" title={props.object.path}>
+              {props.object.path}
+            </dd>
+          </div>
+          {propRows(props.object.props).map((prop) => (
+            <div key={prop.key} className="flex gap-2">
+              <dt className="w-28 shrink-0 truncate" title={prop.key}>
+                {prop.key}
+              </dt>
+              <dd className="truncate" title={prop.value}>
+                {prop.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Section>
+
+      {props.object.metrics.length > 0 && (
+        <Section icon={props.icons.metrics} title="Метрики">
+          {props.object.metrics.map((metric) => (
+            <ListRow
+              key={metric.key}
+              label={metric.config.label ?? metric.key}
+              title={howCollected(metric)}
+              hint={originHint(metric.layers)}
+              {...(openMetricConfig === undefined
+                ? {}
+                : { onSelect: () => openMetricConfig(metric) })}
+              {...(metric.layers.length === 0 ? {} : { actions: layers(metric.layers) })}
+            />
+          ))}
+        </Section>
+      )}
+
+      <Section icon={props.icons.directives} title="Директивы">
+        {props.directives}
+      </Section>
+
+      {props.object.workflow.length > 0 && (
+        <Section icon={props.icons.workflow} title="Этапы директив">
+          {props.object.workflow.map((stage) => (
+            <ListRow
+              key={stage.name}
+              label={stage.name}
+              // Откуда этап взялся: свой, от прототипа или дефолт инструмента. Иначе по экрану
+              // не отличить настроенный воркфлоу от встроенного (решение 0017).
+              hint={stage.path === "" ? "по умолчанию" : (ownerHint(stage.owner) ?? "свой")}
+              {...(stage.marksDone ? { hintClass: "text-[var(--mw-charts-green,#3a3)]" } : {})}
+              {...(openFile === undefined || stage.path === ""
+                ? {}
+                : { onSelect: () => openFile(stage.path) })}
+            />
+          ))}
+        </Section>
+      )}
+
+      {props.object.actions.length > 0 && (
+        <Section icon={props.icons.actions} title="Экшоны">
+          {props.object.actions.map((file) => (
+            <ListRow
+              key={file.path}
+              label={file.name}
+              {...(ownerHint(file.owner) === undefined
+                ? {}
+                : { hint: ownerHint(file.owner) as string })}
+              {...(openFile === undefined ? {} : { onSelect: () => openFile(file.path) })}
+            />
+          ))}
+        </Section>
+      )}
+    </div>
+  );
+}
