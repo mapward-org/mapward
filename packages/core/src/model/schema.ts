@@ -17,6 +17,10 @@ export const ObjectIndex = T.Object({
   "preview-metrics-layout": T.Optional(Layout),
   "details-metrics-layout": T.Optional(Layout),
   "preview-style": T.Optional(T.Record(T.String(), T.String())),
+  // Решение 0018: то, что карта говорит своему терминалу поверх сказанного инструментом.
+  // Доезжает до промпта терминала и до промпта этапа: правило объекта не зависит от того,
+  // запущена директива или нет.
+  prompt: T.Optional(T.String()),
   // Решение 0017: чем этапы объекта отличаются от унаследованных и что примешивается
   // к промпту любого из них. Сами этапы — файлы в `_directives.workflow/`.
   "directives-workflow": T.Optional(

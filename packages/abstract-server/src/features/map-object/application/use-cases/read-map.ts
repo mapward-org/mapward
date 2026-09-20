@@ -130,7 +130,14 @@ async function readMetrics(
   return metrics;
 }
 
-type Raw = MapObject & { rawExtends?: string; rawWorkflowMode?: "merge" | "replace" };
+type Raw = MapObject & {
+  rawExtends?: string;
+  rawWorkflowMode?: "merge" | "replace";
+  // Промптовые поля склеиваются, а не подменяются, поэтому своё приходится помнить отдельно:
+  // прототип наследуется не один раз, и склейка поверх уже склеенного удвоила бы общее.
+  rawPrompt?: string;
+  rawWorkflowPrompt?: string;
+};
 
 /**
  * Reads the tree as written on disk. Inheritance and substitution come after — they need the
@@ -172,9 +179,12 @@ async function readTree(
     directives: await readDirectives(files, path),
     actions: await readFiles(files, join(path, ACTIONS)),
     workflow: await readWorkflow(files, path),
+    prompt: own.prompt,
     workflowPrompt: own["directives-workflow"]?.prompt,
     children,
     rawWorkflowMode: own["directives-workflow"]?.mode,
+    rawPrompt: own.prompt,
+    rawWorkflowPrompt: own["directives-workflow"]?.prompt,
     rawExtends: own.extends,
   } as Raw;
 }
@@ -254,6 +264,16 @@ const byStage = (inherited: MapStage[], own: MapStage[], from: string): MapStage
   ].toSorted((a, b) => a.order - b.order);
 };
 
+/**
+ * Общее с дальнего прототипа сверху, своё снизу — решение 0018. Склеивается унаследованное с
+ * тем, что объект написал сам, а не с тем, что у него уже получилось: прототип наследуется
+ * столько раз, сколько у него наследников, и накопление удвоило бы общую часть.
+ */
+const joinPrompts = (inherited?: string, own?: string): string | undefined => {
+  const parts = [inherited, own].filter((part) => part !== undefined && part !== "");
+  return parts.length === 0 ? undefined : parts.join("\n\n");
+};
+
 /** `extends` resolves recursively; a cycle is an error, not a hang. */
 function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   for (const child of object.children as Raw[]) inherit(root, child, new Set());
@@ -306,9 +326,11 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
   // один и тот же экшон приезжает столько раз, сколько их в цепочке.
   object.directives = byName(prototype.directives, object.directives, prototype.address);
   object.actions = byName(prototype.actions, object.actions, prototype.address);
-  // Хук примешивается к любому этапу объекта. Через `mergeIndex` он не ходит: там заявленным
-  // считается присутствие ключа, а `{ prompt: undefined }` у наследника затёрло бы прототип.
-  object.workflowPrompt = object.workflowPrompt ?? prototype.workflowPrompt;
+  // Промптовые поля складываются, а не подменяются — решение 0018: объект, дописавший себе
+  // строчку, иначе молча потерял бы общее правило карты. Через `mergeIndex` они не ходят: там
+  // заявленным считается присутствие ключа, а склейка — не мердж.
+  object.prompt = joinPrompts(prototype.prompt, object.rawPrompt);
+  object.workflowPrompt = joinPrompts(prototype.workflowPrompt, object.rawWorkflowPrompt);
   // Этапы наследуются, как экшоны, но объект может сказать `mode: "replace"` — тогда
   // унаследованные не приезжают вовсе. Решение 0017: переопределять можно целиком и частями.
   object.workflow =
@@ -351,6 +373,10 @@ function resolver(root: MapObject, self: MapObject, basePath: string, depth = 0)
 function apply(root: MapObject, object: MapObject, basePath: string): void {
   const resolve = resolver(root, object, basePath);
   object.props = substituteDeep(object.props, resolve);
+  // Промпт пишет путь адресом, а не вручную: карта переезжает, и зашитый путь переезжает не с
+  // ней. Подстановка идёт после наследования, поэтому `~` значит объект, а не прототип.
+  object.prompt = substituteDeep(object.prompt, resolve);
+  object.workflowPrompt = substituteDeep(object.workflowPrompt, resolve);
   object.metrics = object.metrics.map((metric) => ({
     ...metric,
     config: substituteDeep(metric.config, resolve),

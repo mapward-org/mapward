@@ -102,7 +102,15 @@ const workflowTree = {
   "/map/_index.json": JSON.stringify({ name: "Карта" }),
   "/map/prototypes/base/_index.json": JSON.stringify({
     name: "Базовый",
+    prompt: "Память карты — ${{ mapward://@ }}/ru/memories/",
     "directives-workflow": { prompt: "и напиши отзыв" },
+  }),
+  // Прототип посередине цепочки: у него два наследника, и наследуется он столько же раз.
+  "/map/prototypes/middle/_index.json": JSON.stringify({
+    name: "Средний",
+    extends: "mapward://prototypes/base",
+    prompt: "тесты гоняются так-то",
+    "directives-workflow": { prompt: "и почини линтер" },
   }),
   "/map/prototypes/base/_directives.workflow/обсудить.md":
     "---\nname: Обсудить\norder: 10\n---\n\nскажи, что думаешь\n",
@@ -111,6 +119,15 @@ const workflowTree = {
   "/map/apps/editor/_index.json": JSON.stringify({
     name: "Редактор",
     extends: "mapward://prototypes/base",
+    prompt: "у редактора есть своя песочница",
+  }),
+  "/map/apps/first/_index.json": JSON.stringify({
+    name: "Первый",
+    extends: "mapward://prototypes/middle",
+  }),
+  "/map/apps/second/_index.json": JSON.stringify({
+    name: "Второй",
+    extends: "mapward://prototypes/middle",
   }),
   "/map/apps/editor/_directives.workflow/проверка.md":
     "---\nname: Проверка\norder: 15\n---\n\nпроверь\n",
@@ -153,6 +170,50 @@ test("replace drops the inherited stages but keeps the hook", async () => {
 
   expect(own?.workflow.map((stage) => stage.name)).toEqual(["Сделать"]);
   expect(own?.workflowPrompt).toBe("и напиши отзыв");
+});
+
+/**
+ * Решение 0018: промптовые поля складываются. Объект, дописавший себе строчку, иначе молча
+ * потерял бы общее правило карты — и заметить это было бы нечем, потому что своя строка
+ * при этом работает.
+ */
+test("prompts add up down the prototype chain instead of replacing", async () => {
+  const map = await readMap(fakeFiles(workflowTree), MAP, "/repo", "Карта");
+  const editor = appOf(map, "Редактор");
+
+  expect(editor?.prompt).toBe(
+    "Память карты — /repo/ru/memories/\n\nу редактора есть своя песочница",
+  );
+});
+
+/** Правило одно на оба промптовых поля: соседние поля с разными правилами будут путать. */
+test("the stage hook adds up by the same rule", async () => {
+  const map = await readMap(fakeFiles(workflowTree), MAP, "/repo", "Карта");
+
+  expect(appOf(map, "Первый")?.workflowPrompt).toBe("и напиши отзыв\n\nи почини линтер");
+});
+
+/**
+ * Прототип наследуется столько раз, сколько у него наследников. Склейка поверх уже склеенного
+ * удвоила бы общую часть — поэтому складывается своё, а не то, что уже получилось.
+ */
+test("a prototype with several heirs does not repeat the inherited prompt", async () => {
+  const map = await readMap(fakeFiles(workflowTree), MAP, "/repo", "Карта");
+
+  for (const name of ["Первый", "Второй"]) {
+    expect(appOf(map, name)?.prompt).toBe(
+      "Память карты — /repo/ru/memories/\n\nтесты гоняются так-то",
+    );
+  }
+});
+
+/** Путь внутри промпта пишется адресом: карта переезжает, а зашитый путь переезжает не с ней. */
+test("substitution reaches the prompt fields", async () => {
+  const map = await readMap(fakeFiles(workflowTree), MAP, "/repo", "Карта");
+
+  expect(map.children.flatMap((c) => c.children).find((c) => c.name === "Базовый")?.prompt).toBe(
+    "Память карты — /repo/ru/memories/",
+  );
 });
 
 test("the workflow folder is settings, not a child object", async () => {
