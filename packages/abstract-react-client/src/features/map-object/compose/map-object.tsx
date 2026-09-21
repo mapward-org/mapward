@@ -109,6 +109,14 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
         })
     : undefined;
 
+  /**
+   * Ссылка на объект открывается табом тем же жестом, что вкладка и метрика: ctrl + клик или
+   * иконка рядом (0026). Где бы объект ни был назван — в крошках, на карте детей, в списке или
+   * дереве метрики, — открывается он одинаково.
+   */
+  const openObjectTab = openInTab ? (link: string) => openInTab({ address: link }) : undefined;
+  const objectTab = openObjectTab === undefined ? {} : { onOpenTab: openObjectTab };
+
   const runStage = can.terminals
     ? (file: { name: string }, stage: string) => terminals.runStage(file.name, stage)
     : undefined;
@@ -131,12 +139,14 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
             onOpenTab: (metric: MapMetric) =>
               openInTab({ group: openGroup?.key, metric: metric.key }),
           })}
+      {...(openObjectTab === undefined ? {} : { onOpenObjectTab: openObjectTab })}
       renderMap={(childrenMap, metricAddress) => (
         <ChildrenMapView
           map={childrenMap}
           mapPath={props.mapConfig.mapPath}
           address={metricAddress}
           onOpen={open}
+          {...objectTab}
         />
       )}
     />
@@ -167,7 +177,7 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
 
   return (
     <div className="flex h-full flex-col pb-2">
-      <Breadcrumbs trail={path.slice(0, -1)} onGo={go} />
+      <Breadcrumbs trail={path.slice(0, -1)} onGo={go} {...objectTab} />
 
       <ObjectHeader
         name={current.name}
