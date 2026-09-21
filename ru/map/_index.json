@@ -32,7 +32,7 @@
       ]
     ],
     "style": {
-      "gridTemplateRows": "auto auto auto auto auto auto auto auto 1fr",
+      "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(200px) fit-content(200px) fit-content(300px) fit-content(300px) fit-content(300px) fit-content(300px) minmax(320px, 1fr)",
       "gap": "8px"
     }
   }
