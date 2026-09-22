@@ -3,6 +3,8 @@ export {
   listTerminals,
   openTerminal,
   pickSession,
+  pickStageSession,
+  rememberDirectiveRun,
   renameForStage,
   sendToTerminal,
   setMcpUrl,

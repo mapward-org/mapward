@@ -8,6 +8,11 @@ import { openObjectTab, registerObjectTabs } from "./object-tab.ts";
 import { startMcpHttp } from "./mcp-http.ts";
 import { setMcpUrl } from "@/features/terminals/index.extension.ts";
 import { withStageTabs } from "./stage-tabs.ts";
+import { runStage } from "./run-stage.ts";
+import {
+  locateDirective,
+  registerDirectiveButtons,
+} from "@/features/directive-buttons/index.extension.ts";
 
 /**
  * Сборка: порты редактора, настройки карты и один сервер на окно. Стор метрик внутри него,
@@ -60,6 +65,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     setMcpUrl(mcp.url);
     context.subscriptions.push({ dispose: mcp.stop });
   }
+
+  // Кнопки этапов в файле директивы — решение 0032. Карта читается на каждый вопрос заново:
+  // сервер держит её в кэше, а директивы и этапы меняются, пока файл открыт.
+  const maps = state.kind === "maps" ? state.maps : [];
+  const find = async (uri: vscode.Uri) => {
+    for (const map of maps) {
+      // oxlint-disable-next-line no-await-in-loop
+      const located = locateDirective(await server.getMap(map), uri.fsPath);
+      if (located) return { map, located };
+    }
+    return undefined;
+  };
+  context.subscriptions.push(
+    registerDirectiveButtons({
+      locate: async (uri) => (await find(uri))?.located,
+      run: async ({ uri, stage }) => {
+        const found = await find(uri);
+        if (!found) return;
+        await runStage(server, {
+          mapPath: found.map.mapPath,
+          basePath: found.map.basePath,
+          name: found.map.name,
+          address: found.located.object.address,
+          directive: found.located.directive,
+          stage,
+        });
+      },
+    }),
+  );
 
   // Мердженный конфиг метрики показывается документом без файла — решение 0019.
   context.subscriptions.push(registerVirtualDocs());

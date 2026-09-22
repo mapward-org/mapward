@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type { Shell } from "../pure-model/shell.ts";
 import { quoteArg, quotePrompt, shellOf, singleLine } from "../pure-model/shell.ts";
 import { freeName, stageName } from "../pure-model/names.ts";
+import { chooseRecipient } from "../pure-model/recipient.ts";
 
 /**
  * Терминал — сессия: пока он открыт, агент помнит разговор, закрыли — сессия кончилась.
@@ -22,6 +23,15 @@ type Session = {
 
 const sessions = new Map<string, Session>();
 let counter = 0;
+
+/**
+ * Где директиву последний раз запускали кнопкой — решение 0032. По концу этапа не стирается:
+ * иначе второй круг его бы уже не застал. Живёт в памяти редактора — после перезапуска
+ * терминалы всё равно закрыты. Ключ — адрес вместе с файлом: имена директив у разных
+ * объектов совпадают.
+ */
+const lastRun = new Map<string, string>();
+const directiveKey = (address: string, directive: string) => `${address}\n${directive}`;
 
 /**
  * Адрес MCP-сервера карты — решение 0009: расширение подставляет его в `--mcp-config` при
@@ -51,20 +61,36 @@ const living = (): Session[] => [...sessions.keys()].flatMap((id) => alive(id) ?
 const ofObject = (address: string): Session[] =>
   living().filter((session) => session.address === address);
 
-export function openTerminal(params: {
+/**
+ * Пауза между текстом и Enter. Текст, пришедший одним куском вместе с Enter, агент принимает за
+ * вставку из буфера, и Enter в ней — перенос строки внутри поля ввода, а не отправка: фраза
+ * вставлялась и не запускалась. Отдельный Enter после паузы агент видит нажатием клавиши.
+ */
+const SUBMIT_DELAY_MS = 150;
+
+/** Набрать фразу в живую сессию и нажать Enter: одной строкой — агент шлёт по каждому Enter. */
+async function submit(terminal: vscode.Terminal, text: string): Promise<void> {
+  terminal.sendText(singleLine(text), false);
+  await new Promise((resolve) => setTimeout(resolve, SUBMIT_DELAY_MS));
+  terminal.sendText("\r", false);
+}
+
+export async function openTerminal(params: {
   name: string;
   address: string;
   cwd: string;
   prompt: string;
   fresh?: boolean;
-}): { id: string; name: string } {
+  /** Показать терминал, не забирая курсор: кнопка этапа оставляет человека там, где он был. */
+  preserveFocus?: boolean;
+}): Promise<{ id: string; name: string }> {
   const chosen = params.fresh ? undefined : pickSession(params.address);
   const existing = chosen && alive(chosen.id);
   if (existing) {
-    existing.terminal.show();
+    existing.terminal.show(params.preserveFocus);
     // The session is already running, so the prompt goes to the agent rather than to a shell:
-    // no `claude` in front of it, and one line, because the agent submits on Enter.
-    existing.terminal.sendText(singleLine(params.prompt));
+    // no `claude` in front of it.
+    await submit(existing.terminal, params.prompt);
     return { id: existing.id, name: existing.name };
   }
 
@@ -77,7 +103,7 @@ export function openTerminal(params: {
   const id = `t${counter}`;
   sessions.set(id, { id, address: params.address, name, terminal });
 
-  terminal.show();
+  terminal.show(params.preserveFocus);
   // One argument, quoted the way this shell wants it — decision 0002 counts on the agent
   // reading the prompt as written, line breaks and all.
   // Флаг идёт после промпта: `--mcp-config` принимает несколько значений подряд и съедает
@@ -102,28 +128,65 @@ export function closeTerminal(params: { id: string }): void {
 }
 
 /**
- * Кому кнопка отправляет фразу: активный терминал этого объекта, иначе первый живой, иначе
- * никто — и тогда зовущий заводит новый (решение 0017). Чужие терминалы получателями не
- * бывают: фраза, уехавшая в соседний разговор, выглядит как поломка карты.
+ * Кому кнопка «терминал» на объекте отправляет промпт: активный терминал этого объекта, иначе
+ * первый живой, иначе никто — и тогда зовущий заводит новый (решение 0017). Чужие терминалы
+ * получателями не бывают: фраза, уехавшая в соседний разговор, выглядит как поломка карты.
  */
 export function pickSession(address: string): { id: string; name: string } | undefined {
-  const own = ofObject(address);
-  const active = own.find((session) => session.terminal === vscode.window.activeTerminal);
-  const chosen = active ?? own[0];
+  return pickFor({ address });
+}
+
+/** Получатель кнопки этапа: сперва терминал последнего запуска этой директивы — решение 0032. */
+export function pickStageSession(params: {
+  address: string;
+  directive: string;
+}): { id: string; name: string } | undefined {
+  return pickFor({
+    address: params.address,
+    remembered: lastRun.get(directiveKey(params.address, params.directive)),
+  });
+}
+
+function pickFor(params: {
+  address: string;
+  remembered?: string;
+}): { id: string; name: string } | undefined {
+  const own = ofObject(params.address);
+  const id = chooseRecipient({
+    remembered: params.remembered,
+    own: own.map((session) => ({
+      id: session.id,
+      active: session.terminal === vscode.window.activeTerminal,
+    })),
+  });
+  const chosen = own.find((session) => session.id === id);
   return chosen && { id: chosen.id, name: chosen.name };
 }
 
-/** Отправить текст в живую сессию: без `claude` впереди и одной строкой — агент шлёт по Enter. */
-export function sendToTerminal(params: { id: string; text: string }): void {
+/** Запомнить, куда кнопка отправила этап этой директивы. */
+export function rememberDirectiveRun(params: {
+  address: string;
+  directive: string;
+  id: string;
+}): void {
+  lastRun.set(directiveKey(params.address, params.directive), params.id);
+}
+
+/**
+ * Отправить фразу в живую сессию. Терминал показывается, но курсор остаётся где был: агент
+ * отвечает в файл директивы, и человек дописывает свой ответ там же — решение 0032.
+ */
+export async function sendToTerminal(params: { id: string; text: string }): Promise<void> {
   const session = alive(params.id);
   if (!session) return;
-  session.terminal.show();
-  session.terminal.sendText(singleLine(params.text));
+  session.terminal.show(true);
+  await submit(session.terminal, params.text);
 }
 
 /**
  * Имя вкладки на время этапа. `Terminal.name` только для чтения, поэтому переименование идёт
  * командой редактора — а она работает над активным терминалом, отсюда `show()` перед ней.
+ * Показываем, не забирая курсор: переименование не повод уводить человека из файла.
  * Не вышло — запуск всё равно состоялся: имя вкладки не повод ронять этап.
  */
 export async function renameForStage(params: {
@@ -137,7 +200,7 @@ export async function renameForStage(params: {
   if (!session) return;
 
   const name = stageName(params);
-  session.terminal.show();
+  session.terminal.show(true);
   try {
     await vscode.commands.executeCommand("workbench.action.terminal.renameWithArg", { name });
     session.name = name;

@@ -10,12 +10,9 @@ import {
   closeTerminal,
   listTerminals,
   openTerminal,
-  pickSession,
-  renameForStage,
-  sendToTerminal,
   showTerminal,
 } from "@/features/terminals/index.extension.ts";
-import { rememberStage } from "./stage-tabs.ts";
+import { runStage } from "./run-stage.ts";
 
 /**
  * Где фичи встречаются с мостом. Ниже apps никто не решает, что отвечает хост.
@@ -101,43 +98,8 @@ export function serveBridge(
       });
     },
 
-    /**
-     * Кнопка этапа: фраза уходит в живую сессию объекта, промпт агент берёт из MCP сам —
-     * решение 0017. Сессии нет — заводим её обычным путём, с промптом объекта, и фраза
-     * приезжает следом.
-     */
-    runStage: async (params) => {
-      const { text } = await server.stageRequest(params);
-      const map = await server.getMap(params);
-      const object = findObject(map, params.address) ?? map;
-
-      const existing = pickSession(params.address);
-      if (existing) sendToTerminal({ id: existing.id, text });
-
-      // Новой сессии фраза едет внутри промпта, а не строкой следом: `claude` ещё не поднялся,
-      // и отправленное вдогонку попало бы в шелл.
-      const session =
-        existing ??
-        openTerminal({
-          name: `mapward: ${object.name}`,
-          address: params.address,
-          cwd: params.basePath,
-          prompt: [objectPrompt(object, params.mapPath), "", text].join("\n"),
-        });
-      rememberStage(session.id, {
-        address: params.address,
-        directive: params.directive,
-        stage: params.stage,
-        base: object.name,
-      });
-      await renameForStage({
-        id: session.id,
-        base: object.name,
-        directive: params.directive,
-        stage: params.stage,
-      });
-      return { id: session.id, name: session.name };
-    },
+    /** Кнопка этапа на карте — тот же вызов, что у кнопок в файле директивы (0032). */
+    runStage: (params) => runStage(server, params),
 
     showTerminal: (params) => showTerminal(params),
     listTerminals: (params) => listTerminals(params),

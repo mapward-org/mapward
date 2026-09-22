@@ -52,6 +52,34 @@
     "unrun": "catalog:"
   },
   "contributes": {
+    "commands": [
+      {
+        "command": "mapward.directive.pickStage",
+        "title": "Запустить этап директивы",
+        "category": "Mapward",
+        "icon": "$(play)"
+      },
+      {
+        "command": "mapward.directive.runStage",
+        "title": "Запустить этап",
+        "category": "Mapward"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "mapward.directive.pickStage",
+          "when": "resourceLangId == markdown && resourcePath =~ /[\\\\/]_directives[\\\\/][^\\\\/]+\\.md$/",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "mapward.directive.runStage",
+          "when": "false"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -71,7 +99,9 @@
       ]
     }
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
   "engines": {
     "node": ">=22",
     "vscode": "^1.90.0"
