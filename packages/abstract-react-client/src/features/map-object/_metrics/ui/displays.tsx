@@ -7,7 +7,7 @@ import type {
   StatusMark,
 } from "../pure-model/display.ts";
 import { gitColor, isObjectLink, placeholder } from "../pure-model/display.ts";
-import { TabIcon } from "../../ui/icons.tsx";
+import { tabHover } from "../../ui/tab-modifier.ts";
 import { FileTree } from "./file-tree.tsx";
 import { GitMark } from "./git-mark.tsx";
 import { Markdown, MarkdownLine } from "./markdown.tsx";
@@ -16,7 +16,10 @@ import { StatusDot } from "./status-dot.tsx";
 function Link(props: {
   node: StatusMark & Mark & { label?: string; link?: string };
   onOpen: (link: string) => void;
-  /** Открыть объект отдельным табом — решение 0026. Ссылка не на объект иконки не получает. */
+  /**
+   * Открыть объект отдельным табом ctrl + кликом — решение 0026. Иконки нет (0035): видно жест
+   * подсветкой под ctrl, и ссылка не на объект её не получает.
+   */
   onOpenTab?: (link: string) => void;
 }) {
   const { node } = props;
@@ -33,7 +36,9 @@ function Link(props: {
       }
       {...(tab === undefined ? {} : { title: "Ctrl + клик — открыть отдельным табом" })}
       style={color ? { color } : undefined}
-      className="truncate text-left text-[var(--mw-textLink-foreground)] hover:underline"
+      className={`truncate text-left text-[var(--mw-textLink-foreground)] ${
+        tab ? tabHover.tabLink : tabHover.plainLink
+      }`}
     >
       {text}
     </button>
@@ -44,20 +49,10 @@ function Link(props: {
   );
 
   return (
-    <span className="group/link flex items-center gap-1">
+    <span className="flex items-center gap-1">
       <StatusDot mark={node} />
       {body}
       <GitMark mark={node} />
-      {tab && link && (
-        <button
-          type="button"
-          onClick={() => tab(link)}
-          title="Открыть отдельным табом"
-          className="hidden shrink-0 opacity-60 group-hover/link:block hover:opacity-100"
-        >
-          {TabIcon}
-        </button>
-      )}
     </span>
   );
 }

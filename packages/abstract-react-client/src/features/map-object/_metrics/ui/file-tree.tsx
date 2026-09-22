@@ -6,7 +6,6 @@ import { useIcon } from "../../../../ports/icons.tsx";
 import { GitMark } from "./git-mark.tsx";
 import { MarkdownLine } from "./markdown.tsx";
 import { StatusDot } from "./status-dot.tsx";
-import { TabIcon } from "../../ui/icons.tsx";
 
 const Chevron = (props: { open: boolean; visible: boolean }) => (
   <svg
@@ -28,15 +27,16 @@ function Row(props: {
   const folder = node.isDir ?? (node.children?.length ?? 0) > 0;
   const [open, setOpen] = useState(false);
   const icon = useIcon();
-  // Табом открывают объект: папка складывается, файл открывается файлом — решение 0026.
+  // Табом открывают объект: папка складывается, файл открывается файлом — решение 0026. Иконки
+  // у строки нет (0035): под ctrl имя объекта подчёркивается, как ссылка в редакторе.
   const tab = !folder && isObjectLink(node.link) ? props.onOpenTab : undefined;
   const link = node.link;
-  // Вниз по дереву иконка едет так же: объект может лежать на любой глубине.
+  // Вниз по дереву жест едет так же: объект может лежать на любой глубине.
   const tabProp = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
 
   return (
     <li>
-      <div className="group/node relative flex items-center">
+      <div className="flex items-center">
         <button
           type="button"
           onClick={(event) =>
@@ -46,34 +46,22 @@ function Row(props: {
           }
           {...(tab === undefined ? {} : { title: "Ctrl + клик — открыть отдельным табом" })}
           style={{ paddingLeft: `${props.depth * 10}px` }}
-          className={`flex w-full items-center gap-0.5 py-px text-left hover:bg-[var(--mw-list-hoverBackground)] ${
-            tab ? "pr-5" : ""
+          className={`group/row flex w-full items-center gap-0.5 py-px text-left hover:bg-[var(--mw-list-hoverBackground)] ${
+            tab ? "in-data-[tab-mod]:hover:cursor-pointer" : ""
           }`}
         >
           <Chevron open={open} visible={folder} />
           {icon(fileIcon(node.label ?? "", folder), "shrink-0 opacity-80")}
           {/* Имя красится цветом git — так же, как в проводнике редактора (решение 0023). */}
-          <span className="truncate" style={{ color: gitColor(node) }}>
+          <span
+            className={`truncate ${tab ? "in-data-[tab-mod]:group-hover/row:underline" : ""}`}
+            style={{ color: gitColor(node) }}
+          >
             {node.label}
           </span>
           <GitMark mark={node} folder={folder} />
           <StatusDot mark={node} />
         </button>
-
-        {/*
-          Иконка лежит поверх строки, а не в ней: строка — кнопка целиком, и вложить в неё
-          вторую нельзя. Тот же приём, что у крестика в `ListRow`.
-        */}
-        {tab && link && (
-          <button
-            type="button"
-            onClick={() => tab(link)}
-            title="Открыть отдельным табом"
-            className="absolute right-1 hidden opacity-60 group-hover/node:block hover:opacity-100"
-          >
-            {TabIcon}
-          </button>
-        )}
       </div>
 
       {node.description && (

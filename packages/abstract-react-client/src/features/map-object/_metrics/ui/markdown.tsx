@@ -1,6 +1,7 @@
 import type { Block, Inline } from "../pure-model/markdown.ts";
 import { inlineMarkdown, parseMarkdown } from "../pure-model/markdown.ts";
 import { isObjectLink } from "../pure-model/display.ts";
+import { tabHover } from "../../ui/tab-modifier.ts";
 
 /**
  * Разметка в метрике — решение 0027. Ссылки идут через тот же `onOpen`, что и всё остальное в
@@ -9,7 +10,7 @@ import { isObjectLink } from "../pure-model/display.ts";
 
 /**
  * Куда ведут ссылки разметки. `onOpenTab` — тот же ctrl + клик, что и везде (0026); иконки
- * рядом здесь нет: это текст, и значок у каждой ссылки читался бы хуже самой ссылки.
+ * у ссылок нет нигде (0035), а под ctrl подчёркивается только то, что откроется табом.
  */
 type Links = { onOpen: (link: string) => void; onOpenTab?: (link: string) => void };
 
@@ -42,7 +43,9 @@ function Spans(props: { spans: Inline[]; links: Links }) {
                   : props.links.onOpen(span.href)
               }
               {...(tab === undefined ? {} : { title: "Ctrl + клик — открыть отдельным табом" })}
-              className="text-left text-[var(--mw-textLink-foreground)] hover:underline"
+              className={`text-left text-[var(--mw-textLink-foreground)] ${
+                tab ? tabHover.tabLink : tabHover.plainLink
+              }`}
             >
               {span.text || span.href}
             </button>

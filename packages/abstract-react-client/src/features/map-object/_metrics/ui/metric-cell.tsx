@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { TabIcon } from "../../ui/icons.tsx";
+import { tabHover } from "../../ui/tab-modifier.ts";
 
 /**
  * Buttons appear on hover so a still sidebar stays quiet. The chevron sits outside the flow:
@@ -18,7 +19,8 @@ export function MetricCell(props: {
   onLogs?: () => void;
   /**
    * Открыть метрику отдельным табом — решение 0026: ctrl + клик по названию и иконка рядом.
-   * Иконка обязательна: про ctrl + клик, которого не видно, никто не узнаёт.
+   * Иконка здесь остаётся (0035): название метрики ссылкой не выглядит, и жест по нему не
+   * очевиден. Под ctrl название подчёркивается, как любая ссылка, открывающая таб.
    */
   onOpenTab?: () => void;
   children: ReactNode;
@@ -45,7 +47,7 @@ export function MetricCell(props: {
             type="button"
             title="Ctrl + клик — открыть отдельным табом"
             onClick={(event) => (event.ctrlKey || event.metaKey ? props.onOpenTab?.() : undefined)}
-            className="truncate text-left uppercase"
+            className={`truncate text-left uppercase ${tabHover.tabOnly}`}
           >
             {props.label}
           </button>

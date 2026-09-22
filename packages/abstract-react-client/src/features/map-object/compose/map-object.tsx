@@ -16,6 +16,7 @@ import { breadcrumbTrail } from "../pure-model/breadcrumbs.ts";
 import { activeDirectives, newestFirst } from "../pure-model/directives.ts";
 import { Breadcrumbs } from "../ui/breadcrumbs.tsx";
 import { GroupTabs } from "../ui/group-tabs.tsx";
+import { useTabModifier } from "../ui/tab-modifier.ts";
 import {
   ActionsIcon,
   DirectivesIcon,
@@ -68,6 +69,8 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
   const terminals = useTerminals(props.mapConfig, address ?? "mapward://");
   // Клиент рисует только то, что хост обещал уметь — решение 0014.
   const can = useCapabilities();
+  // Под ctrl подсвечивается то, что откроется табом: иконок у ссылок нет — решение 0035.
+  useTabModifier(can.tabs);
 
   if (!map) return <Loading text="Читаем карту…" />;
 
@@ -100,7 +103,10 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
     else if (can.openFile) actions.open(link);
   };
 
-  /** Ctrl + клик и иконка ведут сюда: тот же объект, но отдельным табом — решение 0026. */
+  /**
+   * Ctrl + клик ведёт сюда: тот же объект, но отдельным табом — решение 0026. Иконка — только
+   * в шапке и у заголовка метрики (0035).
+   */
   const openInTab = can.tabs
     ? (what: { address?: string; group?: string; metric?: string }) =>
         actions.openInTab({
@@ -112,9 +118,9 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
     : undefined;
 
   /**
-   * Ссылка на объект открывается табом тем же жестом, что вкладка и метрика: ctrl + клик или
-   * иконка рядом (0026). Где бы объект ни был назван — в крошках, на карте детей, в списке или
-   * дереве метрики, — открывается он одинаково.
+   * Ссылка на объект открывается табом тем же жестом, что вкладка и метрика: ctrl + клик (0026,
+   * 0035). Где бы объект ни был назван — в крошках, на карте детей, в списке или дереве
+   * метрики, — открывается он одинаково.
    */
   const openObjectTab = openInTab ? (link: string) => openInTab({ address: link }) : undefined;
   const objectTab = openObjectTab === undefined ? {} : { onOpenTab: openObjectTab };

@@ -10,7 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import type { ChildrenMap } from "@mapward/core";
 import { linkKind } from "@mapward/core";
-import { TabIcon } from "../../ui/icons.tsx";
+import { tabHover } from "../../ui/tab-modifier.ts";
 
 export type Positions = Record<string, { x: number; y: number }>;
 
@@ -20,27 +20,12 @@ function place(index: number) {
 }
 
 /**
- * Подпись узла с иконкой «в табе» — решение 0026: про ctrl + клик, которого не видно, никто
- * не узнаёт. `nodrag` нужен затем, что узел таскают мышью, а по иконке в него кликают.
+ * Подпись узла. Иконки «в табе» нет — решение 0035: узел, который откроется табом, под ctrl
+ * подчёркивается, а сам ctrl + клик ловит `onNodeClick` холста.
  */
-function NodeLabel(props: { label: string; link: string; onOpenTab?: (link: string) => void }) {
+function NodeLabel(props: { label: string; tab: boolean }) {
   return (
-    <span className="group/node flex items-center gap-1">
-      <span className="truncate">{props.label}</span>
-      {props.onOpenTab && (
-        <button
-          type="button"
-          title="Открыть отдельным табом"
-          className="nodrag hidden shrink-0 opacity-60 group-hover/node:block hover:opacity-100"
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onOpenTab?.(props.link);
-          }}
-        >
-          {TabIcon}
-        </button>
-      )}
-    </span>
+    <span className={`block truncate ${props.tab ? tabHover.tabOnly : ""}`}>{props.label}</span>
   );
 }
 
@@ -51,19 +36,13 @@ function build(
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes = map.nodes.map((node, index) => {
     const id = node.link ?? String(index);
-    // Табом открывают объект: узел без адреса карты иконки не получает.
+    // Табом открывают объект: узел без адреса карты подсветки не получает.
     const tab = linkKind(id) === "object" ? onOpenTab : undefined;
     return {
       id,
       position: positions[id] ?? place(index),
       data: {
-        label: (
-          <NodeLabel
-            label={node.label ?? ""}
-            link={id}
-            {...(tab === undefined ? {} : { onOpenTab: tab })}
-          />
-        ),
+        label: <NodeLabel label={node.label ?? ""} tab={tab !== undefined} />,
       },
       style: {
         fontSize: 11,
@@ -92,7 +71,7 @@ export function Graph(props: {
   positions: Positions;
   viewport?: Viewport;
   onOpen: (link: string) => void;
-  /** Открыть узел отдельным табом — ctrl + клик и иконка на узле (решение 0026). */
+  /** Открыть узел отдельным табом — ctrl + клик (решение 0026), без иконки на узле (0035). */
   onOpenTab?: (link: string) => void;
   onMove: (positions: Positions) => void;
   onViewport: (viewport: Viewport) => void;
@@ -132,7 +111,9 @@ export function Graph(props: {
         // Ctrl + клик открывает узел табом. Двойной клик остаётся переходом на месте: на
         // холсте одиночный клик выделяет и тащит, и открывать им было бы нечем (0026).
         onNodeClick={(event, node) => {
-          if (event.ctrlKey || event.metaKey) props.onOpenTab?.(node.id);
+          if ((event.ctrlKey || event.metaKey) && linkKind(node.id) === "object") {
+            props.onOpenTab?.(node.id);
+          }
         }}
       >
         <Background gap={16} size={1} color="var(--mw-panel-border, #8883)" />
