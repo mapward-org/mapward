@@ -5,7 +5,10 @@
       "name": "Расширение",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/apps/vscode-extension"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/apps/vscode-extension",
+        "--disable-extension=mapward.mapward"
+      ],
       "outFiles": ["${workspaceFolder}/apps/vscode-extension/dist/**/*.cjs"],
       "preLaunchTask": "build extension"
     }
