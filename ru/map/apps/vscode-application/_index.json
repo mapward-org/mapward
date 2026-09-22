@@ -7,11 +7,7 @@
     "architectureDoc": "ru/docs/architecture/vscode-extension.md"
   },
   "preview-metrics-layout": {
-    "areas": [
-      [
-        "code"
-      ]
-    ]
+    "areas": [["code"]]
   },
   "metric-groups": {
     "groups": [
@@ -23,7 +19,6 @@
         "details-metrics-layout": {
           "areas": [["requirements-todo"], ["requirements"], ["decisions"]],
           "style": {
-            "gridTemplateRows": "fit-content(300px) fit-content(300px) minmax(200px, 1fr)",
             "gap": "8px"
           }
         }
@@ -34,15 +29,28 @@
         "description": "Как устроено расширение: доки, расхождения с ними и файлы.",
         "metrics": ["code", "architecture", "architecture-drift", "code-drift", "files"],
         "details-metrics-layout": {
-          "areas": [
-            ["code", "architecture"],
-            ["architecture-drift", "architecture-drift"],
-            ["code-drift", "code-drift"],
-            ["files", "files"]
-          ],
-          "style": {
-            "gridTemplateRows": "max-content fit-content(200px) fit-content(200px) minmax(200px, 1fr)",
-            "gap": "8px"
+          "min-width: 0px": {
+            "areas": [
+              ["code"],
+              ["architecture"],
+              ["architecture-drift"],
+              ["code-drift"],
+              ["files"]
+            ],
+            "style": {
+              "gap": "8px"
+            }
+          },
+          "min-width: 600px": {
+            "areas": [
+              ["code", "architecture"],
+              ["architecture-drift", "architecture-drift"],
+              ["code-drift", "code-drift"],
+              ["files", "files"]
+            ],
+            "style": {
+              "gap": "8px"
+            }
           }
         }
       },
@@ -54,7 +62,6 @@
         "details-metrics-layout": {
           "areas": [["release-version"], ["release-vsix"], ["release-run"]],
           "style": {
-            "gridTemplateRows": "fit-content(300px) fit-content(300px) minmax(200px, 1fr)",
             "gap": "8px"
           }
         }

@@ -5,22 +5,8 @@
     "requirementsPath": "${{ mapward://@ }}/ru/requirements"
   },
   "details-metrics-layout": {
-    "areas": [
-      [
-        "requirements-todo"
-      ],
-      [
-        "code-drift"
-      ],
-      [
-        "decisions"
-      ],
-      [
-        "requirements"
-      ]
-    ],
+    "areas": [["requirements-todo"], ["code-drift"], ["decisions"], ["requirements"]],
     "style": {
-      "gridTemplateRows": "fit-content(300px) fit-content(200px) fit-content(300px) fit-content(300px)",
       "gap": "8px"
     }
   }

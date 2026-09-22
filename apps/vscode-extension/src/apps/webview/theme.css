@@ -35,6 +35,9 @@
   --mw-menu-background: var(--vscode-menu-background);
   --mw-menu-border: var(--vscode-menu-border);
   --mw-panel-border: var(--vscode-panel-border);
+  --mw-scrollbarSlider-activeBackground: var(--vscode-scrollbarSlider-activeBackground);
+  --mw-scrollbarSlider-background: var(--vscode-scrollbarSlider-background);
+  --mw-scrollbarSlider-hoverBackground: var(--vscode-scrollbarSlider-hoverBackground);
   /* Фон самого вида: у таба и сайдбара он один — решение 0026 */
   --mw-sideBar-background: var(--vscode-sideBar-background);
   --mw-testing-iconFailed: var(--vscode-testing-iconFailed);

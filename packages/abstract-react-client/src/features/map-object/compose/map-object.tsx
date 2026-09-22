@@ -271,7 +271,12 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
         </>
       )}
 
-      <div className="min-h-0 flex-1">
+      {/*
+        Метрики растут по содержимому, и прокручивается эта область, а шапка, директивы и
+        вкладки стоят на месте (решение 0033). Она же — контейнер для `@container`-условий
+        раскладки: без `container-type` ни одно из них не срабатывает.
+      */}
+      <div className="min-h-0 flex-1 overflow-auto" style={{ containerType: "inline-size" }}>
         {meta ? (
           <MetaScreen
             map={map}

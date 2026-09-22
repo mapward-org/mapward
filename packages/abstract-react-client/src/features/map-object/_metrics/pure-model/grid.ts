@@ -1,44 +1,43 @@
 import type { Layout, LayoutVariant } from "@mapward/core";
 import { layoutVariants } from "@mapward/core";
 
+/**
+ * Раскладка — это css (решение 0033): каждый вариант становится правилом, вариант под ключом —
+ * правилом внутри `@container`. Какой из них действует, решает браузер по ширине контейнера,
+ * а не код: порядок ключей — порядок правил, побеждает последний подошедший.
+ */
 export type GridPlan = {
+  /** Правила сетки под классом `scope`; кладутся тегом `<style>` рядом с ней. */
+  css: string;
   /**
-   * Именованные области. Их может не быть: раскладка на одну метрику обходится треками, и
-   * тогда клетке нечего называть — `grid-area` с именем, которого в сетке нет, кладёт её
-   * по несуществующей линии вместо того, чтобы отдать ей место (решение 0026).
-   */
-  areas?: string;
-  columns: string;
-  rows?: string;
-  style: Record<string, string>;
-  /**
-   * Метрики, которым в сетке нашлось место. Раскладка есть — показываются только они: клетка,
-   * не названная в `areas`, встаёт неявным рядом и ломает высоты, заданные под известный
-   * набор (решение 0029).
+   * Метрики, названные хотя бы в одном варианте. Остальные не показываются и не собираются
+   * (решение 0029); в варианте, где метрики нет, её клетка скрыта.
    */
   placed: Set<string>;
 };
 
-/**
- * A layout may hold several variants keyed by container query. Picking one here keeps the
- * component free of measuring: the sidebar has one width at a time.
- */
-export function planGrid(layout: Layout | undefined, keys: string[]): GridPlan | undefined {
+/** Клетка сетки несёт ключ метрики этим атрибутом — по нему её находят правила. */
+export const cellAttribute = "data-metric";
+
+export function planGrid(
+  layout: Layout | undefined,
+  keys: string[],
+  scope: string,
+): GridPlan | undefined {
   const variants = layoutVariants(layout);
-  const chosen: LayoutVariant | undefined = variants.at(-1)?.variant;
-  if (!chosen) return undefined;
+  if (variants.length === 0) return undefined;
 
-  const width = Math.max(...chosen.areas.map((row) => row.length), 1);
-  const named = new Set(chosen.areas.flat().filter((name) => name !== "."));
+  const named = new Set(variants.flatMap(({ variant }) => areaNames(variant)));
+  const placed = new Set(keys.filter((key) => named.has(key)));
 
-  return {
-    areas: chosen.areas.map((row) => `"${row.join(" ")}"`).join(" "),
-    columns: `repeat(${width}, minmax(0, 1fr))`,
-    style: chosen.style ?? {},
-    // Метрика, которой в раскладке нет, не показывается — решение 0029 отменило прежнее
-    // «покажется за пределами сетки» из 0003.
-    placed: new Set(keys.filter((key) => named.has(key))),
-  };
+  const css = variants
+    .map(({ query, variant }) => {
+      const rules = variantRules(scope, variant, placed);
+      return query === undefined ? rules : `@container (${query}) {\n${rules}\n}`;
+    })
+    .join("\n");
+
+  return { css, placed };
 }
 
 /**
@@ -46,11 +45,46 @@ export function planGrid(layout: Layout | undefined, keys: string[]): GridPlan |
  * ширину и на всю высоту. Метрика в табе занимает его целиком, ради этого таб и открывали
  * (решение 0026).
  */
-export function soloGrid(key: string): GridPlan {
+export function soloGrid(key: string) {
   return {
     columns: "minmax(0, 1fr)",
     rows: "minmax(0, 1fr)",
-    style: {},
     placed: new Set([key]),
   };
+}
+
+function areaNames(variant: LayoutVariant): string[] {
+  return variant.areas.flat().filter((name) => name !== ".");
+}
+
+function variantRules(scope: string, variant: LayoutVariant, placed: Set<string>): string {
+  const width = Math.max(...variant.areas.map((row) => row.length), 1);
+  const here = new Set(areaNames(variant));
+
+  const grid = [
+    `grid-template-areas: ${variant.areas.map((row) => `"${row.join(" ")}"`).join(" ")}`,
+    `grid-template-columns: repeat(${width}, minmax(0, 1fr))`,
+    // `style` раскладки идёт после своих свойств и перебивает их: это css, как он написан.
+    ...Object.entries(variant.style ?? {}).map(([name, value]) => `${kebab(name)}: ${value}`),
+  ];
+
+  const cells = [...placed].map((key) => {
+    const cell = `.${scope} > [${cellAttribute}="${escapeAttribute(key)}"]`;
+    // Область называется только там, где она объявлена: имя, которого в сетке нет, кладёт
+    // клетку по несуществующей линии, и она встаёт куда придётся.
+    return here.has(key)
+      ? `${cell} { grid-area: ${key}; display: flex; }`
+      : `${cell} { display: none; }`;
+  });
+
+  return [`.${scope} { ${grid.join("; ")}; }`, ...cells].join("\n");
+}
+
+/** `gridTemplateRows` из раскладки — это `grid-template-rows` в css. */
+function kebab(name: string): string {
+  return name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+function escapeAttribute(value: string): string {
+  return value.replace(/["\\]/g, (char) => `\\${char}`);
 }

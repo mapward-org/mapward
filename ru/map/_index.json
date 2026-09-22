@@ -27,7 +27,6 @@
             ["children-list"]
           ],
           "style": {
-            "gridTemplateRows": "max-content fit-content(300px) fit-content(300px) fit-content(300px) fit-content(200px) fit-content(200px) minmax(200px, 1fr)",
             "gap": "8px"
           }
         }
@@ -38,9 +37,14 @@
         "description": "Как устроен монореп: доки, связи между пакетами и их качество.",
         "metrics": ["architecture-docs", "package-deps", "architecture-quality", "children"],
         "details-metrics-layout": {
-          "areas": [["architecture-docs"], ["package-deps"], ["architecture-quality"], ["children"]],
+          "areas": [
+            ["architecture-docs"],
+            ["package-deps"],
+            ["architecture-quality"],
+            ["children"]
+          ],
           "style": {
-            "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(200px) minmax(320px, 1fr)",
+            "gridTemplateRows": "auto auto auto minmax(320px, auto)",
             "gap": "8px"
           }
         }
@@ -51,9 +55,13 @@
         "description": "То, что агенты спрашивают каждый прогон, — посчитанным. Витрина: агент берёт эти метрики по ключу и без вкладки.",
         "metrics": ["agent-requirements", "agent-decisions", "agent-build", "agent-worktree"],
         "details-metrics-layout": {
-          "areas": [["agent-requirements"], ["agent-decisions"], ["agent-build"], ["agent-worktree"]],
+          "areas": [
+            ["agent-requirements"],
+            ["agent-decisions"],
+            ["agent-build"],
+            ["agent-worktree"]
+          ],
           "style": {
-            "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(200px) minmax(200px, 1fr)",
             "gap": "8px"
           }
         }
@@ -66,7 +74,6 @@
         "details-metrics-layout": {
           "areas": [["prototypes"], ["shared-metrics"], ["guide"], ["directive-runs"]],
           "style": {
-            "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(300px) minmax(200px, 1fr)",
             "gap": "8px"
           }
         }

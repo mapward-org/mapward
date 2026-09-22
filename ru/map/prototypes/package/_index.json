@@ -9,64 +9,44 @@
     "h": 1
   },
   "preview-metrics-layout": {
-    "areas": [
-      [
-        "code",
-        "tests"
-      ]
-    ]
+    "areas": [["code", "tests"]]
   },
   "details-metrics-layout": {
-    "areas": [
-      [
-        "code",
-        "docs",
-        "version"
+    "min-width: 0px": {
+      "areas": [
+        ["code"],
+        ["docs"],
+        ["version"],
+        ["tests"],
+        ["lint"],
+        ["public-api"],
+        ["architecture"],
+        ["requirements-todo"],
+        ["architecture-drift"],
+        ["code-drift"],
+        ["decisions"],
+        ["requirements"],
+        ["files"]
       ],
-      [
-        "tests",
-        "lint",
-        "public-api"
+      "style": {
+        "gap": "8px"
+      }
+    },
+    "min-width: 600px": {
+      "areas": [
+        ["code", "docs", "version"],
+        ["tests", "lint", "public-api"],
+        ["architecture", "architecture", "architecture"],
+        ["requirements-todo", "requirements-todo", "requirements-todo"],
+        ["architecture-drift", "architecture-drift", "architecture-drift"],
+        ["code-drift", "code-drift", "code-drift"],
+        ["decisions", "decisions", "decisions"],
+        ["requirements", "requirements", "requirements"],
+        ["files", "files", "files"]
       ],
-      [
-        "architecture",
-        "architecture",
-        "architecture"
-      ],
-      [
-        "requirements-todo",
-        "requirements-todo",
-        "requirements-todo"
-      ],
-      [
-        "architecture-drift",
-        "architecture-drift",
-        "architecture-drift"
-      ],
-      [
-        "code-drift",
-        "code-drift",
-        "code-drift"
-      ],
-      [
-        "decisions",
-        "decisions",
-        "decisions"
-      ],
-      [
-        "requirements",
-        "requirements",
-        "requirements"
-      ],
-      [
-        "files",
-        "files",
-        "files"
-      ]
-    ],
-    "style": {
-      "gridTemplateRows": "max-content max-content max-content fit-content(300px) fit-content(200px) fit-content(200px) fit-content(300px) fit-content(300px) fit-content(300px)",
-      "gap": "8px"
+      "style": {
+        "gap": "8px"
+      }
     }
   }
 }

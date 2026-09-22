@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { Layout, LinkNode, MapMetric, MapObject, MapRelation } from "@mapward/core";
 import { ago, toDisplay } from "../pure-model/display.ts";
-import { planGrid, soloGrid } from "../pure-model/grid.ts";
+import { cellAttribute, planGrid, soloGrid } from "../pure-model/grid.ts";
 import { useMetrics } from "../adapters/use-metrics.ts";
 import { useViewState } from "../../../../services/state/index.ts";
 import { Display } from "../ui/displays.tsx";
@@ -34,20 +34,23 @@ export function MetricGrid(props: {
     metricAddress: string,
   ) => ReactNode;
 }) {
-  const plan = props.solo
-    ? soloGrid(props.solo)
+  // Правила сетки лежат под своим классом: две сетки на экране не должны задевать друг друга.
+  const scope = `mw-grid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const solo = props.solo === undefined ? undefined : soloGrid(props.solo);
+  const plan = solo
+    ? undefined
     : planGrid(
         props.layout,
         props.metrics.map((metric) => metric.key),
+        scope,
       );
+  const placed = solo?.placed ?? plan?.placed;
 
   /**
    * Раскладка есть — показываются метрики, которые в ней названы, и только они (решение 0029).
    * Отбор идёт до подписки: невидимая метрика не собирается, как метрика вне вкладки.
    */
-  const metrics = plan
-    ? props.metrics.filter((metric) => plan.placed.has(metric.key))
-    : props.metrics;
+  const metrics = placed ? props.metrics.filter((metric) => placed.has(metric.key)) : props.metrics;
 
   const { values, busy, run } = useMetrics(props.mapRef, props.object.address, metrics, {
     ...(props.group === undefined ? {} : { group: props.group }),
@@ -67,24 +70,28 @@ export function MetricGrid(props: {
   const toggle = (key: string, collapsed: boolean | undefined) =>
     setFolded({ ...folded, [key]: !isFolded(key, collapsed) });
 
+  /**
+   * Высоту сетке код не задаёт (решение 0033): она растёт по содержимому, а прокручивается
+   * область вокруг. Растянуть её на всю высоту раскладка может сама — `height: 100%` в `style`.
+   * Таб одной метрики — исключение: там метрика и есть весь экран.
+   */
   return (
     <div
-      className="grid h-full min-h-0 gap-2 p-2 pl-6"
-      style={{
-        gridTemplateAreas: plan?.areas,
-        gridTemplateColumns: plan?.columns,
-        gridTemplateRows: plan?.rows,
-        ...plan?.style,
-      }}
+      // `content-start` прижимает ряды кверху, когда сетке досталось больше места, чем нужно
+      // метрикам: иначе css растягивает ряды `auto` на весь остаток. Ряд `1fr` это не трогает.
+      className={`${scope} grid content-start gap-2 p-2 pl-6 ${solo ? "h-full min-h-0" : ""}`}
+      {...(solo
+        ? { style: { gridTemplateColumns: solo.columns, gridTemplateRows: solo.rows } }
+        : {})}
     >
+      {plan && <style>{plan.css}</style>}
       {metrics.map((metric) => {
         const value = values[metric.address];
         return (
           <MetricCell
             key={metric.address}
-            // Клетка называет область только там, где области есть: иначе она ищет линию с
-            // этим именем, не находит и встаёт куда придётся, вместо того чтобы занять трек.
-            {...(plan?.areas === undefined ? {} : { gridArea: metric.key })}
+            // Место клетке назначает css раскладки, находя её по ключу метрики.
+            cell={{ [cellAttribute]: metric.key }}
             label={metric.config.label ?? metric.key}
             // `updatedAt` — время получения содержимого, а не чтения (0013), поэтому время
             // осмысленно и без файлового кэша: значение живёт в сторе и переживает уход
