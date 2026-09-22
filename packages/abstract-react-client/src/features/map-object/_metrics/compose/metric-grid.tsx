@@ -34,7 +34,22 @@ export function MetricGrid(props: {
     metricAddress: string,
   ) => ReactNode;
 }) {
-  const { values, busy, run } = useMetrics(props.mapRef, props.object.address, props.metrics, {
+  const plan = props.solo
+    ? soloGrid(props.solo)
+    : planGrid(
+        props.layout,
+        props.metrics.map((metric) => metric.key),
+      );
+
+  /**
+   * Раскладка есть — показываются метрики, которые в ней названы, и только они (решение 0029).
+   * Отбор идёт до подписки: невидимая метрика не собирается, как метрика вне вкладки.
+   */
+  const metrics = plan
+    ? props.metrics.filter((metric) => plan.placed.has(metric.key))
+    : props.metrics;
+
+  const { values, busy, run } = useMetrics(props.mapRef, props.object.address, metrics, {
     ...(props.group === undefined ? {} : { group: props.group }),
     ...(props.solo === undefined ? {} : { solo: props.solo }),
   });
@@ -45,13 +60,6 @@ export function MetricGrid(props: {
     {},
   );
   const now = Date.now();
-
-  const plan = props.solo
-    ? soloGrid(props.solo)
-    : planGrid(
-        props.layout,
-        props.metrics.map((metric) => metric.key),
-      );
 
   const isFolded = (key: string, collapsed: boolean | undefined) =>
     // В табе одной метрики свёрнутость не спрашивается: таб открыт ради того, чтобы её видеть.
@@ -69,7 +77,7 @@ export function MetricGrid(props: {
         ...plan?.style,
       }}
     >
-      {props.metrics.map((metric) => {
+      {metrics.map((metric) => {
         const value = values[metric.address];
         return (
           <MetricCell

@@ -1,0 +1,11 @@
+{
+  "label": "Зависимости пакетов",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/package-deps/deps.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "внутренних зависимостей нет" }
+}

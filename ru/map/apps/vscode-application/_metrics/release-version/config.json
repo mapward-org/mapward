@@ -1,0 +1,11 @@
+{
+  "label": "Версия и что войдёт",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward://apps/vscode-application }}/_metrics/release-version/version.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "версии нет" }
+}

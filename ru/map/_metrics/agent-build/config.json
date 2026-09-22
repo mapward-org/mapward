@@ -1,0 +1,11 @@
+{
+  "label": "Сборка свежее исходников",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/agent-build/build.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "собранного нет" }
+}

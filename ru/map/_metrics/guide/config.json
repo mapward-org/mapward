@@ -1,0 +1,9 @@
+{
+  "label": "Гайд по ведению карты",
+  "refresh": "on-display",
+  "collectors": [
+    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs/development-guide" }
+  ],
+  "transforms": [{ "kind": "git-status" }],
+  "display": { "kind": "tree", "empty": "гайда нет" }
+}

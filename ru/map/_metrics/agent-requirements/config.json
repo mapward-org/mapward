@@ -1,0 +1,11 @@
+{
+  "label": "Требования машинно",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/agent-requirements/requirements.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "требований нет" }
+}

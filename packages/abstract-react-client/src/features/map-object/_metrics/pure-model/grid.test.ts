@@ -17,10 +17,14 @@ test("a layout becomes named areas and equal columns", () => {
   expect(plan?.rows).toBeUndefined();
 });
 
-test("a metric missing from the layout still counts as placed", () => {
+/**
+ * Решение 0029: неназванная метрика не показывается. Раньше она добавлялась за пределы сетки
+ * и вставала неявным рядом — высоты, заданные под известный набор, от этого разъезжались.
+ */
+test("a metric missing from the layout is not placed at all", () => {
   const plan = planGrid({ areas: [["files"]] }, ["files", "forgotten"]);
 
-  expect([...(plan?.placed ?? [])]).toEqual(["files", "forgotten"]);
+  expect([...(plan?.placed ?? [])]).toEqual(["files"]);
 });
 
 test("no layout means no plan at all", () => {

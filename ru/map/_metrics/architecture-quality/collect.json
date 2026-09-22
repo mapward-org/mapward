@@ -1,0 +1,56 @@
+{
+  "updatedAt": "2026-09-21T00:45:06.644Z",
+  "ok": true,
+  "data": {
+    "items": [
+      {
+        "label": "Расширение заново пишет юзкейсы сервера findConfig/mapsOfConfig",
+        "description": "apps/vscode-extension/src/features/maps/adapters/workspace.ts:15 и :28 повторяют почти строка в строку packages/abstract-server/src/features/maps/application/use-cases/find-maps.ts:26,15 — подъём до mapward.json и разбор конфига в ResolvedMap. Расширение при этом уже реализует FilesPort (apps/vscode-extension/src/apps/extension/ports/index.ts:19), то есть сервер можно было позвать как есть. По packages.md:33 «Приложения реализуют порты» и таблице «abstract-server — юзкейсы и домен карты»: доменная логика поиска карт утекла в приложение и теперь живёт в двух местах, которые разъедутся молча (в CLI и в редакторе карты будут находиться по-разному).",
+        "link": "apps/vscode-extension/src/features/maps/adapters/workspace.ts",
+        "status": "fail"
+      },
+      {
+        "label": "Раскладка сетки лежит в core, а потребитель у неё один — клиент",
+        "description": "packages/core/src/model/schema.ts:97 (layoutVariants) и packages/core/src/model/model.ts:173 (groupLayout), :151 (pickGroup) импортируются только из abstract-react-client (map-object/_metrics/pure-model/grid.ts:2 и map-object/compose/map-object.tsx:3); в abstract-server и cli ссылок нет. По 0014-client-server.md («Чистота — не пропуск в core… раскладка сетки, иконки файлов и приведение данных к дисплею — это клиент») и по packages.md:39 («в core попадает не всё общее, а только то, что доказало необходимость»): это ровно то, чем пользуется один потребитель, и оно должно лежать у него.",
+        "link": "packages/core/src/model/schema.ts",
+        "status": "fail"
+      },
+      {
+        "label": "Клиент знает словарь иконок vscode: в file-icon.ts зашиты имена codicon",
+        "description": "packages/abstract-react-client/src/features/map-object/_metrics/pure-model/file-icon.ts:6-34 — таблица имён file-code, symbol-color, symbol-file, source-control, text-size, file-media: это идентификаторы шрифта codicon, а не нейтральные имена. Хост подставляет их прямо в класс (apps/vscode-extension/src/apps/webview/main.tsx:11, `codicon codicon-${name}`), значит любой не-редакторный хост обязан повторить именно вокабуляр codicon. По ru/docs/architecture/abstract-react-client.md:59 («чем рисовать — знает хост… слова codicon в пакете нет») и по 0014 «платформа приходит портами»: порт объявлен, но через его имена платформа всё равно протекла в пакет.",
+        "link": "packages/abstract-react-client/src/features/map-object/_metrics/pure-model/file-icon.ts",
+        "status": "fail"
+      },
+      {
+        "label": "Пакета docs нет на схеме зависимостей, а abstract-server от него зависит",
+        "description": "packages/abstract-server/package.json:28 объявляет @mapward/docs, packages/abstract-server/src/entry/mcp.ts:3 его импортирует. В packages.md схема (строки 12-20) и таблица пакетов (строки 22-27) знают только core, abstract-server, abstract-react-client и будущий mcp, а строка 36 утверждает «пакеты от core». Фактическое ребро abstract-server → docs на записанном направлении не нарисовано; тест tests/dependency-direction.test.ts:17 его уже разрешает, то есть разошлись именно доки. По packages.md.",
+        "link": "ru/docs/architecture/packages.md",
+        "status": "fail"
+      },
+      {
+        "label": "Контракт темы в доке неполон: пять переменных git не перечислены",
+        "description": "ru/docs/architecture/abstract-react-client.md:61-85 объявляет «набор переменных и есть контракт темы» и перечисляет 23 штуки, а клиент использует 26: не хватает --mw-gitDecoration-{added,modified,deleted,untracked,conflicting}ResourceForeground (packages/abstract-react-client/src/features/map-object/_metrics/pure-model/display.ts:47-51). Хост из редактора их заполняет (apps/vscode-extension/src/apps/webview/theme.css), а хост, читающий контракт, — нет, и тихо получит зашитые в клиент hex-фолбэки вместо своей палитры. По 0014 («набор переменных, объявленный контрактом клиента: в редакторе его заполняет vscode, в браузере — приложение»).",
+        "link": "ru/docs/architecture/abstract-react-client.md",
+        "status": "fail"
+      },
+      {
+        "label": "MapRef объявлен дважды — в публичном API core и в публичном API сервера",
+        "description": "packages/core/src/contracts/map.ts:6 (typebox-схема MapRef) и packages/abstract-server/src/features/map-object/application/services/metric-store.ts:39 (`type MapRef = { mapPath; basePath; name }`), второй уходит наружу через packages/abstract-server/src/index.ts:10 и стоит в сигнатуре serveMcp (entry/mcp.ts:465). Формы совпадают, и приложения передают один и тот же объект в обе — держится это только на структурной типизации. По принципу (low coupling / протекание): поле, добавленное на одной стороне, не дойдёт до другой и не вызовет ошибки типов там, где важно; core серверу уже доступен, так что второе объявление ничего не развязывает.",
+        "link": "packages/abstract-server/src/features/map-object/application/services/metric-store.ts",
+        "status": "pending"
+      },
+      {
+        "label": "Публичный вход abstract-server отдаёт внутреннюю кухню сбора метрик",
+        "description": "packages/abstract-server/src/features/map-object/index.ts:1-22 экспортирует readMap, collect, readCache, writeCache, writeLogs, transform, createMetricStore, readMapState, writeMapState, directiveName, stagePrompt, defaultStages — ни одно из этого ни cli, ни vscode-extension не импортируют: они берут createMapServer/serveMcp и ещё пять имён. Это внутренняя сборка, которую entry/server.ts уже связал за них. По принципу (low coupling): публичная граница шире реальной нужды, и любая перестановка кэша или стора внутри пакета выглядит как поломка контракта, хотя ею не является.",
+        "link": "packages/abstract-server/src/features/map-object/index.ts",
+        "status": "pending"
+      },
+      {
+        "label": "В core копятся ещё клиентские функции: objectIndex и linkKind",
+        "description": "packages/core/src/model/model.ts:186 (objectIndex) зовётся только из abstract-react-client/src/features/map-object/_meta/compose/meta-screen.tsx:40 — показать объект как json на мета-экране; packages/core/src/model/address.ts:72 (linkKind) — только из трёх файлов клиента (compose/map-object.tsx:96, _children-map/ui/graph.tsx:55, _metrics/pure-model/display.ts:73). Сервер обе не трогает. По принципу (high cohesion): core заявлен как «согласие двух сторон», а по факту накапливает решения о навигации и об экране, у которых сторона одна; в отличие от layoutVariants это не названо в решениях прямо, поэтому сужу по принципу, а не по доке.",
+        "link": "packages/core/src/model/model.ts",
+        "status": "pending"
+      }
+    ]
+  }
+}

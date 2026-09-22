@@ -1,0 +1,13 @@
+{
+  "label": "Собрать и поставить",
+  "refresh": "manual",
+  "collectorsCache": true,
+  "collectorsTimeout": 600000,
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward://@ }}/apps/vscode-extension/scripts/package-vsix.mjs\" --install --json"
+    }
+  ],
+  "display": { "kind": "list", "empty": "не запускалось" }
+}

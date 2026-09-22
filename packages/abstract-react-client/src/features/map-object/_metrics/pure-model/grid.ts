@@ -11,6 +11,11 @@ export type GridPlan = {
   columns: string;
   rows?: string;
   style: Record<string, string>;
+  /**
+   * Метрики, которым в сетке нашлось место. Раскладка есть — показываются только они: клетка,
+   * не названная в `areas`, встаёт неявным рядом и ломает высоты, заданные под известный
+   * набор (решение 0029).
+   */
   placed: Set<string>;
 };
 
@@ -24,15 +29,15 @@ export function planGrid(layout: Layout | undefined, keys: string[]): GridPlan |
   if (!chosen) return undefined;
 
   const width = Math.max(...chosen.areas.map((row) => row.length), 1);
-  const placed = new Set(chosen.areas.flat().filter((name) => name !== "."));
+  const named = new Set(chosen.areas.flat().filter((name) => name !== "."));
 
   return {
     areas: chosen.areas.map((row) => `"${row.join(" ")}"`).join(" "),
     columns: `repeat(${width}, minmax(0, 1fr))`,
     style: chosen.style ?? {},
-    // A metric missing from the layout is not hidden: it falls outside the grid areas,
-    // as decision 0003 says.
-    placed: new Set([...placed, ...keys.filter((key) => !placed.has(key))]),
+    // Метрика, которой в раскладке нет, не показывается — решение 0029 отменило прежнее
+    // «покажется за пределами сетки» из 0003.
+    placed: new Set(keys.filter((key) => named.has(key))),
   };
 }
 

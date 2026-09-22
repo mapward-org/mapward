@@ -1,0 +1,11 @@
+{
+  "label": "Пакет и что стоит в редакторе",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward://apps/vscode-application }}/_metrics/release-vsix/vsix.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "ничего не собрано" }
+}

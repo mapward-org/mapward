@@ -1,0 +1,11 @@
+{
+  "label": "Решения машинно",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/agent-decisions/decisions.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "решений нет" }
+}

@@ -1,0 +1,11 @@
+{
+  "label": "Прогоны по этапам",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/directive-runs/runs.mjs\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "прогонов не было" }
+}

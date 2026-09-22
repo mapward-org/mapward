@@ -7,6 +7,11 @@
   "categories": [
     "Other"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mapward-org/mapward.git",
+    "directory": "apps/vscode-extension"
+  },
   "publisher": "mapward",
   "files": [
     "dist",
@@ -18,6 +23,8 @@
     "build": "tsdown && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify && node scripts/copy-codicons.mjs",
     "dev": "pnpm run \"/^dev:/\"",
     "typecheck": "tsc",
+    "package": "node scripts/package-vsix.mjs",
+    "install-local": "node scripts/package-vsix.mjs --install",
     "dev:js": "tsdown --watch",
     "dev:css": "tailwindcss -i src/apps/webview/index.css -o dist/webview.css --watch"
   },
@@ -38,6 +45,7 @@
     "@types/react-dom": "catalog:",
     "@types/vscode": "catalog:",
     "@vscode/codicons": "catalog:",
+    "@vscode/vsce": "^4.0.0",
     "tailwindcss": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",

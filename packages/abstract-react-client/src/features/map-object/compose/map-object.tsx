@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { linkKind } from "@mapward/core";
-import { findObject, groupLayout, groupMetrics, pickGroup, trail } from "@mapward/core";
+import { findObject, groupLayout, groupMetrics, pickGroup } from "@mapward/core";
 import type { MapMetric } from "@mapward/core";
 import { useMap, useMapActions } from "../adapters/use-map.ts";
 import { useTerminals } from "../adapters/use-terminals.ts";
@@ -11,6 +11,7 @@ import { ChildrenMapView } from "../_children-map/compose/children-map.tsx";
 import { DirectiveList } from "../_directives/compose/directive-list.tsx";
 import { MetaScreen } from "../_meta/compose/meta-screen.tsx";
 import { Markdown } from "../_metrics/ui/markdown.tsx";
+import { breadcrumbTrail } from "../pure-model/breadcrumbs.ts";
 import { activeDirectives, newestFirst } from "../pure-model/directives.ts";
 import { Breadcrumbs } from "../ui/breadcrumbs.tsx";
 import { GroupTabs } from "../ui/group-tabs.tsx";
@@ -70,7 +71,7 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
   if (!map) return <Loading text="Читаем карту…" />;
 
   const current = (address && findObject(map, address)) || map;
-  const path = trail(map, current.address);
+  const path = breadcrumbTrail(map, current.address);
   const openGroup = pickGroup(current, group);
   const shown = groupMetrics(current, group);
   // Метрика таба ищется среди всех метрик объекта, а не только в открытой вкладке: таб могли
@@ -177,7 +178,7 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
 
   return (
     <div className="flex h-full flex-col pb-2">
-      <Breadcrumbs trail={path.slice(0, -1)} onGo={go} {...objectTab} />
+      <Breadcrumbs trail={path} onGo={go} {...objectTab} />
 
       <ObjectHeader
         name={current.name}

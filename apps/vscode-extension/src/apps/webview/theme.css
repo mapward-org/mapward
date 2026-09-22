@@ -35,6 +35,8 @@
   --mw-menu-background: var(--vscode-menu-background);
   --mw-menu-border: var(--vscode-menu-border);
   --mw-panel-border: var(--vscode-panel-border);
+  /* Фон самого вида: у таба и сайдбара он один — решение 0026 */
+  --mw-sideBar-background: var(--vscode-sideBar-background);
   --mw-testing-iconFailed: var(--vscode-testing-iconFailed);
   --mw-testing-iconPassed: var(--vscode-testing-iconPassed);
   --mw-testing-iconQueued: var(--vscode-testing-iconQueued);

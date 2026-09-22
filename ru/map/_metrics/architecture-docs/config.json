@@ -1,0 +1,9 @@
+{
+  "label": "Доки архитектуры",
+  "refresh": "on-display",
+  "collectors": [
+    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs/architecture" }
+  ],
+  "transforms": [{ "kind": "git-status" }],
+  "display": { "kind": "tree", "empty": "доков архитектуры нет" }
+}

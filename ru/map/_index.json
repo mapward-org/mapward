@@ -1,39 +1,76 @@
 {
   "name": "Mapward (ru)",
   "extends": "mapward://prototypes/base",
-  "details-metrics-layout": {
-    "areas": [
-      [
-        "requirements-todo"
-      ],
-      [
-        "decisions"
-      ],
-      [
-        "decisions-drift"
-      ],
-      [
-        "requirements-links"
-      ],
-      [
-        "requirements"
-      ],
-      [
-        "docs"
-      ],
-      [
-        "prototypes"
-      ],
-      [
-        "shared-metrics"
-      ],
-      [
-        "children"
-      ]
-    ],
-    "style": {
-      "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(200px) fit-content(200px) fit-content(300px) fit-content(300px) fit-content(300px) fit-content(300px) minmax(320px, 1fr)",
-      "gap": "8px"
-    }
+  "metric-groups": {
+    "groups": [
+      {
+        "key": "продукт",
+        "label": "Работа с продуктом",
+        "description": "Что делаем и почему: идеи, требования, решения и проверки к ним.",
+        "metrics": [
+          "product-docs",
+          "requirements-todo",
+          "requirements",
+          "decisions",
+          "decisions-drift",
+          "requirements-links",
+          "children-list"
+        ],
+        "details-metrics-layout": {
+          "areas": [
+            ["product-docs"],
+            ["requirements-todo"],
+            ["requirements"],
+            ["decisions"],
+            ["decisions-drift"],
+            ["requirements-links"],
+            ["children-list"]
+          ],
+          "style": {
+            "gridTemplateRows": "max-content fit-content(300px) fit-content(300px) fit-content(300px) fit-content(200px) fit-content(200px) minmax(200px, 1fr)",
+            "gap": "8px"
+          }
+        }
+      },
+      {
+        "key": "архитектура",
+        "label": "Архитектура",
+        "description": "Как устроен монореп: доки, связи между пакетами и их качество.",
+        "metrics": ["architecture-docs", "package-deps", "architecture-quality", "children"],
+        "details-metrics-layout": {
+          "areas": [["architecture-docs"], ["package-deps"], ["architecture-quality"], ["children"]],
+          "style": {
+            "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(200px) minmax(320px, 1fr)",
+            "gap": "8px"
+          }
+        }
+      },
+      {
+        "key": "агенту",
+        "label": "Агенту",
+        "description": "То, что агенты спрашивают каждый прогон, — посчитанным. Витрина: агент берёт эти метрики по ключу и без вкладки.",
+        "metrics": ["agent-requirements", "agent-decisions", "agent-build", "agent-worktree"],
+        "details-metrics-layout": {
+          "areas": [["agent-requirements"], ["agent-decisions"], ["agent-build"], ["agent-worktree"]],
+          "style": {
+            "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(200px) minmax(200px, 1fr)",
+            "gap": "8px"
+          }
+        }
+      },
+      {
+        "key": "карта",
+        "label": "Про карту",
+        "description": "Из чего собрана карта и как ею пользуются.",
+        "metrics": ["prototypes", "shared-metrics", "guide", "directive-runs"],
+        "details-metrics-layout": {
+          "areas": [["prototypes"], ["shared-metrics"], ["guide"], ["directive-runs"]],
+          "style": {
+            "gridTemplateRows": "fit-content(300px) fit-content(300px) fit-content(300px) minmax(200px, 1fr)",
+            "gap": "8px"
+          }
+        }
+      }
+    ]
   }
 }

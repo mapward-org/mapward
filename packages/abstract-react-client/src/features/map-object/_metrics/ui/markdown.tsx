@@ -1,12 +1,19 @@
 import type { Block, Inline } from "../pure-model/markdown.ts";
 import { inlineMarkdown, parseMarkdown } from "../pure-model/markdown.ts";
+import { isObjectLink } from "../pure-model/display.ts";
 
 /**
  * Разметка в метрике — решение 0027. Ссылки идут через тот же `onOpen`, что и всё остальное в
  * дисплеях: куда вести, решает схема адреса (0005), а не то, что ссылка пришла из markdown.
  */
 
-function Spans(props: { spans: Inline[]; onOpen: (link: string) => void }) {
+/**
+ * Куда ведут ссылки разметки. `onOpenTab` — тот же ctrl + клик, что и везде (0026); иконки
+ * рядом здесь нет: это текст, и значок у каждой ссылки читался бы хуже самой ссылки.
+ */
+type Links = { onOpen: (link: string) => void; onOpenTab?: (link: string) => void };
+
+function Spans(props: { spans: Inline[]; links: Links }) {
   return (
     <>
       {props.spans.map((span, at) => {
@@ -24,11 +31,17 @@ function Spans(props: { spans: Inline[]; onOpen: (link: string) => void }) {
         if (span.kind === "strong") return <strong key={key}>{span.text}</strong>;
         if (span.kind === "em") return <em key={key}>{span.text}</em>;
         if (span.kind === "link") {
+          const tab = isObjectLink(span.href) ? props.links.onOpenTab : undefined;
           return (
             <button
               key={key}
               type="button"
-              onClick={() => props.onOpen(span.href)}
+              onClick={(event) =>
+                tab && (event.ctrlKey || event.metaKey)
+                  ? tab(span.href)
+                  : props.links.onOpen(span.href)
+              }
+              {...(tab === undefined ? {} : { title: "Ctrl + клик — открыть отдельным табом" })}
               className="text-left text-[var(--mw-textLink-foreground)] hover:underline"
             >
               {span.text || span.href}
@@ -42,8 +55,12 @@ function Spans(props: { spans: Inline[]; onOpen: (link: string) => void }) {
 }
 
 /** Строка с разметкой без блоков: описание элемента списка или узла дерева. */
-export function MarkdownLine(props: { text: string; onOpen: (link: string) => void }) {
-  return <Spans spans={inlineMarkdown(props.text)} onOpen={props.onOpen} />;
+export function MarkdownLine(props: {
+  text: string;
+  onOpen: (link: string) => void;
+  onOpenTab?: (link: string) => void;
+}) {
+  return <Spans spans={inlineMarkdown(props.text)} links={props} />;
 }
 
 const HEADING_CLASS: Record<number, string> = {
@@ -52,26 +69,26 @@ const HEADING_CLASS: Record<number, string> = {
   3: "text-[11px] font-semibold uppercase opacity-80",
 };
 
-function BlockView(props: { block: Block; onOpen: (link: string) => void }) {
+function BlockView(props: { block: Block; links: Links }) {
   const { block } = props;
 
   switch (block.kind) {
     case "heading":
       return (
         <div className={`mt-2 mb-1 first:mt-0 ${HEADING_CLASS[block.level] ?? HEADING_CLASS[3]}`}>
-          <Spans spans={block.spans} onOpen={props.onOpen} />
+          <Spans spans={block.spans} links={props.links} />
         </div>
       );
     case "paragraph":
       return (
         <p className="mb-1">
-          <Spans spans={block.spans} onOpen={props.onOpen} />
+          <Spans spans={block.spans} links={props.links} />
         </p>
       );
     case "quote":
       return (
         <blockquote className="mb-1 border-l-2 border-[var(--mw-textBlockQuote-border,#8884)] pl-2 opacity-80">
-          <Spans spans={block.spans} onOpen={props.onOpen} />
+          <Spans spans={block.spans} links={props.links} />
         </blockquote>
       );
     case "list":
@@ -85,7 +102,7 @@ function BlockView(props: { block: Block; onOpen: (link: string) => void }) {
             >
               <span className="shrink-0 opacity-60">{block.ordered ? `${at + 1}.` : "•"}</span>
               <span className="min-w-0">
-                <Spans spans={item.spans} onOpen={props.onOpen} />
+                <Spans spans={item.spans} links={props.links} />
               </span>
             </li>
           ))}
@@ -102,11 +119,15 @@ function BlockView(props: { block: Block; onOpen: (link: string) => void }) {
   }
 }
 
-export function Markdown(props: { text: string; onOpen: (link: string) => void }) {
+export function Markdown(props: {
+  text: string;
+  onOpen: (link: string) => void;
+  onOpenTab?: (link: string) => void;
+}) {
   return (
     <div className="break-words">
       {parseMarkdown(props.text).map((block, at) => (
-        <BlockView key={`${block.kind}:${at}`} block={block} onOpen={props.onOpen} />
+        <BlockView key={`${block.kind}:${at}`} block={block} links={props} />
       ))}
     </div>
   );

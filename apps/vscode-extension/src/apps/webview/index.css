@@ -12,8 +12,8 @@
 @import "./theme.css";
 
 /*
- * The sidebar sits inside the editor, so it takes the editor's type and colours rather than
- * bringing its own. The variables come from whichever theme the user has on.
+ * Вид живёт внутри редактора, поэтому шрифт и цвета берёт у него, а не приносит свои.
+ * Значения приезжают из темы, которая включена у пользователя.
  */
 html,
 body,
@@ -26,5 +26,10 @@ body {
   font-family: var(--mw-font-family);
   font-size: var(--mw-font-size);
   color: var(--mw-foreground);
-  background: transparent;
+  /*
+   * Фон называется явно, а не наследуется от контейнера: под сайдбаром вебвью стоит на фоне
+   * сайдбара, а в табе — на фоне редактора, и тот же вид выходил темнее. Вид один (0026),
+   * значит и фон один — сайдбарный.
+   */
+  background: var(--mw-sideBar-background);
 }

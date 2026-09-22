@@ -102,7 +102,14 @@ export function MetricCell(props: {
         {props.freshness && <span className="ml-auto shrink-0 opacity-60">{props.freshness}</span>}
       </div>
 
-      {!props.hidden && <div className="min-h-0 min-w-0 flex-1 break-words">{props.children}</div>}
+      {/*
+        Клетке сетки ряд отмеряет высоту, и содержимое, которое в неё не влезло, прокручивается
+        внутри клетки, а не вылезает на соседей (решение 0029). `min-h-0` здесь обязателен:
+        без него flex-элемент не даёт себя сжать, и прокручивать становится нечего.
+      */}
+      {!props.hidden && (
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto break-words">{props.children}</div>
+      )}
     </div>
   );
 }

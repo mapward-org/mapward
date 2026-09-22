@@ -7,6 +7,7 @@ import type {
   StatusMark,
   TreeNode,
 } from "@mapward/core";
+import { linkKind } from "@mapward/core";
 
 /**
  * Формы приходят из `core` — они общие с сервером (решение 0014). Здесь только то, что делает
@@ -63,6 +64,13 @@ export const gitColor = (mark: GitMark): string | undefined =>
 
 export const gitHint = (mark: GitMark): string | undefined =>
   mark.git ? GIT_HINT[mark.git] : undefined;
+
+/**
+ * Табом открывается объект, а не файл и не страница наружу — решение 0026. Куда ведёт ссылка,
+ * по-прежнему решает схема (0005), поэтому и здесь спрашивается она, а не вид дисплея.
+ */
+export const isObjectLink = (link: string | undefined): link is string =>
+  link !== undefined && linkKind(link) === "object";
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};

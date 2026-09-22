@@ -1,0 +1,14 @@
+{
+  "label": "Дети",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "object-children-map",
+      "exclude": ["prototypes/*", "shared-metrics/*"]
+    }
+  ],
+  "transforms": [
+    { "kind": "script", "run": "node \"${{ mapward:// }}/_metrics/children-list/list.mjs\"" }
+  ],
+  "display": { "kind": "list", "empty": "детей нет" }
+}

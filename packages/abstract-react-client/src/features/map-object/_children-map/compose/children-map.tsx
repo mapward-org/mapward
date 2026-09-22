@@ -9,6 +9,8 @@ export function ChildrenMapView(props: {
   mapPath: string;
   address: string;
   onOpen: (link: string) => void;
+  /** Открыть узел отдельным табом — решение 0026; хост не умеет табы — параметра нет. */
+  onOpenTab?: (link: string) => void;
 }) {
   const { positions, move } = useMapState(props.mapPath);
   // Where the canvas is panned is nobody's business but the viewer's.
@@ -25,6 +27,7 @@ export function ChildrenMapView(props: {
       positions={positions}
       viewport={viewport}
       onOpen={props.onOpen}
+      {...(props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab })}
       onMove={move}
       onViewport={setViewport}
     />

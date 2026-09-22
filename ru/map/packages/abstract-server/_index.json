@@ -49,6 +49,10 @@
         "code-drift"
       ],
       [
+        "decisions",
+        "decisions"
+      ],
+      [
         "requirements",
         "requirements"
       ],
@@ -58,7 +62,7 @@
       ]
     ],
     "style": {
-      "gridTemplateRows": "auto auto auto auto auto auto auto auto 1fr",
+      "gridTemplateRows": "max-content max-content max-content max-content fit-content(300px) fit-content(200px) fit-content(200px) fit-content(300px) fit-content(300px) fit-content(300px)",
       "gap": "8px"
     }
   }

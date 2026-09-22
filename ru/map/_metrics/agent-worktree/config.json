@@ -1,0 +1,11 @@
+{
+  "label": "Рабочее дерево",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/agent-worktree/worktree.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": { "kind": "list", "empty": "дерево чистое" }
+}

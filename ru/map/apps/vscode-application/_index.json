@@ -13,40 +13,52 @@
       ]
     ]
   },
-  "details-metrics-layout": {
-    "areas": [
-      [
-        "code",
-        "architecture"
-      ],
-      [
-        "requirements-todo",
-        "requirements-todo"
-      ],
-      [
-        "architecture-drift",
-        "architecture-drift"
-      ],
-      [
-        "code-drift",
-        "code-drift"
-      ],
-      [
-        "decisions",
-        "decisions"
-      ],
-      [
-        "requirements",
-        "requirements"
-      ],
-      [
-        "files",
-        "files"
-      ]
-    ],
-    "style": {
-      "gridTemplateRows": "max-content fit-content(300px) fit-content(200px) fit-content(200px) fit-content(300px) fit-content(300px) fit-content(300px)",
-      "gap": "8px"
-    }
+  "metric-groups": {
+    "groups": [
+      {
+        "key": "продукт",
+        "label": "Работа с продуктом",
+        "description": "Что делаем и почему: требования на этом объекте и решения.",
+        "metrics": ["requirements-todo", "requirements", "decisions"],
+        "details-metrics-layout": {
+          "areas": [["requirements-todo"], ["requirements"], ["decisions"]],
+          "style": {
+            "gridTemplateRows": "fit-content(300px) fit-content(300px) minmax(200px, 1fr)",
+            "gap": "8px"
+          }
+        }
+      },
+      {
+        "key": "архитектура",
+        "label": "Архитектура",
+        "description": "Как устроено расширение: доки, расхождения с ними и файлы.",
+        "metrics": ["code", "architecture", "architecture-drift", "code-drift", "files"],
+        "details-metrics-layout": {
+          "areas": [
+            ["code", "architecture"],
+            ["architecture-drift", "architecture-drift"],
+            ["code-drift", "code-drift"],
+            ["files", "files"]
+          ],
+          "style": {
+            "gridTemplateRows": "max-content fit-content(200px) fit-content(200px) minmax(200px, 1fr)",
+            "gap": "8px"
+          }
+        }
+      },
+      {
+        "key": "публикация",
+        "label": "Публикация",
+        "description": "Локальный выпуск: собрать .vsix и поставить его в свой редактор. Витрины пока нет — экшон «Выпустить версию».",
+        "metrics": ["release-version", "release-vsix", "release-run"],
+        "details-metrics-layout": {
+          "areas": [["release-version"], ["release-vsix"], ["release-run"]],
+          "style": {
+            "gridTemplateRows": "fit-content(300px) fit-content(300px) minmax(200px, 1fr)",
+            "gap": "8px"
+          }
+        }
+      }
+    ]
   }
 }
