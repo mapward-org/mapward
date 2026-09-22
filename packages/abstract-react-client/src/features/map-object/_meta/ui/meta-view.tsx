@@ -7,7 +7,6 @@ import { howCollected, layerLabel, originHint, ownerHint, propRows } from "../pu
 export type MetaIcons = {
   index: ReactNode;
   metrics: ReactNode;
-  directives: ReactNode;
   workflow: ReactNode;
   actions: ReactNode;
 };
@@ -21,8 +20,8 @@ export type MetaIcons = {
  * Возврат к метрикам — та же кнопка шапки, которой сюда вошли, поэтому «назад» внутри
  * экрана нет.
  *
- * Директивы рисует соседний подмодуль, а сводит их вместе `map-object/compose` — так же,
- * как карту детей в сетке метрик (решение 0015).
+ * Раздел директив рисует соседний подмодуль целиком, с заголовком и поиском, а сводит их
+ * вместе `map-object/compose` — так же, как карту детей в сетке метрик (решение 0015).
  */
 export function MetaView(props: {
   map: MapObject;
@@ -33,6 +32,7 @@ export function MetaView(props: {
   onOpenMetricConfig?: (metric: MapMetric) => void;
   /** Файл слоя — единственное, что можно править. */
   onOpenFile?: (path: string) => void;
+  /** Раздел «Директивы» целиком: заголовок с поиском живёт вместе со списком. */
   directives: ReactNode;
 }) {
   const openFile = props.onOpenFile;
@@ -136,9 +136,7 @@ export function MetaView(props: {
         </Section>
       )}
 
-      <Section icon={props.icons.directives} title="Директивы">
-        {props.directives}
-      </Section>
+      {props.directives}
 
       {props.object.actions.length > 0 && (
         <Section icon={props.icons.actions} title="Экшоны">

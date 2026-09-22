@@ -4,6 +4,7 @@ import {
   activeDirectives,
   directiveHintClass,
   directiveLabel,
+  matchDirectives,
   newestFirst,
   statusColor,
 } from "./directives.ts";
@@ -74,5 +75,29 @@ describe("newestFirst", () => {
       "2026-09-02-0002-вторая.md",
       "2026-09-01-0001-первая.md",
     ]);
+  });
+});
+
+describe("matchDirectives", () => {
+  const files = [
+    file("2026-09-21-0031-исправить-багу.md"),
+    file("2026-09-23-0208-мини-поиск-по-директивам.md"),
+  ];
+  const names = (query: string) => matchDirectives(files, query).map((one) => one.name);
+
+  it("пустой запрос ничего не отбирает", () => {
+    expect(names("  ")).toHaveLength(2);
+  });
+
+  it("ищет подстроку без регистра", () => {
+    expect(names("ПОИСК")).toEqual(["2026-09-23-0208-мини-поиск-по-директивам.md"]);
+  });
+
+  it("пробел в запросе находит дефис в имени", () => {
+    expect(names("мини поиск")).toEqual(["2026-09-23-0208-мини-поиск-по-директивам.md"]);
+  });
+
+  it("дата в имени — тоже поиск", () => {
+    expect(names("2026-09-21")).toEqual(["2026-09-21-0031-исправить-багу.md"]);
   });
 });

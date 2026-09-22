@@ -9,6 +9,7 @@ import { TerminalMenu } from "../ui/terminal-menu.tsx";
 import { MetricGrid } from "../_metrics/compose/metric-grid.tsx";
 import { ChildrenMapView } from "../_children-map/compose/children-map.tsx";
 import { DirectiveList } from "../_directives/compose/directive-list.tsx";
+import { DirectiveSection } from "../_directives/compose/directive-section.tsx";
 import { MetaScreen } from "../_meta/compose/meta-screen.tsx";
 import { Markdown } from "../_metrics/ui/markdown.tsx";
 import { breadcrumbTrail } from "../pure-model/breadcrumbs.ts";
@@ -22,6 +23,7 @@ import {
   MetaIcon,
   MetricsIcon,
   NewDirectiveIcon,
+  SearchIcon,
   TabIcon,
   WorkflowIcon,
 } from "../ui/icons.tsx";
@@ -35,7 +37,6 @@ type Ref = { mapPath: string; basePath: string; name: string };
 const metaIcons = {
   index: IndexIcon,
   metrics: MetricsIcon,
-  directives: DirectivesIcon,
   workflow: WorkflowIcon,
   actions: ActionsIcon,
 };
@@ -285,7 +286,9 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
             icons={metaIcons}
             actions={actions}
             directives={
-              <DirectiveList
+              <DirectiveSection
+                icon={DirectivesIcon}
+                searchIcon={SearchIcon}
                 files={newestFirst(current.directives)}
                 stages={current.workflow}
                 {...(openDirective === undefined ? {} : { onOpen: openDirective })}

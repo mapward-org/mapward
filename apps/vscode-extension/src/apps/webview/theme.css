@@ -15,6 +15,8 @@
   --mw-descriptionForeground: var(--vscode-descriptionForeground);
   --mw-editor-background: var(--vscode-editor-background);
   --mw-errorForeground: var(--vscode-errorForeground);
+  /* Поле поиска по директивам — как поля ввода редактора */
+  --mw-focusBorder: var(--vscode-focusBorder);
   --mw-foreground: var(--vscode-foreground);
   /* Пометки git — те же цвета, что у проводника: пометка должна читаться одинаково (0023) */
   --mw-gitDecoration-addedResourceForeground: var(--vscode-gitDecoration-addedResourceForeground);
@@ -30,6 +32,9 @@
   --mw-gitDecoration-untrackedResourceForeground: var(
     --vscode-gitDecoration-untrackedResourceForeground
   );
+  --mw-input-background: var(--vscode-input-background);
+  --mw-input-border: var(--vscode-input-border);
+  --mw-input-foreground: var(--vscode-input-foreground);
   --mw-list-activeSelectionBackground: var(--vscode-list-activeSelectionBackground);
   --mw-list-hoverBackground: var(--vscode-list-hoverBackground);
   --mw-menu-background: var(--vscode-menu-background);
