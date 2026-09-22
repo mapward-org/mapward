@@ -1,10 +1,10 @@
 export {
+  adoptTerminals,
   closeTerminal,
   listTerminals,
   openTerminal,
   pickSession,
   pickStageSession,
-  rememberDirectiveRun,
   renameForStage,
   sendToTerminal,
   setMcpUrl,

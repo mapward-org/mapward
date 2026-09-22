@@ -6,7 +6,7 @@ import { createPorts } from "./ports/index.ts";
 import { MapViewProvider } from "./map-view.ts";
 import { openObjectTab, registerObjectTabs } from "./object-tab.ts";
 import { startMcpHttp } from "./mcp-http.ts";
-import { setMcpUrl } from "@/features/terminals/index.extension.ts";
+import { adoptTerminals, setMcpUrl } from "@/features/terminals/index.extension.ts";
 import { withStageTabs } from "./stage-tabs.ts";
 import { runStage } from "./run-stage.ts";
 import {
@@ -18,7 +18,7 @@ import {
  * Сборка: порты редактора, настройки карты и один сервер на окно. Стор метрик внутри него,
  * поэтому сайдбар и табы одного окна видят одно и то же — решения 0013 и 0014.
  */
-async function createServer(): Promise<MapServer> {
+async function createServer(): Promise<{ server: MapServer; mcpPort?: number }> {
   const ports = createPorts();
   const state = await readMaps();
   const configs =
@@ -46,25 +46,47 @@ async function createServer(): Promise<MapServer> {
   const collectors = strictest((from) => from.collectorsStaleTime);
   const transforms = strictest((from) => from.transformsStaleTime);
 
-  return createMapServer(ports, {
+  // Порт осторожным не бывает: сервер один, и двух портов у него нет. Разные порты в разных
+  // конфигах — ошибка настройки, берётся первый (решение 0032).
+  const mcpPorts = [...new Set(settings.flatMap((from) => from.mcpPort ?? []))];
+  if (mcpPorts.length > 1) {
+    void vscode.window.showWarningMessage(
+      `mapward: в mapward.json заданы разные mcpPort (${mcpPorts.join(", ")}), беру ${String(mcpPorts[0])}`,
+    );
+  }
+
+  const server = createMapServer(ports, {
     ...(concurrency === undefined ? {} : { metricsConcurrency: concurrency }),
     ...(collectors === undefined ? {} : { collectorsStaleTime: collectors }),
     ...(transforms === undefined ? {} : { transformsStaleTime: transforms }),
   });
+  return { server, ...(mcpPorts[0] === undefined ? {} : { mcpPort: mcpPorts[0] }) };
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Обёртка ловит конец этапа, откуда бы он ни пришёл: сервер один и на мост, и на MCP.
-  const server = withStageTabs(await createServer());
+  const created = await createServer();
+  const server = withStageTabs(created.server);
 
   // Агент в терминале должен видеть карту так же, как человек — решение 0009. Сервер живёт,
   // пока открыта карта, и его адрес уезжает в сессии терминалов.
   const state = await readMaps();
   if (state.kind === "maps") {
-    const mcp = await startMcpHttp((transport) => serveMcp(server, state.maps, transport));
-    setMcpUrl(mcp.url);
+    const mcp = await startMcpHttp(
+      (transport) => serveMcp(server, state.maps, transport),
+      created.mcpPort,
+    );
+    if (created.mcpPort !== undefined && !mcp.fixed) {
+      void vscode.window.showWarningMessage(
+        `mapward: порт MCP ${String(created.mcpPort)} занят — терминалы этого окна не переживут перезагрузку`,
+      );
+    }
+    // Постоянный адрес — постоянные терминалы, и вернувшиеся после перезагрузки забираются
+    // обратно по имени вкладки (решение 0032).
+    setMcpUrl(mcp.url, mcp.fixed);
     context.subscriptions.push({ dispose: mcp.stop });
   }
+  await adoptTerminals(context.workspaceState);
 
   // Кнопки этапов в файле директивы — решение 0032. Карта читается на каждый вопрос заново:
   // сервер держит её в кэше, а директивы и этапы меняются, пока файл открыт.

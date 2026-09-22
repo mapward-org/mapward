@@ -16,6 +16,9 @@ export const RawConfig = T.Object({
   // решение 0016. Стадии разведены, потому что сбор дорогой, а трансформ поверх него дешёвый.
   collectorsStaleTime: T.Optional(T.Number()),
   transformsStaleTime: T.Optional(T.Number()),
+  // Постоянный порт MCP-сервера в редакторе: с ним терминалы карты переживают перезагрузку
+  // окна — решение 0032. Проверяется при чтении настроек: кривой порт не повод терять карты.
+  mcpPort: T.Optional(T.Number()),
 });
 
 /** Настройки рантайма из `mapward.json`: карты берут их себе при подъёме сервера. */
@@ -23,6 +26,7 @@ export type Settings = {
   metricsConcurrency?: number;
   collectorsStaleTime?: number;
   transformsStaleTime?: number;
+  mcpPort?: number;
 };
 
 export type MapEntry = { mapUrl: string; baseUrl: string };
@@ -56,17 +60,20 @@ export function parseSettings(text: string): Settings {
   try {
     const parsed: unknown = JSON.parse(text);
     if (!Check(RawConfig, parsed)) return {};
-    const { metricsConcurrency, collectorsStaleTime, transformsStaleTime } = parsed;
+    const { metricsConcurrency, collectorsStaleTime, transformsStaleTime, mcpPort } = parsed;
     return {
       ...(metricsConcurrency === undefined ? {} : { metricsConcurrency }),
       ...(collectorsStaleTime === undefined ? {} : { collectorsStaleTime }),
       ...(transformsStaleTime === undefined ? {} : { transformsStaleTime }),
+      ...(mcpPort !== undefined && isPort(mcpPort) ? { mcpPort } : {}),
     };
   } catch {
     // Настройки не повод ронять карту: без них она работает как раньше.
     return {};
   }
 }
+
+const isPort = (value: number) => Number.isInteger(value) && value > 0 && value < 65536;
 
 /** Only the field we need here — reading the map itself comes later. */
 export const MapIndex = T.Object({ name: T.Optional(T.String()) });

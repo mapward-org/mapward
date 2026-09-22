@@ -15,11 +15,24 @@ import type { McpTransport } from "@mapward/abstract-server";
  * правильный по форме и про чужой объект — заметить это можно только по полю `address`.
  * Поэтому наружу возвращается тот `id`, который прислал клиент.
  */
-export type McpHttp = { url: string; stop: () => void };
+export type McpHttp = {
+  url: string;
+  stop: () => void;
+  /** Встал на заказанный порт: адрес переживёт перезагрузку окна (решение 0032). */
+  fixed: boolean;
+};
 
 type Pending = (message: unknown) => void;
 
-export function startMcpHttp(serve: (transport: McpTransport) => () => void): Promise<McpHttp> {
+/**
+ * Порт — из `mcpPort` в `mapward.json`, без него случайный. Занят заказанный (тот же проект во
+ * втором окне) — сервер уходит на случайный и говорит об этом: карта из-за настройки не падает,
+ * просто терминалы этого окна станут временными.
+ */
+export function startMcpHttp(
+  serve: (transport: McpTransport) => () => void,
+  port?: number,
+): Promise<McpHttp> {
   const waiting = new Map<string, Pending>();
   let handler: ((message: unknown) => void) | undefined;
   let last = 0;
@@ -83,19 +96,28 @@ export function startMcpHttp(serve: (transport: McpTransport) => () => void): Pr
     });
   };
 
-  return new Promise((resolve) => {
-    const http = createServer(onRequest);
-    // Только петля: карта чужим машинам себя не отдаёт.
-    http.listen(0, "127.0.0.1", () => {
-      const address = http.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      resolve({
-        url: `http://127.0.0.1:${String(port)}/mcp`,
-        stop: () => {
-          stopServe();
-          http.close();
-        },
+  const listen = (wanted: number) =>
+    new Promise<McpHttp>((resolve, reject) => {
+      const http = createServer(onRequest);
+      http.once("error", reject);
+      // Только петля: карта чужим машинам себя не отдаёт.
+      http.listen(wanted, "127.0.0.1", () => {
+        const address = http.address();
+        const actual = typeof address === "object" && address ? address.port : 0;
+        resolve({
+          url: `http://127.0.0.1:${String(actual)}/mcp`,
+          fixed: wanted !== 0,
+          stop: () => {
+            stopServe();
+            http.close();
+          },
+        });
       });
     });
+
+  if (port === undefined) return listen(0);
+  return listen(port).catch((error: unknown) => {
+    console.warn(`mapward: порт MCP ${String(port)} занят, беру случайный`, error);
+    return listen(0);
   });
 }

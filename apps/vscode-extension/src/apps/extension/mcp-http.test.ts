@@ -62,3 +62,25 @@ test("a notification is answered with an empty success and no waiting", async ()
     http.stop();
   }
 });
+
+const silent = (transport: McpTransport) => transport.onMessage(() => {});
+
+/** Решение 0032: заказанный порт делает адрес постоянным, занятый — не роняет карту. */
+test("a requested port is used, and a taken one falls back to a random port", async () => {
+  const serve = silent;
+
+  const random = await startMcpHttp(serve);
+  const port = Number(new URL(random.url).port);
+  random.stop();
+
+  const fixed = await startMcpHttp(serve, port);
+  expect(fixed.url).toBe(`http://127.0.0.1:${String(port)}/mcp`);
+  expect(fixed.fixed).toBe(true);
+
+  const second = await startMcpHttp(serve, port);
+  expect(second.fixed).toBe(false);
+  expect(second.url).not.toBe(fixed.url);
+
+  second.stop();
+  fixed.stop();
+});

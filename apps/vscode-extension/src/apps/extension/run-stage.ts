@@ -4,7 +4,6 @@ import type { MapServer } from "@mapward/abstract-server";
 import {
   openTerminal,
   pickStageSession,
-  rememberDirectiveRun,
   renameForStage,
   sendToTerminal,
 } from "@/features/terminals/index.extension.ts";
@@ -15,9 +14,9 @@ import { rememberStage } from "./stage-tabs.ts";
  * решение 0017. Входов два — ряд этапов на карте и кнопки в файле директивы (0032), — а
  * логика одна, поэтому она здесь, где сводятся сервер карты и терминалы.
  *
- * Получатель — терминал, где эту директиву последний раз запускали кнопкой, дальше прежний
- * порядок. Сессии нет — заводим её обычным путём, с промптом объекта, и фраза приезжает
- * следом. Курсор при этом остаётся там, где был.
+ * Получатель — терминал этой директивы и только он: в чужой разговор фраза не уходит. Его нет —
+ * заводим новый, с промптом объекта, и он с этого момента принадлежит директиве. Курсор при
+ * этом остаётся там, где был.
  */
 export async function runStage(
   server: MapServer,
@@ -47,10 +46,10 @@ export async function runStage(
       cwd: params.basePath,
       prompt: [objectPrompt(object, params.mapPath), "", text].join("\n"),
       fresh: true,
+      directive: params.directive,
       preserveFocus: true,
     }));
 
-  rememberDirectiveRun({ address: params.address, directive: params.directive, id: session.id });
   rememberStage(session.id, {
     address: params.address,
     directive: params.directive,
