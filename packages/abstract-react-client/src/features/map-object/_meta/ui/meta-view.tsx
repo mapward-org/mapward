@@ -140,14 +140,15 @@ export function MetaView(props: {
 
       {props.object.actions.length > 0 && (
         <Section icon={props.icons.actions} title="Экшоны">
-          {props.object.actions.map((file) => (
+          {/* На мета-экране экшон — это его конфиг: открыть и поправить, а не запустить. */}
+          {props.object.actions.map((action) => (
             <ListRow
-              key={file.path}
-              label={file.name}
-              {...(ownerHint(file.owner) === undefined
+              key={action.address}
+              label={action.config.label ?? action.key}
+              {...(ownerHint(action.owner) === undefined
                 ? {}
-                : { hint: ownerHint(file.owner) as string })}
-              {...(openFile === undefined ? {} : { onSelect: () => openFile(file.path) })}
+                : { hint: ownerHint(action.owner) as string })}
+              {...(openFile === undefined ? {} : { onSelect: () => openFile(action.configPath) })}
             />
           ))}
         </Section>

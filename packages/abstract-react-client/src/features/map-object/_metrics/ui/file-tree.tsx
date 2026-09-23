@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { TreeNode } from "../pure-model/display.ts";
+import type { RenderRowAction } from "./displays.tsx";
 import { gitColor, isObjectLink } from "../pure-model/display.ts";
 import { fileIcon } from "../pure-model/file-icon.ts";
 import { useIcon } from "../../../../ports/icons.tsx";
@@ -22,6 +23,7 @@ function Row(props: {
   depth: number;
   onOpen: (link: string) => void;
   onOpenTab?: (link: string) => void;
+  renderAction?: RenderRowAction;
 }) {
   const { node } = props;
   const folder = node.isDir ?? (node.children?.length ?? 0) > 0;
@@ -33,6 +35,7 @@ function Row(props: {
   const link = node.link;
   // Вниз по дереву жест едет так же: объект может лежать на любой глубине.
   const tabProp = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
+  const actionProp = props.renderAction === undefined ? {} : { renderAction: props.renderAction };
 
   return (
     <li>
@@ -46,7 +49,7 @@ function Row(props: {
           }
           {...(tab === undefined ? {} : { title: "Ctrl + клик — открыть отдельным табом" })}
           style={{ paddingLeft: `${props.depth * 10}px` }}
-          className={`group/row flex w-full items-center gap-0.5 py-px text-left hover:bg-[var(--mw-list-hoverBackground)] ${
+          className={`group/row flex min-w-0 flex-1 items-center gap-0.5 py-px text-left hover:bg-[var(--mw-list-hoverBackground)] ${
             tab ? "in-data-[tab-mod]:hover:cursor-pointer" : ""
           }`}
         >
@@ -62,6 +65,11 @@ function Row(props: {
           <GitMark mark={node} folder={folder} />
           <StatusDot mark={node} />
         </button>
+        {/*
+          Кнопка экшона — рядом со строкой, а не в ней (решение 0038): строка — кнопка целиком,
+          вложить в неё вторую нельзя, и клик по имени по-прежнему открывает файл.
+        */}
+        {node.action && props.renderAction?.(node.action)}
       </div>
 
       {node.description && (
@@ -83,6 +91,7 @@ function Row(props: {
               depth={props.depth + 1}
               onOpen={props.onOpen}
               {...tabProp}
+              {...actionProp}
             />
           ))}
         </ul>
@@ -95,8 +104,10 @@ export function FileTree(props: {
   nodes: TreeNode[];
   onOpen: (link: string) => void;
   onOpenTab?: (link: string) => void;
+  renderAction?: RenderRowAction;
 }) {
   const tabProp = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
+  const actionProp = props.renderAction === undefined ? {} : { renderAction: props.renderAction };
   return (
     <ul>
       {props.nodes.map((node, index) => (
@@ -106,6 +117,7 @@ export function FileTree(props: {
           depth={0}
           onOpen={props.onOpen}
           {...tabProp}
+          {...actionProp}
         />
       ))}
     </ul>

@@ -42,6 +42,13 @@ WebAssembly и css tailwind на его классы — юзкейс `build-dis
 `application/`. Кладёт и убирает пункты сборка сервера: `finishDirective` и `runDirective`,
 клик по пункту — `dismissTurn` — решение [0034](../decisions/0034-directive-turns.md).
 
+Прогоны экшонов и метрик — фича `features/action-runs`: проверка формы и история в `domain/`,
+хранилище прогонов — в `application/`. Запуск, остановка, ожидание и подписка на прогоны
+объекта уходят наружу сборкой сервера (`runAction`, `stopRun`, `waitRun`, `watchRuns`), а стор
+метрик сообщает туда о своих прогонах. Скрипт и агента экшон и коллектор запускают одним кодом —
+`map-object/application/use-cases/execute.ts`. Прогоны лежат в `.mapward/runs/` карты — решение
+[0038](../decisions/0038-executable-actions.md).
+
 ## Правила
 
 Реализаций портов в пакете нет. Они живут в приложениях (`vscode-extension`, `cli`) или в

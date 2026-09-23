@@ -1,6 +1,6 @@
 import { Observable } from "rxjs";
 import { findObject } from "@mapward/core";
-import type { MapMetric, MapObject, MapStage } from "@mapward/core";
+import type { MapMetric, MapObject, MapStage, RunSource } from "@mapward/core";
 import type { ServerPorts } from "../ports/index.ts";
 import { readMap } from "../features/map-object/application/use-cases/read-map.ts";
 import { frontmatter } from "../lib/frontmatter.ts";
@@ -27,6 +27,7 @@ import {
   writeMapState,
 } from "../features/map-object/application/use-cases/map-state.ts";
 import { createTurnStore, type TurnKey } from "../features/directive-turns/index.ts";
+import { createRunStore } from "../features/action-runs/index.ts";
 
 export type MapServer = ReturnType<typeof createMapServer>;
 
@@ -49,7 +50,14 @@ export type ServerSettings = {
 
 export function createMapServer(ports: ServerPorts, settings: ServerSettings = {}) {
   const read = (ref: MapRef) => readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
-  const metrics = createMetricStore(ports, read, settings);
+  // Прогоны метрик и экшонов — одна история (решение 0038). Стор метрик сообщает о своих, а
+  // хранилище прогонов после успешного экшона просит его пересобрать метрики: ссылка по кругу,
+  // поэтому стор берётся через замыкание — к первому прогону он уже есть.
+  const runs = createRunStore(ports, {
+    readMap: read,
+    runMetric: (ref, address) => metrics.run(ref, address, { wait: false, source: "refresh" }),
+  });
+  const metrics = createMetricStore(ports, read, settings, runs);
   const displays = createDisplayBuilds(ports, read);
   const turns = createTurnStore();
 
@@ -108,6 +116,28 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     runMetric: (params: MapRef & { metric: string } & RunOptions & { wait?: boolean }) =>
       metrics.run(params, params.metric, params),
+
+    /**
+     * Запустить экшон — решение 0038. Номер прогона уходит сразу, прогон идёт у сервера; поля
+     * формы проверяются здесь, и при ошибке прогона нет, а в ответе — что не так с полями.
+     */
+    runAction: (
+      params: MapRef & { action: string; inputs?: Record<string, unknown>; source?: RunSource },
+    ) => runs.start(params, params.action, params.inputs, params.source),
+
+    stopRun: (params: { mapPath: string; id: string }) => {
+      runs.stop(params.mapPath, params.id);
+    },
+
+    /** Дождаться конца прогона: MCP и терминал зовут экшон ради итога, а не номера. */
+    waitRun: (params: { mapPath: string; id: string }) => runs.wait(params.mapPath, params.id),
+
+    /** Прогон по номеру, как он есть сейчас: `wait: false` досматривается этим. */
+    readRun: (params: { mapPath: string; id: string }) => runs.find(params.mapPath, params.id),
+
+    /** Прогоны объекта, свежие сверху, — экран прогонов. */
+    watchRuns: (params: { mapPath: string; address: string }) =>
+      runs.watch(params.mapPath, params.address),
 
     /**
      * Что показано сейчас: этим MCP отдаёт метрики в собранном виде. Без опций — только кэш,
@@ -306,4 +336,6 @@ const body = (text: string) => frontmatter(text).body;
 
 /** Файлы, которые пишет сама карта: их изменение не повод перечитывать её заново. */
 const ourOwnWrite = (path: string) =>
-  /(collect|transform)(\.logs)?\.json$|map-state\.json$/.test(path.replaceAll("\\", "/"));
+  /(collect|transform)(\.logs)?\.json$|map-state\.json$|\/\.mapward\//.test(
+    path.replaceAll("\\", "/"),
+  );

@@ -34,7 +34,12 @@ const tree = {
   "/map/_index.json": JSON.stringify({ name: "Карта" }),
   "/map/prototypes/_index.json": JSON.stringify({ name: "Прототипы" }),
   "/map/prototypes/package/_index.json": JSON.stringify({ name: "Пакет" }),
-  "/map/prototypes/package/_actions/publish-version.md": "как выпускать версию",
+  "/map/prototypes/package/_actions/publish-version/config.json": JSON.stringify({
+    label: "Опубликовать версию",
+    confirm: true,
+    inputs: { level: { type: "choice", options: ["patch", "minor"], required: true } },
+    runners: [{ kind: "script", run: "publish" }],
+  }),
   "/map/prototypes/package/_metrics/lint/config.json": JSON.stringify({
     label: "Линтер",
     collectors: [{ kind: "static", value: { ok: true } }],
@@ -56,7 +61,9 @@ const tree = {
     name: "core",
     extends: "mapward://prototypes/package",
   }),
-  "/map/packages/core/_actions/own.md": "свой экшон",
+  "/map/packages/core/_actions/own/config.json": JSON.stringify({
+    runners: [{ kind: "script", run: "own" }],
+  }),
   "/map/packages/core/_metrics/version/config.json": JSON.stringify({
     label: "Версия",
     refresh: "on-display",
@@ -168,14 +175,45 @@ test("an inherited file says where it actually lives", async () => {
   });
 
   // Своё владельца не называет: поле значит «лежит не здесь».
-  expect(object.actions).toEqual([
-    {
-      name: "publish-version.md",
-      path: "/map/prototypes/package/_actions/publish-version.md",
-      owner: "mapward://prototypes/package",
-    },
-    { name: "own.md", path: "/map/packages/core/_actions/own.md" },
+  const actions = object.actions as Record<string, unknown>[];
+  expect(actions.map((action) => [action.key, action.owner])).toEqual([
+    ["publish-version", "mapward://prototypes/package"],
+    ["own", undefined],
   ]);
+  // Агенту для запуска нужны адрес и форма — решение 0038.
+  expect(actions[0]).toMatchObject({
+    address: "mapward://packages/core/_actions/publish-version",
+    label: "Опубликовать версию",
+    confirm: true,
+    runners: ["script"],
+    inputs: { level: { type: "choice", options: ["patch", "minor"], required: true } },
+  });
+});
+
+test("run_action checks the form, then waits for the run and returns it", async () => {
+  await expect(
+    call("run_action", { address: "mapward://packages/core/_actions/publish-version" }),
+  ).rejects.toThrow(/level: обязательное поле/);
+
+  const run = await call("run_action", {
+    address: "mapward://packages/core/_actions/publish-version",
+    inputs: { level: "minor" },
+  });
+  expect(run).toMatchObject({
+    kind: "action",
+    object: "mapward://packages/core",
+    source: "mcp",
+    status: "success",
+    inputs: { level: "minor" },
+  });
+});
+
+test("read_index reads an action by its address, like a metric", async () => {
+  const layer = await call("read_index", {
+    address: "mapward://packages/core/_actions/publish-version",
+  });
+  expect(layer.configPath).toBe("/map/prototypes/package/_actions/publish-version/config.json");
+  expect(layer.owner).toBe("mapward://prototypes/package");
 });
 
 test("fields cut the answer down to what was asked for", async () => {

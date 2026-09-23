@@ -41,12 +41,20 @@ const tree = {
   "/map/prototypes/system/_metrics/requirements/config.json": JSON.stringify({
     label: "Требования",
   }),
-  "/map/prototypes/system/_actions/add-requirement.md": "как завести требование",
+  "/map/prototypes/system/_actions/add-requirement/config.json": JSON.stringify({
+    label: "Завести требование",
+    inputs: { title: { required: true } },
+    runners: [
+      { kind: "prompt", prompt: "заведи требование ${{ inputs.title }} у ${{ mapward://~#name }}" },
+    ],
+  }),
   "/map/prototypes/package/_index.json": JSON.stringify({
     name: "Пакет",
     extends: "mapward://prototypes/system",
   }),
-  "/map/prototypes/package/_actions/publish-version.md": "как выпустить версию",
+  "/map/prototypes/package/_actions/publish-version/config.json": JSON.stringify({
+    runners: [{ kind: "script", run: "pnpm publish" }],
+  }),
   "/map/packages/core/_index.json": JSON.stringify({
     name: "core",
     extends: "mapward://prototypes/package",
@@ -75,10 +83,59 @@ test("an action inherited twice through a chain appears once", async () => {
     .flatMap((child) => child.children)
     .find((child) => child.address === "mapward://packages/core");
 
-  expect(core?.actions.map((file) => file.name)).toEqual([
-    "add-requirement.md",
-    "publish-version.md",
-  ]);
+  expect(core?.actions.map((action) => action.key)).toEqual(["add-requirement", "publish-version"]);
+});
+
+test("an inherited action belongs to the heir and keeps its owner — decision 0038", async () => {
+  const map = await readMap(fakeFiles(tree), MAP, "/repo", "Карта");
+  const core = map.children
+    .flatMap((child) => child.children)
+    .find((child) => child.address === "mapward://packages/core");
+  const action = core?.actions.find((entry) => entry.key === "add-requirement");
+
+  expect(action?.address).toBe("mapward://packages/core/_actions/add-requirement");
+  expect(action?.owner).toBe("mapward://prototypes/system");
+  // Подстановка — по объекту, на котором экшон нажмут, а форма — позже, при запуске.
+  expect(action?.config.runners?.[0]?.prompt).toBe("заведи требование ${{ inputs.title }} у core");
+});
+
+test("an action extends a shared one and merges its inputs by name", async () => {
+  const shared = {
+    ...tree,
+    "/map/shared-actions/release/config.json": JSON.stringify({
+      label: "Выпуск",
+      inputs: { level: { type: "choice", options: ["patch", "minor"] } },
+      runners: [{ kind: "script", run: "release" }],
+    }),
+    "/map/packages/core/_actions/release/config.json": JSON.stringify({
+      extends: "mapward://shared-actions/release",
+      inputs: { dry: { type: "boolean" } },
+    }),
+  };
+  const map = await readMap(fakeFiles(shared), MAP, "/repo", "Карта");
+  const core = map.children
+    .flatMap((child) => child.children)
+    .find((child) => child.address === "mapward://packages/core");
+  const release = core?.actions.find((entry) => entry.key === "release");
+
+  expect(release?.config.label).toBe("Выпуск");
+  expect(Object.keys(release?.config.inputs ?? {})).toEqual(["level", "dry"]);
+  expect(release?.layers.map((layer) => layer.from)).toEqual(["own", "extends"]);
+});
+
+test("markdown in _actions is not an action any more, and .mapward is not an object", async () => {
+  const old = {
+    ...tree,
+    "/map/packages/core/_actions/run-dev.md": "как запустить dev",
+    "/map/.mapward/runs/_root.json": "[]",
+  };
+  const map = await readMap(fakeFiles(old), MAP, "/repo", "Карта");
+  const core = map.children
+    .flatMap((child) => child.children)
+    .find((child) => child.address === "mapward://packages/core");
+
+  expect(core?.actions.map((action) => action.key)).not.toContain("run-dev.md");
+  expect(map.children.map((child) => child.name)).not.toContain(".mapward");
 });
 
 test("substitution resolves against the object that inherited the expression", async () => {

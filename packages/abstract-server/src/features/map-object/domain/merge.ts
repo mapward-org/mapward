@@ -1,4 +1,4 @@
-import type { MetricConfig, ObjectIndex } from "@mapward/core";
+import type { ActionConfig, MetricConfig, ObjectIndex } from "@mapward/core";
 
 /** Keys the object did not set at all: spreading them would erase what the prototype gave. */
 const stated = <T extends object>(value: T): Partial<T> =>
@@ -24,4 +24,15 @@ export function mergeIndex(prototype: ObjectIndex, own: ObjectIndex): ObjectInde
 /** Metrics inherit the same way, but have no props of their own. */
 export function mergeMetric(prototype: MetricConfig, own: MetricConfig): MetricConfig {
   return { ...prototype, ...stated(own) };
+}
+
+/**
+ * Экшон — как метрика, кроме полей формы: они сливаются по имени. Иначе наследник, добавивший
+ * одно поле, молча терял бы все поля общего экшона.
+ */
+export function mergeAction(prototype: ActionConfig, own: ActionConfig): ActionConfig {
+  const merged = { ...prototype, ...stated(own) };
+  return prototype.inputs === undefined && own.inputs === undefined
+    ? merged
+    : { ...merged, inputs: { ...prototype.inputs, ...own.inputs } };
 }

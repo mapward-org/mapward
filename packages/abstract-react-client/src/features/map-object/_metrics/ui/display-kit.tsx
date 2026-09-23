@@ -1,19 +1,22 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import type * as Kit from "@mapward/display";
-import type { LinkItem, Status, TreeItem } from "@mapward/display";
+import type { ActionRef, LinkItem, Status, TreeItem } from "@mapward/display";
 import { FileTree as Tree } from "./file-tree.tsx";
-import { Link as LinkRow, LinkList } from "./displays.tsx";
+import { Link as LinkRow, LinkList, type RenderRowAction } from "./displays.tsx";
 import { Markdown as Block, MarkdownLine } from "./markdown.tsx";
 import { StatusDot as Dot } from "./status-dot.tsx";
 
 /**
  * Набор `@mapward/display` — решение 0037: те же кусочки, которыми нарисована карта, чтобы
  * компонент собирал из них, а не переписывал. Ссылки открываются так же, как везде на карте, —
- * куда, говорит ячейка через контекст.
+ * куда, говорит ячейка через контекст. Экшоны едут тем же контекстом (0038): кнопку строки и
+ * кнопку экшона рисует та же сетка, что и у готовых дисплеев.
  */
 export type KitLinks = {
   onOpen: (link: string) => void;
   onOpenTab?: (link: string) => void;
+  renderRowAction?: RenderRowAction;
+  renderActionButton?: (action: ActionRef, label?: string) => ReactNode;
 };
 
 const KitContext = createContext<KitLinks>({ onOpen: () => {} });
@@ -44,15 +47,32 @@ function StatusDot(props: { status?: Status; color?: string; hint?: string }) {
   return <Dot mark={props} />;
 }
 
+/** Кнопка экшона строки — у `List` и `FileTree` набора, как у готовых дисплеев (0038). */
+const useRowAction = () => {
+  const render = useContext(KitContext).renderRowAction;
+  return render === undefined ? {} : { renderAction: render };
+};
+
 function List(props: { items: LinkItem[]; empty?: string }) {
   const links = useLinks();
+  const action = useRowAction();
   if (props.items.length === 0)
     return <span className="opacity-60">{props.empty ?? "нет таких"}</span>;
-  return <LinkList items={props.items} {...links} />;
+  return <LinkList items={props.items} {...links} {...action} />;
 }
 
 function FileTree(props: { items: TreeItem[] }) {
-  return <Tree nodes={props.items} {...useLinks()} />;
+  return <Tree nodes={props.items} {...useLinks()} {...useRowAction()} />;
+}
+
+/** Та же кнопка, что ставит в клетку раскладка, — решение 0038. */
+function ActionButton(props: { action: string; inputs?: Record<string, unknown>; label?: string }) {
+  const render = useContext(KitContext).renderActionButton;
+  const ref: ActionRef =
+    props.inputs === undefined
+      ? { run: props.action }
+      : { run: props.action, inputs: props.inputs };
+  return <>{render?.(ref, props.label)}</>;
 }
 
 /**
@@ -65,4 +85,5 @@ export const displayKit = {
   StatusDot,
   List,
   FileTree,
+  ActionButton,
 } satisfies { [K in keyof typeof Kit]: (typeof Kit)[K] };

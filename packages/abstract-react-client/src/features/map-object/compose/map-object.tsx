@@ -1,12 +1,20 @@
 import { useState } from "react";
 import { linkKind } from "@mapward/core";
 import { findObject, groupLayout, groupMetrics, pickGroup } from "@mapward/core";
-import type { MapMetric } from "@mapward/core";
+import type { ActionRef, MapAction, MapMetric } from "@mapward/core";
+import type { DisplayAction } from "@mapward/display";
 import { useMap, useMapActions } from "../adapters/use-map.ts";
 import { useTerminals } from "../adapters/use-terminals.ts";
 import { useCapabilities } from "../adapters/use-capabilities.ts";
 import { TerminalMenu } from "../ui/terminal-menu.tsx";
-import { MetricGrid } from "../_metrics/compose/metric-grid.tsx";
+import { MetricGrid, type GridActions } from "../_metrics/compose/metric-grid.tsx";
+import { useActionLauncher } from "../_actions/compose/action-launcher.tsx";
+import { actionLabel, keyClashes, resolveAction } from "../_actions/pure-model/actions.ts";
+import { ActionButton, RowActionButton } from "../_actions/ui/action-button.tsx";
+import { ActionMenu } from "../_actions/ui/action-menu.tsx";
+import { RunsScreen } from "../_runs/compose/runs-screen.tsx";
+import { useRuns } from "../_runs/adapters/use-runs.ts";
+import { lastRun, runningCount } from "../_runs/pure-model/runs.ts";
 import { ChildrenMapView } from "../_children-map/compose/children-map.tsx";
 import { DirectiveList } from "../_directives/compose/directive-list.tsx";
 import { DirectiveSection } from "../_directives/compose/directive-section.tsx";
@@ -33,6 +41,7 @@ import {
   MetaIcon,
   MetricsIcon,
   NewDirectiveIcon,
+  RunsIcon,
   SearchIcon,
   TabIcon,
   WorkflowIcon,
@@ -42,6 +51,10 @@ import { Loading } from "../../../lib/ui/loading.tsx";
 import { Section, SectionButton } from "../../../lib/ui/section.tsx";
 
 type Ref = { mapPath: string; basePath: string; name: string };
+
+/** Описание экшона — подсказкой на кнопке и полем для компонента, если оно есть. */
+const described = (action: MapAction | undefined) =>
+  action?.config.description === undefined ? {} : { description: action.config.description };
 
 /** Иконки разделов мета-экрана: те же, что стояли на кнопках этих списков в шапке. */
 const metaIcons = {
@@ -92,6 +105,14 @@ export function MapObjectView(props: {
   const { address, group, solo } = currentScreen(history);
   const meta = currentScreen(history).meta ?? false;
   const setMeta = (value: boolean) => update(amend(history, { meta: value }));
+  /**
+   * Экран прогонов — третий режим объекта, как мета-экран (решение 0038), и выбранный прогон
+   * едет в истории вместе с ним.
+   */
+  const runsOpen = currentScreen(history).runs ?? false;
+  const selectedRun = currentScreen(history).run;
+  const setRuns = (value: boolean, run?: string) =>
+    update(amend(history, { runs: value, run: value ? run : undefined }));
   const setGroup = (key: string) => update(amend(history, { group: key }));
   const setSolo = (key: string | undefined) => update(amend(history, { solo: key }));
   const terminals = useTerminals(props.mapConfig, address);
@@ -99,6 +120,11 @@ export function MapObjectView(props: {
   const can = useCapabilities();
   // Под ctrl подсвечивается то, что откроется табом: иконок у ссылок нет — решение 0035.
   useTabModifier(can.tabs);
+  // Прогоны объекта — одна подписка на вид: ими питаются экран прогонов, счётчики у кнопок
+  // экшонов и красная точка метрики. Адрес — того объекта, что покажется: пропавший ведёт к корню.
+  const shownAddress = map ? (findObject(map, address) ?? map).address : address;
+  const runs = useRuns(props.mapConfig.mapPath, shownAddress);
+  const launcher = useActionLauncher(props.mapConfig);
 
   if (!map) return <Loading text="Читаем карту…" />;
 
@@ -167,6 +193,61 @@ export function MapObjectView(props: {
     ? (file: { path: string }) => actions.open(file.path)
     : undefined;
 
+  /**
+   * Экшоны объекта в сетке и в дисплеях — решение 0038. Запуск у всех один: `launcher` решает,
+   * нужна ли форма. Ключ, занятый и метрикой, — ошибка объекта: такой экшон в клетку не встаёт.
+   */
+  const clashes = keyClashes(current.metrics, current.actions);
+  const running = (action: MapAction) => runningCount(runs, action.address);
+  const launchRef = (ref: ActionRef) => {
+    const action = resolveAction(map, current, ref.run);
+    if (action) launcher.launch(action, ref.inputs ?? {}, "display");
+  };
+  const gridActions: GridActions = {
+    cells: current.actions.filter((action) => !clashes.includes(action.key)),
+    renderCell: (action) => (
+      <ActionButton
+        label={actionLabel(action)}
+        running={running(action)}
+        {...described(action)}
+        onRun={() => launcher.launch(action, {}, "ui")}
+      />
+    ),
+    // Строка дисплея называет экшон ключом или адресом; не нашёлся — ошибка этой строки.
+    renderRow: (ref) => {
+      const action = resolveAction(map, current, ref.run);
+      return (
+        <RowActionButton
+          label={action ? actionLabel(action) : ref.run}
+          running={action ? running(action) : 0}
+          {...(action ? {} : { missing: ref.run })}
+          onRun={() => launchRef(ref)}
+        />
+      );
+    },
+    list: current.actions.map((action): DisplayAction => ({
+      key: action.key,
+      address: action.address,
+      label: actionLabel(action),
+      ...described(action),
+      inputs: action.config.inputs ?? {},
+      running: running(action),
+    })),
+    run: (run, inputs) => launchRef(inputs === undefined ? { run } : { run, inputs }),
+    renderButton: (ref, label) => {
+      const action = resolveAction(map, current, ref.run);
+      return (
+        <ActionButton
+          label={label ?? (action ? actionLabel(action) : ref.run)}
+          running={action ? running(action) : 0}
+          {...(action ? {} : { missing: ref.run })}
+          {...described(action)}
+          onRun={() => launchRef(ref)}
+        />
+      );
+    },
+  };
+
   const grid = (metrics: MapMetric[], soloKey?: string) => (
     <MetricGrid
       mapRef={props.mapConfig}
@@ -183,6 +264,8 @@ export function MapObjectView(props: {
               openInTab({ group: openGroup?.key, metric: metric.key }),
           })}
       {...(openObjectTab === undefined ? {} : { onOpenObjectTab: openObjectTab })}
+      actions={gridActions}
+      onRuns={(metric: MapMetric) => setRuns(true, lastRun(runs, metric.address)?.id)}
       renderMap={(childrenMap, metricAddress) => (
         <ChildrenMapView
           map={childrenMap}
@@ -202,7 +285,8 @@ export function MapObjectView(props: {
    */
   if (soloMetric) {
     return (
-      <div className="flex h-full flex-col pb-2">
+      <div className="relative flex h-full flex-col pb-2">
+        {launcher.form}
         <button
           type="button"
           onClick={() => setSolo(undefined)}
@@ -218,8 +302,13 @@ export function MapObjectView(props: {
     );
   }
 
+  // Мета-экран и прогоны — режимы объекта; директивы и вкладки — только в обычном виде.
+  const plain = !meta && !runsOpen;
+
   return (
-    <div className="flex h-full flex-col pb-2">
+    // `relative` — для формы экшона: она ложится поверх вида, а не окном редактора (0038).
+    <div className="relative flex h-full flex-col pb-2">
+      {launcher.form}
       <Breadcrumbs trail={path} onGo={go} back={arrow(-1)} forward={arrow(1)} {...objectTab} />
 
       <ObjectHeader
@@ -227,6 +316,14 @@ export function MapObjectView(props: {
         prototypeName={current.prototypeName}
         actions={
           <>
+            {/* Все экшоны объекта списком с поиском — решение 0038. Нет экшонов — нет кнопки. */}
+            {current.actions.length > 0 && (
+              <ActionMenu
+                actions={current.actions}
+                running={running}
+                onRun={(action) => launcher.launch(action, {}, "ui")}
+              />
+            )}
             {can.terminals && (
               <TerminalMenu
                 terminals={terminals.terminals}
@@ -255,6 +352,13 @@ export function MapObjectView(props: {
             <HeaderButton title={meta ? "К метрикам" : "Об объекте"} onClick={() => setMeta(!meta)}>
               {meta ? MetricsIcon : MetaIcon}
             </HeaderButton>
+            {/* Прогоны входят и выходят так же, одной кнопкой (0038). */}
+            <HeaderButton
+              title={runsOpen ? "К метрикам" : "Прогоны"}
+              onClick={() => setRuns(!runsOpen)}
+            >
+              {runsOpen ? MetricsIcon : RunsIcon}
+            </HeaderButton>
           </>
         }
       />
@@ -264,7 +368,18 @@ export function MapObjectView(props: {
         постоянно, а выполненные лежат в мета-экране (решение 0024). Заголовок с границей
         отделяет их от метрик, а плюсик заводит новую — решение 0028.
       */}
-      {!meta && (
+      {/*
+        Ключ, занятый и метрикой, и экшоном, — ошибка объекта (решение 0038): раскладка находит
+        клетку по ключу, и вид не угадывает, что из двух туда ставить.
+      */}
+      {clashes.length > 0 && (
+        <div className="shrink-0 px-2 pb-1 text-[11px] text-[var(--mw-errorForeground,#f85149)]">
+          {clashes.length === 1 ? "ключ" : "ключи"} {clashes.join(", ")} — и у метрики, и у экшона:
+          в клетке остаётся метрика, кнопкой экшон в сетку не встаёт. Переименуйте один из них.
+        </div>
+      )}
+
+      {plain && (
         <div className="shrink-0 border-b border-[var(--mw-menu-border,#8884)] pb-1">
           <Section
             icon={DirectivesIcon}
@@ -295,7 +410,7 @@ export function MapObjectView(props: {
       )}
 
       {/* Вкладки объекта и описание открытой — решение 0025. */}
-      {!meta && current.metricGroups.length > 0 && (
+      {plain && current.metricGroups.length > 0 && (
         <>
           <GroupTabs
             groups={current.metricGroups}
@@ -319,7 +434,14 @@ export function MapObjectView(props: {
         раскладки: без `container-type` ни одно из них не срабатывает.
       */}
       <div className="min-h-0 flex-1 overflow-auto" style={{ containerType: "inline-size" }}>
-        {meta ? (
+        {runsOpen ? (
+          <RunsScreen
+            mapPath={props.mapConfig.mapPath}
+            runs={runs}
+            selected={selectedRun}
+            onSelect={(id) => setRuns(true, id)}
+          />
+        ) : meta ? (
           <MetaScreen
             map={map}
             object={current}

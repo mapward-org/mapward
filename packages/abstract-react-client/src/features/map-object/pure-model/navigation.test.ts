@@ -92,3 +92,21 @@ test("испорченное сохранённое историей не счи
   expect(isHistory({ entries: ["mapward://"], index: 1 })).toBe(false);
   expect(isHistory({ entries: [1], index: 0 })).toBe(false);
 });
+
+/** Решение 0038: прогоны — режим объекта, как мета-экран, и выбранный прогон едет с ним. */
+test("the runs screen and its selected run live in the current step", () => {
+  let history = startHistory({ address: "mapward://a" });
+  history = amend(history, { runs: true, run: "r1" });
+  expect(currentScreen(history)).toEqual({ address: "mapward://a", runs: true, run: "r1" });
+  expect(parseScreen(screenToString(currentScreen(history)))).toEqual(currentScreen(history));
+
+  // Мета-экран и прогоны — одно место: включённый один выключает другой.
+  history = amend(history, { meta: true });
+  expect(currentScreen(history)).toEqual({ address: "mapward://a", meta: true });
+  history = amend(history, { runs: true });
+  expect(currentScreen(history)).toEqual({ address: "mapward://a", runs: true });
+
+  // Переход на другой объект возвращает к его метрикам.
+  history = visit(history, "mapward://b");
+  expect(currentScreen(history)).toEqual({ address: "mapward://b" });
+});

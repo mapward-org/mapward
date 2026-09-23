@@ -26,6 +26,7 @@
         ["code-drift"],
         ["decisions"],
         ["requirements"],
+        ["howto"],
         ["files"]
       ],
       "style": {
@@ -42,6 +43,7 @@
         ["code-drift", "code-drift", "code-drift"],
         ["decisions", "decisions", "decisions"],
         ["requirements", "requirements", "requirements"],
+        ["howto", "howto", "howto"],
         ["files", "files", "files"]
       ],
       "style": {

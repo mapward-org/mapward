@@ -1,5 +1,5 @@
-import { findMetric, findObject, groupMetrics, trail } from "@mapward/core";
-import type { MapFile, MapMetric, MapObject } from "@mapward/core";
+import { findActionOwner, findMetric, findObject, groupMetrics, trail } from "@mapward/core";
+import type { MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
@@ -37,6 +37,24 @@ const fileOf = (file: MapFile) => ({
   // размера, оставляет поле пустым.
   ...(file.bytes === undefined ? {} : { bytes: file.bytes }),
   ...(file.owner === undefined ? {} : { owner: file.owner }),
+});
+
+/**
+ * Экшон — решение 0038: чтобы запустить его через `run_action`, агенту нужны адрес и форма.
+ * Исполнители — только видами: сам конфиг целиком приходит `read_index` по адресу экшона.
+ */
+const actionOf = (action: MapAction) => ({
+  key: action.key,
+  address: action.address,
+  label: action.config.label ?? action.key,
+  ...(action.config.description === undefined ? {} : { description: action.config.description }),
+  ...(action.config.inputs === undefined ? {} : { inputs: action.config.inputs }),
+  ...(action.config.confirm ? { confirm: true } : {}),
+  runners: (action.config.runners ?? []).map((runner) => String(runner.kind)),
+  ...(action.config.refreshes === undefined ? {} : { refreshes: action.config.refreshes }),
+  configPath: action.configPath,
+  ...(action.owner === undefined ? {} : { owner: action.owner }),
+  layers: action.layers,
 });
 
 /**
@@ -191,7 +209,7 @@ async function describe(
       ...(logs?.[at] === undefined ? {} : { logs: logs[at] }),
     })),
     directives: digest(object.directives, view.directives),
-    actions: object.actions.map(fileOf),
+    actions: object.actions.map(actionOf),
     /**
      * Этапы, действующие на объекте: звать их теперь по имени, и узнать имя больше неоткуда —
      * по файлам не видно, что приехало от прототипа (решение 0017).
@@ -298,7 +316,8 @@ const TOOLS = [
       "`_index.json` объекта и `config.json`, если он там лежит; любое из двух может отсутствовать. " +
       "Адресом метрики (он приходит в read_object рядом с ключом) отдаётся её собственный конфиг " +
       "и, полем extends, адрес следующего слоя — цепочка читается по одному слою за вызов. " +
-      "С file — текст директивы или экшона этого объекта по имени из read_object, включая доставшиеся от прототипа; " +
+      "Адресом экшона — его config.json так же, слоями. " +
+      "С file — текст директивы этого объекта по имени из read_object, включая доставшиеся от прототипа; " +
       "с tail — только его хвост. " +
       "С stage — текст этапа воркфлоу, не запуская его и не отмечая прогон.",
     inputSchema: {
@@ -307,13 +326,13 @@ const TOOLS = [
         address: {
           type: "string",
           description:
-            "mapward:// адрес объекта или метрики; без него корень. Адрес метрики — тот, что в read_object",
+            "mapward:// адрес объекта, метрики или экшона; без него корень. Адреса метрик и экшонов — те, что в read_object",
         },
         map: { type: "string", description: "имя карты; без него первая" },
         file: {
           type: "string",
           description:
-            'имя директивы или экшона объекта, как в ответе read_object: "create-package.md". Без него приходит _index.json',
+            'имя директивы объекта, как в ответе read_object: "2026-09-19-2335-name.md". Без него приходит _index.json',
         },
         tail: {
           type: "number",
@@ -409,6 +428,44 @@ const TOOLS = [
         },
       },
       required: ["address"],
+    },
+  },
+  {
+    name: "run_action",
+    description:
+      "Запустить экшон объекта — то же, что кнопка на карте: скрипт или headless-агент, прогон виден в объекте на экране прогонов. " +
+      "Экшоны и их поля формы приходят в read_object, поле actions. Поля проверяет сервер: не хватает обязательного — прогона нет, в ответе errors. " +
+      "По умолчанию вызов ждёт конца и отдаёт прогон целиком: шаги, логи, вывод. С wait: false отдаёт номер сразу, итог — read_run. " +
+      "Что экшон сделал, видно в метриках объекта: те, что названы в refreshes, пересобираются сами после успеха.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "mapward:// адрес экшона, как в read_object" },
+        inputs: {
+          type: "object",
+          description: "значения полей формы по именам; непереданное берёт умолчание",
+        },
+        wait: {
+          type: "boolean",
+          description:
+            "по умолчанию true — дождаться конца. false — вернуть номер прогона сразу, прогон идёт у сервера",
+        },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "read_run",
+    description:
+      "Прогон экшона по номеру из run_action: статус, шаги, их логи и вывод. Идущий прогон отдаётся как есть, не дожидаясь конца.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "номер прогона из run_action" },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["id"],
     },
   },
 ] as const;
@@ -565,6 +622,24 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
       // адрес, и приходит он в ответе рядом с ключом. Поэтому сырой вид метрики спрашивается
       // тем же инструментом, а не своим параметром — решение 0019.
       if (!object) {
+        // Экшон читается так же, как метрика: собственный конфиг и адрес следующего слоя.
+        const action = address ? findActionOwner(map, address)?.action : undefined;
+        if (action) {
+          if (typeof args.file === "string" || typeof args.stage === "string") {
+            throw new Error("У экшона нет файлов и этапов: file и stage спрашивают у объекта.");
+          }
+          const raw = await server.readMapFile(action.configPath);
+          const next = extendsOf(raw);
+          return text({
+            address: action.address,
+            key: action.key,
+            configPath: action.configPath,
+            ...(action.owner === undefined ? {} : { owner: action.owner }),
+            config: raw ?? null,
+            ...(next === undefined ? {} : { extends: next }),
+          });
+        }
+
         const metric = address ? findMetric(map, address) : undefined;
         if (!metric) throw new Error(`Объект ${String(address)} не найден`);
         if (typeof args.file === "string" || typeof args.stage === "string") {
@@ -602,11 +677,9 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
       // прототипа, и никакое имя не уводит читать что попало мимо карты.
       if (typeof args.file === "string") {
         const wanted = args.file;
-        const found = [...object.directives, ...object.actions].find(
-          (file) => file.name === wanted,
-        );
+        const found = object.directives.find((file) => file.name === wanted);
         if (!found) {
-          const known = [...object.directives, ...object.actions].map((f) => f.name).join(", ");
+          const known = object.directives.map((f) => f.name).join(", ");
           throw new Error(`У объекта нет файла ${wanted}. Есть: ${known || "ни одного"}.`);
         }
         const body = await server.readMapFile(found.path);
@@ -668,6 +741,31 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
           ...(args.wait === false ? { wait: false } : {}),
         }),
       );
+    }
+
+    if (name === "run_action") {
+      const started = await server.runAction({
+        ...ref,
+        action: String(args.address ?? ""),
+        inputs:
+          typeof args.inputs === "object" && args.inputs !== null
+            ? (args.inputs as Record<string, unknown>)
+            : {},
+        source: "mcp",
+      });
+      if (started.errors) {
+        const lines = Object.entries(started.errors).map(([field, why]) => `${field}: ${why}`);
+        throw new Error(`Поля формы не прошли, прогона нет. ${lines.join("; ")}`);
+      }
+      const id = String(started.id);
+      if (args.wait === false) return text({ id, status: "running" });
+      return text(await server.waitRun({ mapPath: ref.mapPath, id }));
+    }
+
+    if (name === "read_run") {
+      const run = server.readRun({ mapPath: ref.mapPath, id: String(args.id ?? "") });
+      if (!run) throw new Error(`Прогона ${String(args.id)} нет`);
+      return text(run);
     }
 
     throw new Error(`Инструмент ${name} не найден`);

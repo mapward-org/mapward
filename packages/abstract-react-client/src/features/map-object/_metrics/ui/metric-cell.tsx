@@ -16,7 +16,8 @@ export function MetricCell(props: {
   cell?: Record<string, string>;
   onRefresh: () => void;
   onToggle: () => void;
-  onLogs?: () => void;
+  /** Красная точка ведёт на последний прогон метрики — решение 0038. */
+  onRuns?: () => void;
   /**
    * Открыть метрику отдельным табом — решение 0026: ctrl + клик по названию и иконка рядом.
    * Иконка здесь остаётся (0035): название метрики ссылкой не выглядит, и жест по нему не
@@ -67,17 +68,18 @@ export function MetricCell(props: {
         )}
 
         {props.busy && <span className="animate-pulse">…</span>}
-        {!props.busy && props.ok !== undefined && (
-          <button type="button" onClick={props.onLogs} title="Открыть логи" className="shrink-0">
-            <span
-              style={{
-                color: props.ok
-                  ? "var(--mw-testing-iconPassed, #3fb950)"
-                  : "var(--mw-testing-iconFailed, #f85149)",
-              }}
-            >
-              ●
-            </span>
+        {/*
+          Точка — только красная (решение 0038): зелёная стояла у каждой исправной метрики и
+          шумела. Ведёт она на последний прогон, где видно, какой шаг упал и что он сказал.
+        */}
+        {!props.busy && props.ok === false && (
+          <button
+            type="button"
+            onClick={props.onRuns}
+            title="Последний прогон"
+            className="shrink-0"
+          >
+            <span style={{ color: "var(--mw-testing-iconFailed, #f85149)" }}>●</span>
           </button>
         )}
 

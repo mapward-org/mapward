@@ -5,7 +5,7 @@
  * что там внутри, и поэтому одинаково работает в обоих.
  */
 
-import type { Capabilities } from "@mapward/core";
+import type { ActionPermissions, Capabilities } from "@mapward/core";
 import type { Cancellation } from "../lib/cancellation.ts";
 import type { ProcessEnv } from "../lib/env.ts";
 
@@ -57,13 +57,19 @@ export type ShellPort = {
   ): Promise<ProcessResult>;
 };
 
-/** Агент в headless-режиме: один вопрос, один ответ, промпт уходит в stdin. */
+/**
+ * Агент в headless-режиме: один вопрос, один ответ, промпт уходит в stdin.
+ *
+ * `permissions` — что ему можно (решение 0038): метрике не нужно ничего, она читает, а экшону
+ * нужно писать. Во флаги агента их превращает приложение: какой агент, знает оно одно.
+ */
 export type AgentPort = {
   run(params: {
     prompt: string;
     cwd: string;
     env: ProcessEnv;
     cancel?: Cancellation;
+    permissions?: ActionPermissions;
   }): Promise<ProcessResult>;
 };
 

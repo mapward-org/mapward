@@ -14,6 +14,8 @@ const display = {
   object: { address: "mapward://", name: "Корень", path: "/map", props: {} },
   metric: { key: "tx", address: "mapward://_metrics/tx", label: "Транскрибация", busy: false },
   open: () => {},
+  actions: [],
+  run: () => {},
 };
 
 const links = { onOpen: () => {} };
@@ -55,4 +57,29 @@ test("данные не прошли схему — компонент не ри
 
 test("сборка ещё идёт", () => {
   expect(render({})).toContain("собирается");
+});
+
+/** Решение 0038: кнопку строки и `ActionButton` набора рисует сетка — через тот же контекст. */
+test("экшон строки и ActionButton набора рисует то, что дала ячейка", () => {
+  const code = [
+    'var jsx = require("react/jsx-runtime");',
+    'var kit = require("@mapward/display");',
+    "module.exports = { default: function View() {",
+    '  return jsx.jsxs("div", { children: [',
+    '    jsx.jsx(kit.List, { items: [{ label: "тест", action: { run: "rerun", inputs: { f: 1 } } }] }),',
+    '    jsx.jsx(kit.ActionButton, { action: "release", label: "Выпустить" }),',
+    "  ] });",
+    "} };",
+  ].join("\n");
+  const html = render({
+    build: { code, builtAt: "now" },
+    links: {
+      onOpen: () => {},
+      renderRowAction: (action) => `[строка ${action.run} ${JSON.stringify(action.inputs)}]`,
+      renderActionButton: (action, label) => `[кнопка ${action.run} ${label}]`,
+    },
+  });
+  expect(html).toContain("тест");
+  expect(html).toContain("[строка rerun {&quot;f&quot;:1}]");
+  expect(html).toContain("[кнопка release Выпустить]");
 });

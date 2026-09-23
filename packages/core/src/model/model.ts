@@ -1,5 +1,5 @@
 import { childAddress } from "./address.ts";
-import type { Layout, MetricConfig, MetricGroup, ObjectIndex } from "./schema.ts";
+import type { ActionConfig, Layout, MetricConfig, MetricGroup, ObjectIndex } from "./schema.ts";
 
 /**
  * Файл, участвовавший в мердже. Мердж разрушителен: по результату не видно, из чего он
@@ -58,6 +58,29 @@ export function adoptMetric(
   };
 }
 
+/**
+ * Экшон — решение 0038: папка в `_actions/` с `config.json`, по образцу метрики. Кэша у него
+ * нет: прогоны живут локально, у сервера, а не рядом с конфигом.
+ */
+export type MapAction = {
+  key: string;
+  address: string;
+  configPath: string;
+  /** Приехал от прототипа — как у метрик: правят его там. */
+  owner?: string;
+  layers: ConfigLayer[];
+  config: ActionConfig;
+};
+
+/** Унаследованный экшон принадлежит наследнику: адрес его, файлы слоёв — прототиповы. */
+export function adoptAction(object: { address: string }, action: MapAction): MapAction {
+  return {
+    ...action,
+    address: `${childAddress(object.address, "_actions")}/${action.key}`,
+    layers: fromPrototype(action.layers),
+  };
+}
+
 export type DirectiveStatus = "new" | "changed" | "done";
 
 /** Где директива сейчас: этап начат вызовом MCP и им же закрывается — решение 0017. */
@@ -73,7 +96,7 @@ export type MapFile = {
   /** Сколько файл весит, когда хост смог это назвать: по нему решают, читать целиком или хвостом. */
   bytes?: number;
   status?: DirectiveStatus;
-  /** Последний прогон этапа. У экшонов не бывает: состояние есть только у директив. */
+  /** Последний прогон этапа. */
   run?: DirectiveRun;
   /**
    * Сколько раз какой этап прогоняли. Последний прогон отвечает «где директива сейчас», а этот
@@ -122,7 +145,7 @@ export type MapObject = {
   layers: ConfigLayer[];
   metrics: MapMetric[];
   directives: MapFile[];
-  actions: MapFile[];
+  actions: MapAction[];
   /** Этапы, действующие на этом объекте: свои плюс унаследованные, по порядку. */
   workflow: MapStage[];
   /**
@@ -251,6 +274,20 @@ export function findMetricOwner(
   if (own) return { object: root, metric: own };
   for (const child of root.children) {
     const found = findMetricOwner(child, address);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Экшон по адресу и объект, которому он принадлежит: запускается он всегда на объекте. */
+export function findActionOwner(
+  root: MapObject,
+  address: string,
+): { object: MapObject; action: MapAction } | undefined {
+  const own = root.actions.find((action) => action.address === address);
+  if (own) return { object: root, action: own };
+  for (const child of root.children) {
+    const found = findActionOwner(child, address);
     if (found) return found;
   }
   return undefined;

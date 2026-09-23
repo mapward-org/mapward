@@ -1,6 +1,7 @@
 import { Observable, Subject } from "rxjs";
 import { findMetricOwner, groupMetrics } from "@mapward/core";
-import type { MapMetric, MapObject } from "@mapward/core";
+import type { MapMetric, MapObject, RunSource } from "@mapward/core";
+import type { RunRecorder } from "../../../action-runs/index.ts";
 import type { ServerPorts } from "../../../../ports/index.ts";
 import { createCancellation } from "../../../../lib/cancellation.ts";
 import { createLimit } from "../../../../lib/limit.ts";
@@ -34,7 +35,20 @@ export type MetricsSnapshot = Record<string, MetricValue>;
  * Сколько стадии вправе идти — решение 0016. Переданное здесь перебивает то, что стоит на
  * метрике: у зовущего свой предел терпения, и он про него знает больше, чем автор метрики.
  */
-export type RunOptions = { collectorsTimeout?: number; transformsTimeout?: number };
+export type RunOptions = {
+  collectorsTimeout?: number;
+  transformsTimeout?: number;
+  /** Откуда прогон — для экрана прогонов (решение 0038). Без него: кнопка или сам стор. */
+  source?: RunSource;
+};
+
+/** Куда стор сообщает о прогонах: историю метрик держит хранилище прогонов (решение 0038). */
+export type MetricHistory = {
+  recordMetric(
+    mapPath: string,
+    info: { target: string; object: string; label: string; source: RunSource; config: unknown },
+  ): RunRecorder;
+};
 
 /**
  * `on-display` досчитывает дешёвое и дожидается его — то же, что делает открытие объекта у
@@ -98,6 +112,7 @@ export function createMetricStore(
     collectorsStaleTime?: number;
     transformsStaleTime?: number;
   } = {},
+  history?: MetricHistory,
 ) {
   const maps = new Map<string, Map<string, Entry>>();
   const changes = new Subject<string>();
@@ -195,6 +210,24 @@ export function createMetricStore(
     entry.busy = true;
     changes.next(ref.mapPath);
 
+    // Кнопка — это «all»; открытие объекта и тики — сам стор. Зовущий может сказать точнее.
+    // Пометку git, которую будит `.git`, прогоном не пишем: иначе каждая правка файла в
+    // репозитории вытесняла бы из истории настоящие прогоны.
+    const record =
+      force === "transform"
+        ? undefined
+        : history?.recordMetric(ref.mapPath, {
+            target: metric.address,
+            object: owner.address,
+            label: config.label ?? metric.key,
+            source: options.source ?? (force === "all" ? "ui" : "refresh"),
+            config,
+          });
+    let stageLog: string | undefined;
+    const report = (log: string) => {
+      stageLog = log || undefined;
+    };
+
     // Истёкшее время отменяет прогон теми же средствами, что кнопка, но неудачей считается
     // только оно: отмене нечего записать, а здесь ответ обещали и не дали — решение 0016.
     let expired: { stage: "collect" | "transform"; ms: number } | undefined;
@@ -217,12 +250,21 @@ export function createMetricStore(
                 "collect",
                 options.collectorsTimeout ?? config.collectorsTimeout,
               );
-              return collect(ports, metric, owner, ref.mapPath, token, entry.collected).finally(
-                stopDeadline,
-              );
+              record?.step("сбор");
+              stageLog = undefined;
+              return collect(
+                ports,
+                metric,
+                owner,
+                ref.mapPath,
+                token,
+                entry.collected,
+                report,
+              ).finally(stopDeadline);
             })
           : entry.collected;
       entry.collected = collected;
+      record?.stepDone(collected.ok ? "success" : "failure", stageLog);
 
       entry.result = hasTransforms
         ? await limited(() => {
@@ -230,6 +272,8 @@ export function createMetricStore(
               "transform",
               options.transformsTimeout ?? config.transformsTimeout,
             );
+            record?.step("трансформ");
+            stageLog = undefined;
             return transform(
               ports,
               builtins,
@@ -239,12 +283,17 @@ export function createMetricStore(
               collected,
               token,
               entry.result,
+              report,
             ).finally(stopDeadline);
           })
         : collected;
+      if (hasTransforms) record?.stepDone(entry.result.ok ? "success" : "failure", stageLog);
+      record?.end(entry.result.ok ? "success" : "failure");
     } catch (error) {
       // Отмена — не неудача: значение остаётся прежним, писать нечего. Таймаут — неудача.
       if (expired) {
+        record?.stepDone("failure", `время вышло, предел ${expired.ms} мс`);
+        record?.end("failure", `время вышло, предел ${expired.ms} мс`);
         // Снятый по времени прогон до своего лога не доходит: он падает отменой, минуя запись.
         // Поэтому причину пишем здесь — иначе красная точка ведёт в лог прошлого прогона или
         // в пустоту, а «время вышло» не написано нигде.
@@ -260,7 +309,12 @@ export function createMetricStore(
           ok: false,
           data: entry.result?.data,
         };
-      } else if (!token.cancelled) {
+      } else if (token.cancelled) {
+        record?.stepDone("stopped");
+        record?.end("stopped");
+      } else {
+        record?.stepDone("failure", String(error));
+        record?.end("failure", String(error));
         entry.result = {
           updatedAt: ports.clock.now(),
           ok: false,

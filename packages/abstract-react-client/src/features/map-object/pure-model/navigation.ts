@@ -1,8 +1,18 @@
 /**
  * Что сейчас на экране объекта — решение 0036: сам объект, открытая вкладка, мета-экран и
  * метрика во всю ширину. Шагом истории считается только объект, остальное — его уточнение.
+ *
+ * Экран прогонов — третий режим объекта, как мета-экран (решение 0038), а `run` — выбранный
+ * в нём прогон: вернувшись «назад», человек видит тот прогон, который читал.
  */
-export type Screen = { address: string; group?: string; meta?: boolean; solo?: string };
+export type Screen = {
+  address: string;
+  group?: string;
+  meta?: boolean;
+  runs?: boolean;
+  run?: string;
+  solo?: string;
+};
 
 /**
  * История вида — строки экранов и номер текущего. Строка, а не объект: её сохраняют целиком,
@@ -23,6 +33,8 @@ export function screenToString(screen: Screen): string {
   const params: string[] = [];
   if (screen.group !== undefined) params.push(`group=${encodeURIComponent(screen.group)}`);
   if (screen.meta) params.push("meta");
+  if (screen.runs) params.push("runs");
+  if (screen.run !== undefined) params.push(`run=${encodeURIComponent(screen.run)}`);
   if (screen.solo !== undefined) params.push(`solo=${encodeURIComponent(screen.solo)}`);
   return params.length > 0 ? `${screen.address}?${params.join("&")}` : screen.address;
 }
@@ -33,10 +45,13 @@ export function parseScreen(text: string): Screen {
   const params = new URLSearchParams(text.slice(at + 1));
   const group = params.get("group");
   const solo = params.get("solo");
+  const run = params.get("run");
   return {
     address: text.slice(0, at),
     ...(group === null ? {} : { group }),
     ...(params.has("meta") ? { meta: true } : {}),
+    ...(params.has("runs") ? { runs: true } : {}),
+    ...(run === null ? {} : { run }),
     ...(solo === null ? {} : { solo }),
   };
 }
@@ -61,13 +76,25 @@ export function visit(history: History, address: string): History {
   return { entries, index: entries.length - 1 };
 }
 
-/** Вкладка, мета-экран и метрика шагами не считаются: они переписывают текущий шаг. */
+/**
+ * Вкладка, мета-экран, прогоны и метрика шагами не считаются: они переписывают текущий шаг.
+ * Мета-экран и прогоны — два режима одного места, и включённый один выключает другой.
+ */
 export function amend(history: History, change: Omit<Partial<Screen>, "address">): History {
-  const screen = { ...currentScreen(history), ...change };
+  const merged = { ...currentScreen(history), ...change };
+  const screen = change.meta
+    ? { ...merged, runs: false }
+    : change.runs
+      ? { ...merged, meta: false }
+      : merged;
+  // Выбранный прогон — уточнение экрана прогонов и без него не живёт.
+  const run = screen.runs ? screen.run : undefined;
   const clean: Screen = {
     address: screen.address,
     ...(screen.group === undefined ? {} : { group: screen.group }),
     ...(screen.meta ? { meta: true } : {}),
+    ...(screen.runs ? { runs: true } : {}),
+    ...(run === undefined ? {} : { run }),
     ...(screen.solo === undefined ? {} : { solo: screen.solo }),
   };
   return replace(history, screenToString(clean));

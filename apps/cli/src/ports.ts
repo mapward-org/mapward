@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { watch } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
+import { claudeArgs, shellArgs } from "@mapward/abstract-server";
 import type {
   Cancellation,
   FileEntry,
@@ -85,10 +86,17 @@ const files = {
 
 function runProcess(
   command: string,
-  options: { cwd: string; env: ProcessEnv; input?: string; cancel?: Cancellation; shell: boolean },
+  options: {
+    cwd: string;
+    env: ProcessEnv;
+    input?: string;
+    cancel?: Cancellation;
+    shell: boolean;
+    args?: string[];
+  },
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, {
+    const child = spawn(command, shellArgs(options.args ?? [], options.shell), {
       cwd: options.cwd,
       env: options.env,
       windowsHide: true,
@@ -142,6 +150,7 @@ export function createPorts(): ServerPorts {
           input: params.prompt,
           cancel: params.cancel,
           shell: process.platform === "win32",
+          args: claudeArgs(params.permissions),
         });
       },
     },

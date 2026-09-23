@@ -1,0 +1,25 @@
+{
+  "label": "Как у нас делается",
+  "collectors": [
+    {
+      "kind": "static",
+      "value": {
+        "items": [
+          {
+            "label": "Завести требование",
+            "description": "шаблон файла, раздел реестра, имя и статус",
+            "link": "${{ mapward://@ }}/ru/docs/development-guide/requirement-add.md"
+          },
+          {
+            "label": "Реализовать требование",
+            "description": "порядок работы и кто ставит статусы",
+            "link": "${{ mapward://@ }}/ru/docs/development-guide/requirement-implement.md"
+          }
+        ]
+      }
+    }
+  ],
+  "refresh": "on-display",
+  "display": { "kind": "list" },
+  "collapsed": true
+}

@@ -24,14 +24,37 @@ export type GitLetter = "M" | "A" | "D" | "U" | "C";
 export type GitMark = { git?: GitLetter };
 
 /**
+ * Экшон на строке — решение 0038: `run` — ключ экшона объекта, на котором висит метрика, или
+ * полный адрес экшона; `inputs` — значения его формы, взятые из самой строки. У строки остаётся
+ * и `link`: упавший тест нужно и открыть, и перезапустить.
+ */
+export type ActionRef = { run: string; inputs?: Record<string, unknown> };
+export type ActionMark = { action?: ActionRef };
+
+/**
+ * Тот же `ActionRef` в JSON-схеме компонента (решение 0037): `{ "$ref": "mapward:action" }`.
+ * Своё имя, а не форма, переписанная руками: `mapward display check` пишет по нему в
+ * `display.data.d.ts` тип из `@mapward/display`, и строка данных без приведения уходит в `List`.
+ * Проверяет данные и видит агент — форма ниже, её подставляет сервер.
+ */
+export const ACTION_REF = "mapward:action";
+export const actionRefSchema = {
+  type: "object",
+  required: ["run"],
+  properties: { run: { type: "string" }, inputs: { type: "object" } },
+} as const;
+
+/**
  * `description` — вторая строка: там проверка говорит, что именно разошлось (решение 0010).
  * Рисуется разметкой — жирным, кодом и ссылками, — решение 0027.
  */
 export type LinkNode = StatusMark &
-  GitMark & { label?: string; link?: string; description?: string };
+  GitMark &
+  ActionMark & { label?: string; link?: string; description?: string };
 
 export type TreeNode = StatusMark &
-  GitMark & {
+  GitMark &
+  ActionMark & {
     label?: string;
     link?: string;
     description?: string;
@@ -69,8 +92,8 @@ export const SHAPES: Record<string, string> = {
   markdown: '{ "text": string }, где text — markdown: заголовки, списки, ссылки, код, **жирный**',
   link: '{ "label"?: string, "link"?: string, "description"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string }',
   status: '{ "ok": boolean, "summary"?: string }',
-  list: '{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string }] }',
-  tree: '{ "children": [{ "label"?: string, "description"?: string, "link"?: string, "isDir"?: boolean, "status"?: "fail" | "success" | "pending" | "idle", "children"?: [...] }] }',
+  list: '{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string, "action"?: { "run": string, "inputs"?: object } }] }',
+  tree: '{ "children": [{ "label"?: string, "description"?: string, "link"?: string, "isDir"?: boolean, "status"?: "fail" | "success" | "pending" | "idle", "action"?: { "run": string, "inputs"?: object }, "children"?: [...] }] }',
   map: '{ "nodes": [{ "label"?: string, "link"?: string }], "relations": [{ "from"?: string, "to"?: string, "label"?: string, "link"?: string }] }',
 };
 

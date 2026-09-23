@@ -1,0 +1,14 @@
+{
+  "label": "Собрать и поставить",
+  "description": "Собрать .vsix прод-режимом и поставить его в свой редактор. Новая версия подхватится после Developer: Reload Window.",
+  "confirm": true,
+  "timeout": 600000,
+  "runners": [
+    {
+      "kind": "script",
+      "name": "сборка и установка",
+      "run": "node \"${{ mapward://@ }}/apps/vscode-extension/scripts/package-vsix.mjs\" --install --json"
+    }
+  ],
+  "refreshes": ["release-vsix", "release-version"]
+}

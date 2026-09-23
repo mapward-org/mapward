@@ -1,7 +1,7 @@
 import { shapeHint } from "@mapward/core";
 import type { MapMetric } from "@mapward/core";
 import type { FilesPort } from "../../../../ports/index.ts";
-import { schemaErrors } from "../../domain/component.ts";
+import { knownRefs, schemaErrors } from "../../domain/component.ts";
 
 type Display = MapMetric["config"]["display"];
 
@@ -34,7 +34,8 @@ export async function readDisplaySchema(
 /** Что сказать агенту о форме ответа: у компонента — его схема, у готовых — их форма. */
 export async function displayHint(files: FilesPort, display: Display): Promise<string> {
   const { schema } = await readDisplaySchema(files, display);
-  return shapeHint(display?.kind, schema);
+  // Агент имени `mapward:action` не знает: ему уходит сама форма экшона строки (решение 0038).
+  return shapeHint(display?.kind, schema === undefined ? undefined : knownRefs(schema));
 }
 
 /**

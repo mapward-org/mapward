@@ -69,6 +69,8 @@ export async function transform(
   collected: Collected,
   cancel?: Cancellation,
   previous?: Collected,
+  /** Лог стадии — прогону метрики на экране прогонов (решение 0038). */
+  report?: (log: string) => void,
 ): Promise<Collected> {
   const specs = metric.config.transforms ?? [];
   if (specs.length === 0 || !collected.ok) return collected;
@@ -89,17 +91,15 @@ export async function transform(
     // Отменённый трансформ тоже ничего не оставляет после себя.
     if (cancel?.cancelled) throw error;
 
-    await writeLogs(
-      ports.files,
-      metric,
-      "transform.logs.json",
-      [...logs, error instanceof Error ? error.message : String(error)].join("\n"),
-    );
+    const log = [...logs, error instanceof Error ? error.message : String(error)].join("\n");
+    report?.(log);
+    await writeLogs(ports.files, metric, "transform.logs.json", log);
     // Прошлое значение честнее сырых данных сбора: дисплей ждёт форму после трансформа,
     // и сырое он покажет как ошибку формы.
     return { ...(previous ?? collected), ok: false, updatedAt: ports.clock.now() };
   }
 
+  report?.(logs.join("\n"));
   if (logs.length > 0) {
     await writeLogs(ports.files, metric, "transform.logs.json", logs.join("\n"));
   }

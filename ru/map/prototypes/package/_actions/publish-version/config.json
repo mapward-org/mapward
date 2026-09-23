@@ -1,0 +1,28 @@
+{
+  "label": "Опубликовать версию",
+  "description": "Описать изменение пакета changeset-ом. Версию поднимает и публикует релизный workflow, локально ничего не публикуется.",
+  "confirm": true,
+  "inputs": {
+    "level": {
+      "type": "choice",
+      "options": ["patch", "minor", "major"],
+      "required": true,
+      "description": "уровень изменения по semver"
+    },
+    "summary": {
+      "type": "string",
+      "multiline": true,
+      "required": true,
+      "description": "что изменилось — строка для CHANGELOG, по-английски"
+    }
+  },
+  "runners": [
+    {
+      "kind": "prompt",
+      "name": "changeset",
+      "prompt": "Опиши изменение пакета ${{ mapward://~#props.packageName }} changeset-ом уровня ${{ inputs.level }}. `pnpm changeset` интерактивный, поэтому создай файл в `.changeset/` сам, в том формате, что у соседних: во frontmatter `\"${{ mapward://~#props.packageName }}\": ${{ inputs.level }}`, в теле — ${{ inputs.summary }}. Версию в `package.json` руками не правь и ничего не публикуй: это делает релизный workflow. Закоммить только новый файл в `.changeset/`, ничего больше. Ответь одной строкой: имя файла и коммит.",
+      "permissions": ["Read", "Write", "Bash(git add:*)", "Bash(git commit:*)"]
+    }
+  ],
+  "refreshes": ["version"]
+}

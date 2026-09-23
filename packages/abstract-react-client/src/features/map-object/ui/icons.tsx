@@ -59,6 +59,14 @@ export const MetaIcon = (
   </svg>
 );
 
+/** Прогоны объекта: часы — когда что запускали и сколько шло (решение 0038). */
+export const RunsIcon = (
+  <svg viewBox="0 0 16 16" className={box} fill="none" stroke="currentColor" strokeWidth="1.2">
+    <circle cx="8" cy="8" r="5" />
+    <path d="M8 5.25V8l1.9 1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 /** Открыть в табе: окно со стрелкой наружу — решение 0026. */
 export const TabIcon = (
   <svg viewBox="0 0 16 16" className={box} fill="none" stroke="currentColor" strokeWidth="1.2">

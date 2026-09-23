@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type {
+  ActionRef,
   DisplayData,
   GitMark as Mark,
   LinkNode,
@@ -12,6 +13,12 @@ import { FileTree } from "./file-tree.tsx";
 import { GitMark } from "./git-mark.tsx";
 import { Markdown, MarkdownLine } from "./markdown.tsx";
 import { StatusDot } from "./status-dot.tsx";
+
+/**
+ * Кнопка экшона строки — решение 0038. Рисует её `compose`: она знает объект и запуск, а слою
+ * `ui` мост не положен. Строка только говорит, какой экшон и с какими значениями.
+ */
+export type RenderRowAction = (action: ActionRef) => ReactNode;
 
 export function Link(props: {
   node: StatusMark & Mark & { label?: string; link?: string };
@@ -62,13 +69,24 @@ export function LinkList(props: {
   items: LinkNode[];
   onOpen: (link: string) => void;
   onOpenTab?: (link: string) => void;
+  /** Кнопка экшона строки — справа, отдельно от ссылки (решение 0038). */
+  renderAction?: RenderRowAction;
 }) {
   const tab = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
   return (
     <ul>
       {props.items.map((item, index) => (
         <li key={`${item.label ?? index}`} className="mb-1">
-          <Link node={item} onOpen={props.onOpen} {...tab} />
+          {item.action && props.renderAction ? (
+            <div className="flex min-w-0 items-center gap-1">
+              <span className="min-w-0 flex-1">
+                <Link node={item} onOpen={props.onOpen} {...tab} />
+              </span>
+              {props.renderAction(item.action)}
+            </div>
+          ) : (
+            <Link node={item} onOpen={props.onOpen} {...tab} />
+          )}
           {item.description && (
             <div className="pl-3 text-[11px] opacity-70">
               {/* Вторая строка — тоже разметка: проверке нужны жирный, код и ссылки (0027). */}
@@ -99,10 +117,13 @@ export function Display(props: {
    * `ui` мост не положен.
    */
   renderComponent: (data: unknown) => ReactNode;
+  /** Кнопка экшона строки списка и узла дерева — решение 0038. */
+  renderAction?: RenderRowAction;
 }) {
   const { data } = props;
   // Одним куском, чтобы не переписывать необязательное поле в каждой ветке ниже.
   const tab = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
+  const action = props.renderAction === undefined ? {} : { renderAction: props.renderAction };
 
   const note = placeholder(data, props.collected, props.empty);
   if (note) return <span className="opacity-60">{note}</span>;
@@ -124,9 +145,9 @@ export function Display(props: {
         </span>
       );
     case "list":
-      return <LinkList items={data.items} onOpen={props.onOpen} {...tab} />;
+      return <LinkList items={data.items} onOpen={props.onOpen} {...tab} {...action} />;
     case "tree":
-      return <FileTree nodes={data.children} onOpen={props.onOpen} {...tab} />;
+      return <FileTree nodes={data.children} onOpen={props.onOpen} {...tab} {...action} />;
     case "map":
       return props.renderMap({ nodes: data.nodes, relations: data.relations });
     case "component":

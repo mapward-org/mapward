@@ -1,14 +1,32 @@
 import { useId, type ReactNode } from "react";
-import type { Layout, LinkNode, MapMetric, MapObject, MapRelation } from "@mapward/core";
+import type { Layout, LinkNode, MapAction, MapMetric, MapObject, MapRelation } from "@mapward/core";
+import type { DisplayAction } from "@mapward/display";
 import { ago, toDisplay } from "../pure-model/display.ts";
 import { cellAttribute, planGrid, soloGrid } from "../pure-model/grid.ts";
 import { useMetrics } from "../adapters/use-metrics.ts";
 import { useViewState } from "../../../../services/state/index.ts";
-import { Display } from "../ui/displays.tsx";
+import { Display, type RenderRowAction } from "../ui/displays.tsx";
+import type { KitLinks } from "../ui/display-kit.tsx";
 import { MetricCell } from "../ui/metric-cell.tsx";
 import { MetricComponent } from "./metric-component.tsx";
 
 type Ref = { mapPath: string; basePath: string; name: string };
+
+/**
+ * Экшоны в сетке — решение 0038. Сами кнопки и запуск рисует `map-object/compose`: он знает
+ * прогоны и форму, а сетке достаточно сказать, где кнопка стоит.
+ */
+export type GridActions = {
+  /** Экшоны, которые раскладка может поставить в клетку: ключ в `areas`, как у метрики. */
+  cells: MapAction[];
+  renderCell: (action: MapAction) => ReactNode;
+  /** Кнопка строки списка и узла дерева. */
+  renderRow: RenderRowAction;
+  /** Для компонента-дисплея: экшоны пропсом, запуск и кнопка набора. */
+  list: DisplayAction[];
+  run: (action: string, inputs?: Record<string, unknown>) => void;
+  renderButton: NonNullable<KitLinks["renderActionButton"]>;
+};
 
 export function MetricGrid(props: {
   mapRef: Ref;
@@ -29,6 +47,9 @@ export function MetricGrid(props: {
   onOpenTab?: (metric: MapMetric) => void;
   /** Открыть табом объект, на который ведёт ссылка внутри метрики — то же решение 0026. */
   onOpenObjectTab?: (link: string) => void;
+  /** Красная точка метрики ведёт на экран прогонов — решение 0038. */
+  onRuns?: (metric: MapMetric) => void;
+  actions?: GridActions;
   /** Карту детей рисует соседний подмодуль, а сводит их вместе `map-object/compose` (0015). */
   renderMap: (
     map: { nodes: LinkNode[]; relations: MapRelation[] },
@@ -42,7 +63,11 @@ export function MetricGrid(props: {
     ? undefined
     : planGrid(
         props.layout,
-        props.metrics.map((metric) => metric.key),
+        // Ключ экшона раскладка называет так же, как ключ метрики, и клетка у него своя.
+        [
+          ...props.metrics.map((metric) => metric.key),
+          ...(props.actions?.cells ?? []).map((action) => action.key),
+        ],
         scope,
       );
   const placed = solo?.placed ?? plan?.placed;
@@ -52,6 +77,11 @@ export function MetricGrid(props: {
    * Отбор идёт до подписки: невидимая метрика не собирается, как метрика вне вкладки.
    */
   const metrics = placed ? props.metrics.filter((metric) => placed.has(metric.key)) : props.metrics;
+  // Без раскладки экшонов в сетке нет: стопкой метрик их ставить некуда, они живут в шапке.
+  const cellActions = plan
+    ? (props.actions?.cells ?? []).filter((a) => plan.placed.has(a.key))
+    : [];
+  const actions = props.actions;
 
   const { values, busy, run } = useMetrics(props.mapRef, props.object.address, metrics, {
     ...(props.group === undefined ? {} : { group: props.group }),
@@ -103,7 +133,7 @@ export function MetricGrid(props: {
             hidden={isFolded(metric.key, metric.config.collapsed)}
             onRefresh={() => run(metric)}
             onToggle={() => toggle(metric.key, metric.config.collapsed)}
-            onLogs={() => props.onOpen(`${metric.cachePath}/collect.logs.json`)}
+            {...(props.onRuns === undefined ? {} : { onRuns: () => props.onRuns?.(metric) })}
             {...(props.onOpenTab === undefined || props.solo !== undefined
               ? {}
               : { onOpenTab: () => props.onOpenTab?.(metric) })}
@@ -115,6 +145,7 @@ export function MetricGrid(props: {
               onOpen={props.onOpen}
               {...(props.onOpenObjectTab === undefined ? {} : { onOpenTab: props.onOpenObjectTab })}
               renderMap={(map) => props.renderMap(map, metric.address)}
+              {...(actions === undefined ? {} : { renderAction: actions.renderRow })}
               renderComponent={(data) => (
                 <MetricComponent
                   mapRef={props.mapRef}
@@ -126,12 +157,26 @@ export function MetricGrid(props: {
                   {...(props.onOpenObjectTab === undefined
                     ? {}
                     : { onOpenTab: props.onOpenObjectTab })}
+                  actions={actions?.list ?? []}
+                  onRun={actions?.run ?? (() => {})}
+                  {...(actions === undefined
+                    ? {}
+                    : {
+                        renderRowAction: actions.renderRow,
+                        renderActionButton: actions.renderButton,
+                      })}
                 />
               )}
             />
           </MetricCell>
         );
       })}
+      {cellActions.map((action) => (
+        // Та же метка, что у клетки метрики: место назначает css раскладки.
+        <div key={action.address} {...{ [cellAttribute]: action.key }} className="min-w-0">
+          {actions?.renderCell(action)}
+        </div>
+      ))}
     </div>
   );
 }

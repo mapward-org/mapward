@@ -82,3 +82,31 @@ test("кандидаты в классы: arbitrary-значения и вари
     expect.arrayContaining(["p-2", "hover:underline", "text-[var(--mw-foreground)]"]),
   );
 });
+
+/** Решение 0038: экшон строки — своим именем в схеме, типом пакета в `display.data.d.ts`. */
+test("mapward:action — тип ActionRef из пакета и проверка по форме экшона", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { label: { type: "string" }, action: { $ref: "mapward:action" } },
+        },
+      },
+    },
+  };
+
+  const declaration = dataDeclaration(schema);
+  expect(declaration).toContain('import type { ActionRef } from "@mapward/display";');
+  expect(declaration).toContain("action?: ActionRef;");
+  expect(dataDeclaration({ type: "string" })).not.toContain("import");
+
+  expect(schemaErrors(schema, { items: [{ action: { run: "rerun", inputs: { a: 1 } } }] })).toEqual(
+    [],
+  );
+  expect(schemaErrors(schema, { items: [{ action: { inputs: {} } }] })).toEqual([
+    expect.stringMatching(/^\/items\/0\/action/),
+  ]);
+});

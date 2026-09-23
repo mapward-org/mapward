@@ -5,6 +5,7 @@ import { join } from "../../../../lib/path.ts";
 import { excluded, matchesAny } from "../../domain/glob.ts";
 import { displayHint } from "./display-schema.ts";
 import { objectEnv, parseAnswer } from "../../domain/agent.ts";
+import { runPrompt, runScript } from "./execute.ts";
 
 export type Collected = { updatedAt: string; ok: boolean; data: unknown };
 
@@ -96,7 +97,8 @@ async function collector(
     case "script": {
       // Decision 0004: a script gets its object through the environment, because substitution
       // cannot reach inside the script body. It runs from the map root.
-      const { stdout, stderr } = await ports.shell.run(String(spec.run), {
+      const { stdout, stderr } = await runScript(ports, {
+        command: String(spec.run),
         cwd,
         env: env(),
         cancel,
@@ -111,10 +113,15 @@ async function collector(
     case "prompt": {
       // Decision 0004: the object goes into the base prompt. Substitution reaches the text a
       // human wrote, but not the address of the object the metric hangs on.
-      const about = `Объект карты: «${owner.name}», адрес ${owner.address}, путь ${owner.path}.`;
       // The display knows its own shape, so the agent is told it rather than guessing.
-      const prompt = `${about}\n\n${String(spec.prompt)}\n\n${hint}`;
-      const { stdout, stderr } = await ports.agent.run({ prompt, cwd, env: env(), cancel });
+      const { stdout, stderr } = await runPrompt(ports, {
+        owner,
+        text: String(spec.prompt),
+        tail: hint,
+        cwd,
+        env: env(),
+        cancel,
+      });
       return { value: parseAnswer(stdout), log: stderr || undefined };
     }
     case "read-dir": {
@@ -190,6 +197,8 @@ export async function collect(
   cwd: string,
   cancel?: Cancellation,
   previous?: Collected,
+  /** Лог стадии — прогону метрики на экране прогонов (решение 0038). */
+  report?: (log: string) => void,
 ): Promise<Collected> {
   const specs = metric.config.collectors ?? [];
   // Прошлое значение — сперва то, что уже показано, потом кэш на диске. У метрики без
@@ -219,6 +228,7 @@ export async function collect(
           );
 
     const collected: Collected = { updatedAt: ports.clock.now(), ok: true, data };
+    report?.(log);
     await write(ports, metric, collected, log);
     return collected;
   } catch (error) {
@@ -231,7 +241,9 @@ export async function collect(
       ok: false,
       data: before?.data,
     };
-    await write(ports, metric, failed, error instanceof Error ? error.message : String(error));
+    const log = error instanceof Error ? error.message : String(error);
+    report?.(log);
+    await write(ports, metric, failed, log);
     return failed;
   }
 }

@@ -2,6 +2,7 @@
 import { argv, cwd, exit } from "node:process";
 import { createMapServer, findMaps, parseSettings, serveMcp } from "@mapward/abstract-server";
 import type { Settings } from "@mapward/abstract-server";
+import { findActionOwner } from "@mapward/core";
 import type { MapObject, ResolvedMap } from "@mapward/core";
 import { displayCheck } from "./display-check.ts";
 import { createPorts } from "./ports.ts";
@@ -16,12 +17,15 @@ const USAGE = `mapward <команда>
   maps                        карты, видимые отсюда
   object [адрес] [карта]      объект целиком: поля, метрики со значениями, дети
   metric <адрес> [карта]      собрать метрику и напечатать результат
+  action <адрес> [карта] [--input имя=значение]...
+                              запустить экшон: шаги печатаются по ходу, код выхода —
+                              чем кончился прогон
   mcp [карта]                 поднять mcp-сервер над картой
   display check <адрес> [карта]
                               дисплей-компонент метрики: тип данных по схеме, типы,
                               сборка и последнее значение против схемы
 
-Адрес метрики — mapward://<объект>/_metrics/<имя>. Карта выбирается по имени, если их
+Адрес метрики — mapward://<объект>/_metrics/<имя>, экшона — mapward://<объект>/_actions/<имя>. Карта выбирается по имени, если их
 несколько; по умолчанию берётся первая.`;
 
 /** Настройки рантайма лежат в том же `mapward.json` — решение 0007. */
@@ -47,6 +51,80 @@ function find(object: MapObject, address: string): MapObject | undefined {
     if (found) return found;
   }
   return undefined;
+}
+
+/**
+ * `--input имя=значение` по одному на поле — решение 0038. Значения строками: сервер сам
+ * приводит их к виду поля и отвечает ошибкой, если не вышло.
+ */
+function parseAction(args: string[]): {
+  address?: string;
+  map?: string;
+  inputs: Record<string, string>;
+} {
+  const inputs: Record<string, string> = {};
+  const positional: string[] = [];
+  for (let at = 0; at < args.length; at++) {
+    const arg = args[at] as string;
+    if (arg === "--input") {
+      const pair = args[++at] ?? "";
+      const cut = pair.indexOf("=");
+      if (cut > 0) inputs[pair.slice(0, cut)] = pair.slice(cut + 1);
+      continue;
+    }
+    positional.push(arg);
+  }
+  const [address, map] = positional;
+  return { ...(address ? { address } : {}), ...(map ? { map } : {}), inputs };
+}
+
+/** Экшон из терминала: тот же прогон, что по кнопке, и его видно в объекте на карте. */
+async function runAction(
+  ports: ReturnType<typeof createPorts>,
+  maps: ResolvedMap[],
+  args: string[],
+): Promise<{ exitCode: number }> {
+  const parsed = parseAction(args);
+  if (!parsed.address) {
+    console.error(USAGE);
+    return { exitCode: 1 };
+  }
+  const map = pick(maps, parsed.map);
+  const server = createMapServer(ports, await settingsOf(ports, map.configPath));
+  const started = await server.runAction({
+    ...map,
+    action: parsed.address,
+    inputs: parsed.inputs,
+    source: "cli",
+  });
+  if (started.errors) {
+    for (const [field, why] of Object.entries(started.errors)) console.error(`${field}: ${why}`);
+    return { exitCode: 1 };
+  }
+
+  const id = String(started.id);
+  // Шаги печатаются, когда кончаются: так видно, где идёт и на чём упало, не дожидаясь конца.
+  let printed = 0;
+  const tree = await server.getMap(map);
+  const owner = findActionOwner(tree, parsed.address)?.object.address ?? "";
+  const subscription = server
+    .watchRuns({ mapPath: map.mapPath, address: owner })
+    .subscribe((runs) => {
+      const run = runs.find((entry) => entry.id === id);
+      if (!run) return;
+      for (const step of run.steps.slice(printed)) {
+        if (step.status === "running") break;
+        console.log(`— ${step.name}: ${step.status}`);
+        if (step.output) console.log(step.output.trimEnd());
+        if (step.log) console.error(step.log.trimEnd());
+        printed++;
+      }
+    });
+
+  const run = await server.waitRun({ mapPath: map.mapPath, id });
+  subscription.unsubscribe();
+  if (run?.error) console.error(run.error);
+  return { exitCode: run?.status === "success" ? 0 : 1 };
 }
 
 async function main(): Promise<void> {
@@ -90,7 +168,7 @@ async function main(): Promise<void> {
             value: values[metric.address],
           })),
           directives: object.directives.map((file) => ({ name: file.name, status: file.status })),
-          actions: object.actions.map((file) => file.name),
+          actions: object.actions.map((action) => action.key),
           children: object.children.map((child) => ({ address: child.address, name: child.name })),
         },
         null,
@@ -119,6 +197,11 @@ async function main(): Promise<void> {
     const value = await server.runMetric({ ...map, metric: address });
     console.log(JSON.stringify(value, null, 2));
     return;
+  }
+
+  if (command === "action") {
+    const { exitCode } = await runAction(ports, maps, argv.slice(3));
+    exit(exitCode);
   }
 
   if (command === "display" && first === "check") {

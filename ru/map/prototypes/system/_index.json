@@ -5,7 +5,7 @@
     "requirementsPath": "${{ mapward://@ }}/ru/requirements"
   },
   "details-metrics-layout": {
-    "areas": [["requirements-todo"], ["code-drift"], ["decisions"], ["requirements"]],
+    "areas": [["requirements-todo"], ["code-drift"], ["decisions"], ["requirements"], ["howto"]],
     "style": {
       "gap": "8px"
     }

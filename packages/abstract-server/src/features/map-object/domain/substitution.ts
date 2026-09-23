@@ -13,6 +13,9 @@ export function substitute(input: string, resolve: Resolve): string {
   return input.replaceAll(EXPRESSION, (whole, expression: string) => {
     // A leading `$` escapes the expression: it stays as text, minus the escape.
     if (whole.startsWith("$$")) return whole.slice(1);
+    // Данные формы экшона приходят при запуске, а не при чтении карты — решение 0038. Их
+    // подставляет прогон, поэтому здесь выражение остаётся как было.
+    if (/^inputs\.[\w-]+$/.test(expression)) return whole;
 
     const value = parseAddress(expression) ? resolve(expression) : undefined;
     // A failed lookup is not fatal: the metric shows an error, the rest of the map lives on.

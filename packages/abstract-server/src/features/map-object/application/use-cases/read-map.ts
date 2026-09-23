@@ -1,5 +1,7 @@
 import { Check } from "typebox/value";
 import {
+  ActionConfig,
+  adoptAction,
   adoptMetric,
   childAddress,
   findObject,
@@ -13,6 +15,7 @@ import {
 } from "@mapward/core";
 import type {
   ConfigLayer,
+  MapAction,
   MapFile,
   MapMetric,
   MapObject,
@@ -23,7 +26,7 @@ import type { FilesPort } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
 import { flag, frontmatter } from "../../../../lib/frontmatter.ts";
 import { anchorDisplay } from "../../domain/component.ts";
-import { mergeIndex, mergeMetric } from "../../domain/merge.ts";
+import { mergeAction, mergeIndex, mergeMetric } from "../../domain/merge.ts";
 import { defaultStages } from "../../domain/prompts.ts";
 import { substituteDeep } from "../../domain/substitution.ts";
 
@@ -33,8 +36,11 @@ const DIRECTIVES = "_directives";
 const ACTIONS = "_actions";
 const STATE = "_directives.state";
 const WORKFLOW = "_directives.workflow";
-/** Служебное начинается с `_` — решение 0002. Остальное в папке карты это её содержимое. */
-const isService = (name: string) => name.startsWith("_");
+/**
+ * Служебное начинается с `_` — решение 0002. Остальное в папке карты это её содержимое.
+ * Скрытое, с точки, — тоже не объект: там лежат локальные прогоны карты (решение 0038).
+ */
+const isService = (name: string) => name.startsWith("_") || name.startsWith(".");
 
 async function readJson(files: FilesPort, path: string): Promise<unknown> {
   const text = await files.read(path);
@@ -154,6 +160,37 @@ async function readMetrics(
   return metrics;
 }
 
+/**
+ * Экшоны — решение 0038: папки в `_actions/` с `config.json`, как метрики. Markdown в `_actions/`
+ * больше не читается: инструкция для агента — это дока, а не экшон.
+ */
+async function readActions(
+  files: FilesPort,
+  objectPath: string,
+  address: string,
+): Promise<MapAction[]> {
+  const dir = join(objectPath, ACTIONS);
+  const actions: MapAction[] = [];
+
+  for (const entry of await files.list(dir)) {
+    if (!entry.isDirectory) continue;
+    const configPath = join(dir, entry.name, "config.json");
+    // oxlint-disable-next-line no-await-in-loop
+    const raw = await readJson(files, configPath);
+    if (raw === undefined) continue;
+    const own = `${childAddress(address, ACTIONS)}/${entry.name}`;
+    actions.push({
+      key: entry.name,
+      address: own,
+      configPath,
+      layers: [{ address: own, path: configPath, from: "own" }],
+      config: Check(ActionConfig, raw) ? raw : {},
+    });
+  }
+
+  return actions;
+}
+
 type Raw = MapObject & {
   rawExtends?: string;
   // Промптовые поля склеиваются, а не подменяются, поэтому своё приходится помнить отдельно:
@@ -164,6 +201,7 @@ type Raw = MapObject & {
   // и считать надо от своего, а не от того, что уже получилось.
   rawLayers: ConfigLayer[];
   rawMetrics: MapMetric[];
+  rawActions: MapAction[];
   rawMetricGroups: MetricGroup[];
 };
 
@@ -199,6 +237,7 @@ async function readTree(
   const layers: ConfigLayer[] =
     index === undefined ? [] : [{ address, path: join(path, INDEX), from: "own" }];
   const metrics = await readMetrics(files, path, address);
+  const actions = await readActions(files, path, address);
 
   return {
     address,
@@ -213,7 +252,7 @@ async function readTree(
     layers,
     metrics,
     directives: await readDirectives(files, path),
-    actions: await readFiles(files, join(path, ACTIONS)),
+    actions,
     workflow: await readWorkflow(files, path),
     prompt: own.prompt,
     workflowPrompt: own["directives-workflow"]?.prompt,
@@ -226,6 +265,7 @@ async function readTree(
     rawExtends: own.extends,
     rawLayers: layers,
     rawMetrics: metrics,
+    rawActions: actions,
     rawMetricGroups: own["metric-groups"]?.groups ?? [],
   } as Raw;
 }
@@ -247,6 +287,41 @@ async function inheritMetrics(files: FilesPort, object: Raw, mapPath: string): P
     // oxlint-disable-next-line no-await-in-loop
     await extendMetric(files, metric, mapPath, new Set());
   }
+  // Экшон переиспользуется так же, как метрика: `extends` на общий — решение 0038.
+  for (const action of object.actions) {
+    // oxlint-disable-next-line no-await-in-loop
+    await extendAction(files, action, mapPath, new Set());
+  }
+}
+
+/** Как `extendMetric`: слой за слоем, пока `extends` не кончится. */
+async function extendAction(
+  files: FilesPort,
+  action: MapAction,
+  mapPath: string,
+  seen: Set<string>,
+): Promise<void> {
+  const address = action.config.extends;
+  if (!address || seen.has(action.address)) return;
+  seen.add(action.address);
+
+  const parsed = parseAddress(address);
+  if (!parsed || parsed.scope !== "map") return;
+
+  const configPath = join(mapPath, ...parsed.path, "config.json");
+  const raw = await readJson(files, configPath);
+  if (!Check(ActionConfig, raw)) return;
+
+  const parent: MapAction = {
+    key: action.key,
+    address,
+    configPath,
+    layers: [{ address, path: configPath, from: "extends" }],
+    config: raw,
+  };
+  await extendAction(files, parent, mapPath, seen);
+  action.layers = [...action.layers, ...parent.layers];
+  action.config = mergeAction(parent.config, action.config);
 }
 
 /** Слой за слоем, пока `extends` не кончится: конфиг мерджится, а файл записывается в цепочку. */
@@ -389,9 +464,23 @@ function inherit(root: Raw, object: Raw, seen: Set<string> = new Set()): void {
     ...object.rawMetrics.filter((metric) => !prototype.metrics.some((p) => p.key === metric.key)),
   ];
   // По имени, и своё выигрывает: прототип достаётся нескольким наследникам, и без дедупа
-  // один и тот же экшон приезжает столько раз, сколько их в цепочке.
+  // одна и та же директива приезжает столько раз, сколько их в цепочке.
   object.directives = byName(prototype.directives, object.directives, prototype.address);
-  object.actions = byName(prototype.actions, object.actions, prototype.address);
+  // Экшоны — как метрики: свой с тем же ключом перекрывает прототипов (решение 0038).
+  const ownActions = new Map(object.rawActions.map((action) => [action.key, action]));
+  object.actions = [
+    ...prototype.actions.map((action) => {
+      const mine = ownActions.get(action.key);
+      return mine
+        ? {
+            ...mine,
+            config: mergeAction(action.config, mine.config),
+            layers: [...mine.layers, ...fromPrototype(action.layers)],
+          }
+        : { ...adoptAction(object, action), owner: action.owner ?? prototype.address };
+    }),
+    ...object.rawActions.filter((action) => !prototype.actions.some((p) => p.key === action.key)),
+  ];
   // Промптовые поля складываются, а не подменяются — решение 0018: объект, дописавший себе
   // строчку, иначе молча потерял бы общее правило карты. Через `mergeIndex` они не ходят: там
   // заявленным считается присутствие ключа, а склейка — не мердж.
@@ -453,6 +542,11 @@ function apply(root: MapObject, object: MapObject, basePath: string): void {
   object.metrics = object.metrics.map((metric) => ({
     ...metric,
     config: substituteDeep(metric.config, resolve),
+  }));
+  // У экшона тоже: общий экшон берёт пути и имена у объекта, на котором его нажали.
+  object.actions = object.actions.map((action) => ({
+    ...action,
+    config: substituteDeep(action.config, resolve),
   }));
   // Описание вкладки — такой же текст карты, как промпт: в нём пишут пути адресами.
   object.metricGroups = substituteDeep(object.metricGroups, resolve);

@@ -91,6 +91,49 @@ export const MetricConfig = T.Object({
   collapsed: T.Optional(T.Boolean()),
 });
 
+/**
+ * Поле формы экшона — решение 0038. Названия взяты у ручного запуска GitHub Actions
+ * (`workflow_dispatch.inputs`): формат свой, но тот, который агент и человек уже видели.
+ */
+export const ActionInput = T.Object({
+  type: T.Optional(
+    T.Union([T.Literal("string"), T.Literal("boolean"), T.Literal("number"), T.Literal("choice")]),
+  ),
+  description: T.Optional(T.String()),
+  required: T.Optional(T.Boolean()),
+  /** Проходит подстановку, как весь конфиг: умолчание берут из свойств объекта. */
+  default: T.Optional(T.Union([T.String(), T.Number(), T.Boolean()])),
+  /** Варианты для `choice`. */
+  options: T.Optional(T.Array(T.String())),
+  /** Многострочное поле для `string`: промпту часто нужен абзац, а не слово. */
+  multiline: T.Optional(T.Boolean()),
+});
+
+/**
+ * Что агенту экшона разрешено — решение 0038. `bypass` снимает вопросы целиком; список —
+ * это инструменты и команды, которые ему можно, в том виде, что понимает `claude`.
+ */
+export const ActionPermissions = T.Union([T.Literal("bypass"), T.Array(T.String())]);
+
+/** Экшон `config.json` — решение 0038: как метрика, но пишет, а не читает, и без трансформов. */
+export const ActionConfig = T.Object({
+  label: T.Optional(T.String()),
+  description: T.Optional(T.String()),
+  extends: T.Optional(T.String()),
+  /** Спросить перед запуском, даже когда форма заполнена целиком. */
+  confirm: T.Optional(T.Boolean()),
+  /** Мс на весь прогон; вышло — прогон снимается и краснеет. */
+  timeout: T.Optional(T.Number()),
+  /** Шаги по порядку: `script`, `prompt` или вид, которого ещё нет. */
+  runners: T.Optional(T.Array(T.Record(T.String(), T.Unknown()))),
+  inputs: T.Optional(T.Record(T.String(), ActionInput)),
+  /** Ключи метрик объекта, которые пересобираются после успешного прогона. */
+  refreshes: T.Optional(T.Array(T.String())),
+});
+
+export type ActionInput = Static<typeof ActionInput>;
+export type ActionPermissions = Static<typeof ActionPermissions>;
+export type ActionConfig = Static<typeof ActionConfig>;
 export type LayoutVariant = Static<typeof LayoutVariant>;
 export type Layout = Static<typeof Layout>;
 export type MetricGroup = Static<typeof MetricGroup>;

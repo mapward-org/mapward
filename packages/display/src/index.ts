@@ -44,6 +44,37 @@ export type DisplayMetric = {
   busy: boolean;
 };
 
+/** Поле формы экшона — как `inputs` в его `config.json`. */
+export type ActionField = {
+  type?: "string" | "boolean" | "number" | "choice";
+  description?: string;
+  required?: boolean;
+  default?: string | number | boolean;
+  /** Варианты для `choice`. */
+  options?: string[];
+  multiline?: boolean;
+};
+
+/** Экшон объекта: что можно запустить отсюда — решение 0038. */
+export type DisplayAction = {
+  key: string;
+  /** `mapward://…/_actions/<key>` */
+  address: string;
+  /** Подпись экшона, а без неё — ключ. */
+  label: string;
+  description?: string;
+  /** Поля формы, после наследования и подстановок. */
+  inputs: Record<string, ActionField>;
+  /** Сколько прогонов идёт сейчас: прогоны одного экшона бывают параллельными. */
+  running: number;
+};
+
+/**
+ * Экшон на строке: `run` — ключ экшона объекта или полный адрес `mapward://…/_actions/<key>`,
+ * `inputs` — значения его формы. В JSON-схеме данных — `{ "$ref": "mapward:action" }`.
+ */
+export type ActionRef = { run: string; inputs?: Record<string, unknown> };
+
 /**
  * Пропсы компонента. `Data` — тип данных по схеме метрики: его пишет рядом с компонентом
  * `mapward display check` файлом `display.data.d.ts`.
@@ -58,6 +89,13 @@ export type DisplayProps<Data = unknown> = {
    * объект, `http(s)://` — страницу.
    */
   open: (link: string) => void;
+  /** Экшоны объекта — решение 0038. */
+  actions: DisplayAction[];
+  /**
+   * Запустить экшон так же, как кнопкой в шапке: всё заполнено и подтверждения не просили —
+   * сразу, иначе откроется форма с `inputs`. `action` — ключ или полный адрес.
+   */
+  run: (action: string, inputs?: Record<string, unknown>) => void;
 };
 
 /** Четыре статуса со своим цветом; любой другой рисуется нейтральным, с именем в подсказке. */
@@ -74,6 +112,8 @@ export type LinkItem = {
   color?: string;
   /** Подсказка к точке. */
   hint?: string;
+  /** Экшон строки: справа встаёт кнопка запуска, а клик по строке по-прежнему ведёт по `link`. */
+  action?: ActionRef;
 };
 
 /** Узел дерева: то же, что у готового дисплея `tree`. */
@@ -97,3 +137,13 @@ export declare function List(props: { items: LinkItem[]; empty?: string }): Reac
 
 /** Файловое дерево — готовый дисплей `tree`. */
 export declare function FileTree(props: { items: TreeItem[] }): ReactElement;
+
+/**
+ * Кнопка экшона — та же, что ставит в клетку раскладка. `action` — ключ или адрес, `inputs` —
+ * значения формы, `label` — своя подпись вместо подписи экшона.
+ */
+export declare function ActionButton(props: {
+  action: string;
+  inputs?: Record<string, unknown>;
+  label?: string;
+}): ReactElement;

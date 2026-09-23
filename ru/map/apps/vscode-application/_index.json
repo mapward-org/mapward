@@ -15,9 +15,9 @@
         "key": "продукт",
         "label": "Работа с продуктом",
         "description": "Что делаем и почему: требования на этом объекте и решения.",
-        "metrics": ["requirements-todo", "requirements", "decisions"],
+        "metrics": ["requirements-todo", "requirements", "decisions", "howto"],
         "details-metrics-layout": {
-          "areas": [["requirements-todo"], ["requirements"], ["decisions"]],
+          "areas": [["requirements-todo"], ["requirements"], ["decisions"], ["howto"]],
           "style": {
             "gap": "8px"
           }
@@ -57,10 +57,10 @@
       {
         "key": "публикация",
         "label": "Публикация",
-        "description": "Локальный выпуск: собрать .vsix и поставить его в свой редактор. Витрины пока нет — экшон «Выпустить версию».",
-        "metrics": ["release-version", "release-vsix", "release-run"],
+        "description": "Локальный выпуск: собрать .vsix и поставить его в свой редактор — кнопка «Собрать и поставить». Витрины пока нет.",
+        "metrics": ["release-version", "release-vsix"],
         "details-metrics-layout": {
-          "areas": [["release-version"], ["release-vsix"], ["release-run"]],
+          "areas": [["release"], ["release-version"], ["release-vsix"]],
           "style": {
             "gap": "8px"
           }

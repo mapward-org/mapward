@@ -2,6 +2,8 @@ import { exec, spawn } from "node:child_process";
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
+import { claudeArgs, shellArgs } from "@mapward/abstract-server";
+import type { ActionPermissions } from "@mapward/core";
 import type {
   Cancellation,
   FileEntry,
@@ -104,10 +106,17 @@ const files = {
 /** Процесс, который можно убить: отмена приходит токеном от стора метрик. */
 function runProcess(
   command: string,
-  options: { cwd: string; env: ProcessEnv; input?: string; cancel?: Cancellation; shell: boolean },
+  options: {
+    cwd: string;
+    env: ProcessEnv;
+    input?: string;
+    cancel?: Cancellation;
+    shell: boolean;
+    args?: string[];
+  },
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, {
+    const child = spawn(command, shellArgs(options.args ?? [], options.shell), {
       cwd: options.cwd,
       env: options.env,
       windowsHide: true,
@@ -158,13 +167,20 @@ const shell = {
  * трёх оболочек перестают быть нашей заботой.
  */
 const agent = {
-  run(params: { prompt: string; cwd: string; env: ProcessEnv; cancel?: Cancellation }) {
+  run(params: {
+    prompt: string;
+    cwd: string;
+    env: ProcessEnv;
+    cancel?: Cancellation;
+    permissions?: ActionPermissions;
+  }) {
     return runProcess("claude", {
       cwd: params.cwd,
       env: params.env,
       input: params.prompt,
       cancel: params.cancel,
       shell: process.platform === "win32",
+      args: claudeArgs(params.permissions),
     });
   },
 };

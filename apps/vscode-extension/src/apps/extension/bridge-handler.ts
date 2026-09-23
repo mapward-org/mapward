@@ -50,6 +50,11 @@ export function serveBridge(
     watchTurns: () => server.watchTurns(),
     dismissTurn: (params) => server.dismissTurn(params),
 
+    /** Экшоны и прогоны — решение 0038: запуск, остановка и история объекта у сервера. */
+    runAction: (params) => server.runAction(params),
+    stopRun: (params) => server.stopRun(params),
+    watchRuns: (params) => server.watchRuns(params),
+
     getMapState: (params) => server.getMapState(params),
     setMapState: (params) => server.setMapState(params),
 

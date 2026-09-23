@@ -1,4 +1,5 @@
 import Schema from "typebox/schema";
+import { ACTION_REF, actionRefSchema } from "@mapward/core";
 import type { MetricConfig } from "@mapward/core";
 import { dirname, join } from "../../../lib/path.ts";
 
@@ -37,12 +38,24 @@ export function anchorDisplay(config: MetricConfig, configPath: string): MetricC
  */
 export function schemaErrors(schema: unknown, data: unknown): string[] {
   try {
-    const [ok, errors] = Schema.Errors(schema as Schema.XSchema, data);
+    const [ok, errors] = Schema.Errors(knownRefs(schema) as Schema.XSchema, data);
     if (ok) return [];
     return errors.map((error) => `${error.instancePath || "/"}: ${error.message}`);
   } catch (error) {
     return [`схема не читается: ${error instanceof Error ? error.message : String(error)}`];
   }
+}
+
+/**
+ * `{ "$ref": "mapward:action" }` — экшон строки (решение 0038). Валидатор такого адреса не
+ * знает, поэтому перед проверкой и перед промптом на его место встаёт сама форма.
+ */
+export function knownRefs(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(knownRefs);
+  if (typeof schema !== "object" || schema === null) return schema;
+  const node = schema as Record<string, unknown>;
+  if (node.$ref === ACTION_REF) return actionRefSchema;
+  return Object.fromEntries(Object.entries(node).map(([name, value]) => [name, knownRefs(value)]));
 }
 
 /**
@@ -66,13 +79,15 @@ const key = (name: string) => (/^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.str
  * импортируется с точными типами, поэтому тип пишется рядом с компонентом файлом.
  *
  * Разбирается то, что пишут в схемах данных: объекты, массивы, примитивы, `enum`, `const`,
- * `anyOf`/`oneOf`/`allOf`. Чего не понял — `unknown`: неточный тип лучше выдуманного.
+ * `anyOf`/`oneOf`/`allOf`, и `mapward:action` — тип экшона строки. Чего не понял — `unknown`:
+ * неточный тип лучше выдуманного.
  */
 export function schemaType(schema: unknown, indent = ""): string {
   if (schema === true || schema === undefined) return "unknown";
   if (schema === false) return "never";
   const node = record(schema);
 
+  if (node.$ref === ACTION_REF) return "ActionRef";
   if ("const" in node) return JSON.stringify(node.const);
   if (Array.isArray(node.enum)) return node.enum.map((value) => JSON.stringify(value)).join(" | ");
   for (const [field, glue] of [
@@ -129,8 +144,14 @@ function objectType(node: Json, indent: string): string {
 
 /** Файл, который `mapward display check` кладёт рядом с компонентом. */
 export function dataDeclaration(schema: unknown): string {
+  const type = schemaType(schema);
+  // Тип экшона берётся из пакета, а не пишется заново: тогда строка уходит в `List` как есть.
+  const imports = /\bActionRef\b/.test(type)
+    ? 'import type { ActionRef } from "@mapward/display";\n'
+    : "";
   return (
     "// Написано `mapward display check` по схеме метрики — руками не править.\n" +
-    `export type Data = ${schemaType(schema)};\n`
+    imports +
+    `export type Data = ${type};\n`
   );
 }

@@ -1,4 +1,5 @@
 import type {
+  ActionRef,
   DisplayShape,
   GitLetter,
   GitMark,
@@ -13,7 +14,7 @@ import { linkKind } from "@mapward/core";
  * Формы приходят из `core` — они общие с сервером (решение 0014). Здесь только то, что делает
  * с ними клиент: разбор пришедшего и цвета статусов.
  */
-export type { GitLetter, GitMark, LinkNode, MapRelation, StatusMark, TreeNode };
+export type { ActionRef, GitLetter, GitMark, LinkNode, MapRelation, StatusMark, TreeNode };
 
 /**
  * К формам из `core` клиент добавляет свой случай: пришло не то, и это надо показать. Формы
