@@ -1,4 +1,4 @@
-import { parseAddress } from "@mapward/core";
+import { parseAddress } from "./address.ts";
 
 /**
  * `${{ … }}` with explicit borders so map expressions never collide with shell or prompt

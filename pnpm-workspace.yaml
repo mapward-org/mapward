@@ -22,6 +22,9 @@ catalog:
   "@types/vscode": ^1.90.0
   typebox: ^1.3.22
   rxjs: ^7.8.2
+  # Модель карты — общая у сервера и клиента, на MobX (решение 0041)
+  mobx: ^7.0.4
+  mobx-react-lite: ^5.0.3
   "@xyflow/react": ^12.10.0
   "@vscode/codicons": 0.0.46-24
 

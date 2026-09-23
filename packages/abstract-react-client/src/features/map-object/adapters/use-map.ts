@@ -1,15 +1,54 @@
+import { useMemo } from "react";
+import { LiveFiles, LiveMap } from "@mapward/core";
+import type { AppBridge, BridgeClient, FileSource, MapObject } from "@mapward/core";
 import { useBridgeClient } from "../../../ports/bridge.tsx";
-import { useObservable } from "../../../lib/rxjs-react/index.ts";
-import type { MapObject } from "@mapward/core";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
-/** Subscribes rather than fetches: the map is edited by hand and by agents. */
-export function useMap(ref: Ref): MapObject | undefined {
+/**
+ * Файлы карты по мосту — источник живой модели на клиенте (решение 0041). Каждый файл и папка —
+ * своя подписка: модель подписывается на то, что читает, и отписывается от того, что перестала.
+ */
+function bridgeFiles(bridge: BridgeClient<AppBridge>, ref: Ref): FileSource {
+  const at = (path: string) => ({
+    mapPath: ref.mapPath,
+    basePath: ref.basePath,
+    name: ref.name,
+    path,
+  });
+  return {
+    file: (path, next) => {
+      const subscription = bridge
+        .watchMapFile(at(path))
+        .subscribe((text) => next(typeof text === "string" ? text : undefined));
+      return () => subscription.unsubscribe();
+    },
+    list: (path, next) => {
+      const subscription = bridge.watchMapFolder(at(path)).subscribe((entries) => next(entries));
+      return () => subscription.unsubscribe();
+    },
+  };
+}
+
+/**
+ * Живая карта клиента — та же модель, что у сервера, из `core` (решение 0041). Одинаковые файлы
+ * дают одинаковую карту, поэтому собранную карту по мосту не возят: возят файлы.
+ */
+export function useLiveMap(ref: Ref): LiveMap {
   const bridge = useBridgeClient();
-  return useObservable(() => bridge.watchMap(ref), [ref.mapPath, ref.basePath, ref.name]) as
-    | MapObject
-    | undefined;
+  // oxlint-disable-next-line exhaustive-deps
+  return useMemo(
+    () => new LiveMap(new LiveFiles(bridgeFiles(bridge, ref)), ref),
+    [bridge, ref.mapPath, ref.basePath, ref.name],
+  );
+}
+
+/**
+ * Карта целиком, пока её читает компонент-`observer`: он перерисуется, когда карта изменится, а
+ * неизменённые ветки придут теми же объектами. Пока дочитывается — `undefined`.
+ */
+export function useMap(ref: Ref): MapObject | undefined {
+  return useLiveMap(ref).snapshot;
 }
 
 export function useMapActions() {

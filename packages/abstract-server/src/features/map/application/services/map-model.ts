@@ -1,6 +1,6 @@
-import { firstValueFrom, ReplaySubject, type Observable } from "rxjs";
-import { MAP_ROOT } from "@mapward/core";
-import type { MapObject } from "@mapward/core";
+import { Observable, ReplaySubject } from "rxjs";
+import { LiveFiles, LiveMap } from "@mapward/core";
+import type { FolderEntry, MapObject } from "@mapward/core";
 import type {
   ClockPort,
   FileReader,
@@ -9,28 +9,24 @@ import type {
   TimersPort,
 } from "../../../../ports/index.ts";
 import type { MapRef } from "../../../../kernel/map-ref.ts";
-import { clone } from "../../../../lib/clone.ts";
-import { assemble } from "../../domain/assemble.ts";
-import type { Raw } from "../../domain/raw-object.ts";
-import { FileStore, pathKey } from "./file-store.ts";
-import { ObjectGraph } from "./object-graph.ts";
+import { DiskFiles, pathKey } from "./disk-files.ts";
 
-type Entry = { map$: ReplaySubject<MapObject>; store: FileStore };
+type Entry = { live: LiveMap; map$: ReplaySubject<MapObject>; disk: DiskFiles };
 
 const keyOf = (ref: MapRef) => `${pathKey(ref.mapPath)}|${pathKey(ref.basePath)}|${ref.name}`;
 
 /**
- * Одна прочитанная карта на сервер — решение 0041. Её берут все: экран карты, подписки на
- * метрики, экшоны, директивы и агент через MCP. Раньше каждый из них читал карту с диска сам,
- * и переключение вкладки перечитывало её целиком.
+ * Карта на сервере — та же живая модель из `core`, что и у клиента (решение 0041), с диском в
+ * роли источника файлов. Её берут все: подписки на метрики, экшоны, директивы и агент через
+ * MCP.
  *
- * Карта заводится при первом обращении и живёт, пока жив сервер: вотчер у неё один и следит
- * всё это время, а не пока открыт экран, — иначе агент без открытого окна читал бы протухшее.
- * Наружу собранная карта уходит один раз на пачку изменений, после того как пачка разложена.
+ * Карта заводится при первом обращении и живёт, пока жив сервер: сервер держит подписку на неё
+ * всю, поэтому файлы прочитаны и под вотчером всё это время, а не пока открыт экран, — иначе
+ * агент без открытого окна читал бы протухшее.
  */
 export class MapModel {
   private readonly maps = new Map<string, Entry>();
-  private readonly stores = new Map<string, FileStore>();
+  private readonly disks = new Map<string, DiskFiles>();
 
   constructor(
     private readonly reader: FileReader,
@@ -40,10 +36,8 @@ export class MapModel {
   ) {}
 
   /** Текущая карта. Пока она читается впервые, одновременные вызовы ждут одно чтение. */
-  async current(ref: MapRef): Promise<MapObject> {
-    const entry = this.entryOf(ref);
-    await entry.store.idle();
-    return firstValueFrom(entry.map$);
+  current(ref: MapRef): Promise<MapObject> {
+    return this.entryOf(ref).live.current();
   }
 
   /** Карта и дальше каждое её изменение: подписчик сразу получает то, что есть. */
@@ -56,7 +50,22 @@ export class MapModel {
    * вотчер не видит: правки мимо редактора, которую он пропустил.
    */
   async reload(ref: MapRef): Promise<void> {
-    await this.entryOf(ref).store.reload();
+    await this.entryOf(ref).disk.reload();
+  }
+
+  /**
+   * Файл карты для моста — решение 0041: клиент держит ту же модель и читает файлы сам, по
+   * подписке. Отдаётся из того же чтения, что у сервера, и только внутри папки карты.
+   */
+  watchFile(ref: MapRef, path: string): Observable<string | null> {
+    const disk = this.diskInside(ref, path);
+    return new Observable((subscriber) => disk.file(path, (text) => subscriber.next(text ?? null)));
+  }
+
+  /** Папка карты для моста: содержимое и дальше каждое его изменение. */
+  watchFolder(ref: MapRef, path: string): Observable<FolderEntry[]> {
+    const disk = this.diskInside(ref, path);
+    return new Observable((subscriber) => disk.list(path, (entries) => subscriber.next(entries)));
   }
 
   /**
@@ -79,19 +88,22 @@ export class MapModel {
   }
 
   private async touched(path: string): Promise<void> {
-    const key = pathKey(path);
-    const hits = [...this.stores.entries()].filter(
-      ([root]) => key === root || key.startsWith(`${root}/`),
-    );
-    await Promise.all(hits.map(([, store]) => store.touch([path])));
+    const hits = [...this.disks.values()].filter((disk) => disk.holds(path));
+    await Promise.all(hits.map((disk) => disk.touch([path])));
   }
 
-  private storeOf(mapPath: string): FileStore {
+  private diskInside(ref: MapRef, path: string): DiskFiles {
+    const disk = this.diskOf(ref.mapPath);
+    if (!disk.holds(path)) throw new Error(`Файл ${path} лежит вне карты ${ref.mapPath}`);
+    return disk;
+  }
+
+  private diskOf(mapPath: string): DiskFiles {
     const key = pathKey(mapPath);
-    const existing = this.stores.get(key);
+    const existing = this.disks.get(key);
     if (existing) return existing;
-    const created = new FileStore(mapPath, this.reader, this.watcher, this.timers, this.clock);
-    this.stores.set(key, created);
+    const created = new DiskFiles(mapPath, this.reader, this.watcher, this.timers, this.clock);
+    this.disks.set(key, created);
     return created;
   }
 
@@ -100,34 +112,14 @@ export class MapModel {
     const existing = this.maps.get(key);
     if (existing) return existing;
 
-    const store = this.storeOf(ref.mapPath);
+    const disk = this.diskOf(ref.mapPath);
+    const live = new LiveMap(new LiveFiles(disk), ref);
     const map$ = new ReplaySubject<MapObject>(1);
-    const entry: Entry = { map$, store };
+    // Подписка на всю карту держит её прочитанной и под вотчером; наружу карта уходит, когда
+    // пачка изменений разложена, — промежуточной сборки модель не отдаёт.
+    live.watch((map) => map$.next(map));
+    const entry: Entry = { live, map$, disk };
     this.maps.set(key, entry);
-
-    // Сборка мутирует дерево, поэтому получает копию: прочитанное живёт дальше и соберётся снова.
-    let latest: Raw | undefined;
-    let dirty = false;
-    // Папка может поменяться, не поменяв модели: у объекта появилась пустая `_metrics`, метрика
-    // записала кэш. Такая сборка наружу не уходит — подписчику нечего перерисовывать.
-    let published: string | undefined;
-    const publish = () => {
-      if (!dirty || latest === undefined) return;
-      dirty = false;
-      const text = JSON.stringify(latest);
-      if (text === published) return;
-      published = text;
-      map$.next(assemble(clone(latest), ref.basePath));
-    };
-
-    new ObjectGraph(store, ref.mapPath).object(ref.mapPath, MAP_ROOT, ref.name).subscribe((raw) => {
-      latest = raw;
-      dirty = true;
-      // Посреди пачки собранное может быть наполовину старым — отдаём, когда она разложена.
-      if (!store.flushing) publish();
-    });
-    store.flushed$.subscribe(publish);
-
     return entry;
   }
 }

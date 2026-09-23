@@ -1,6 +1,6 @@
 import type { FileReader } from "../../../../ports/index.ts";
 import type { MapRef } from "../../../../kernel/map-ref.ts";
-import { defaultStageText } from "../../../../kernel/default-workflow.ts";
+import { defaultStageText } from "@mapward/core";
 import { promptFingerprint, stagePrompt } from "../../domain/prompts.ts";
 import { noStage, pickStage, stageBody } from "../../domain/stages.ts";
 import type { DirectiveTurns } from "../../ports.ts";

@@ -1,5 +1,5 @@
 import type { FileReader, FileWriter } from "../../../../ports/index.ts";
-import { directiveStatePath } from "../../../../kernel/directive-files.ts";
+import { directiveStatePath } from "@mapward/core";
 
 /**
  * Состояние прогона пишет сервер, а не агент — решение 0017. Агент сообщает событие: этап

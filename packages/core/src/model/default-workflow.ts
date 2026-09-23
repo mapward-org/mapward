@@ -1,4 +1,4 @@
-import type { MapStage } from "@mapward/core";
+import type { MapStage } from "./model.ts";
 
 /**
  * Дефолт инструмента — два этапа, и он намеренно бедный: свой порядок работы с агентом карта

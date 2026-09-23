@@ -9,7 +9,6 @@ export * from "./ports/index.ts";
 export * from "./entry/server.ts";
 export * from "./entry/mcp.ts";
 export type { MapRef } from "./kernel/map-ref.ts";
-export { defaultStages } from "./kernel/default-workflow.ts";
 export * from "./features/map/index.ts";
 export * from "./features/metrics/index.ts";
 export * from "./features/directives/index.ts";

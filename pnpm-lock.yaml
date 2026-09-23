@@ -30,6 +30,12 @@ catalogs:
     esbuild-wasm:
       specifier: ^0.28.2
       version: 0.28.2
+    mobx:
+      specifier: ^7.0.4
+      version: 7.0.4
+    mobx-react-lite:
+      specifier: ^5.0.3
+      version: 5.0.3
     react:
       specifier: ^19.2.0
       version: 19.2.8
@@ -193,6 +199,12 @@ importers:
       '@xyflow/react':
         specifier: 'catalog:'
         version: 12.11.5(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      mobx:
+        specifier: 'catalog:'
+        version: 7.0.4
+      mobx-react-lite:
+        specifier: 'catalog:'
+        version: 5.0.3(mobx@7.0.4)(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -246,6 +258,9 @@ importers:
 
   packages/core:
     dependencies:
+      mobx:
+        specifier: 'catalog:'
+        version: 7.0.4
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -1989,6 +2004,15 @@ packages:
   minimatch@10.2.6:
     resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
     engines: {node: 18 || 20 || >=22}
+
+  mobx-react-lite@5.0.3:
+    resolution: {integrity: sha512-8qT/d/8Cg8ljt+heKhoFHNoqgedyeSGzdTixT0lgbFMMFlWfHUcXHZ8UD63eQi3ELjkxaH1VU07lXWhRwM0cVA==}
+    peerDependencies:
+      mobx: ^7.0.0
+      react: ^18 || ^19
+
+  mobx@7.0.4:
+    resolution: {integrity: sha512-n4kgcKqbcyDj4s2aUcRuWFPiQ9ar3KAqT2d6poxdhsXaxqlsfjXUfTnkm5+nkbTPYfuTM4LnY+673oAeNqBkqA==}
 
   mri@1.2.0:
     resolution: {integrity: sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==}
@@ -3847,6 +3871,13 @@ snapshots:
   minimatch@10.2.6:
     dependencies:
       brace-expansion: 5.0.12
+
+  mobx-react-lite@5.0.3(mobx@7.0.4)(react@19.2.8):
+    dependencies:
+      mobx: 7.0.4
+      react: 19.2.8
+
+  mobx@7.0.4: {}
 
   mri@1.2.0: {}
 

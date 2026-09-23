@@ -1,4 +1,4 @@
-import type { ActionConfig, MetricConfig, ObjectIndex } from "@mapward/core";
+import type { ActionConfig, MetricConfig, ObjectIndex } from "./schema.ts";
 
 /** Keys the object did not set at all: spreading them would erase what the prototype gave. */
 const stated = <T extends object>(value: T): Partial<T> =>

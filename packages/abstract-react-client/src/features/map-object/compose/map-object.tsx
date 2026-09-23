@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { observer } from "mobx-react-lite";
 import { linkKind } from "@mapward/core";
 import { findObject, groupLayout, groupMetrics, pickGroup } from "@mapward/core";
 import type { ActionRef, MapAction, MapMetric } from "@mapward/core";
@@ -81,7 +82,7 @@ const startScreen = (start: StartAt | undefined) => ({
  * у таба она едет с тем, на чём он открыт, у сайдбара лежит в состоянии вида. Без `history`
  * история начинается со `start`.
  */
-export function MapObjectView(props: {
+export const MapObjectView = observer(function MapObjectView(props: {
   mapConfig: Ref;
   start?: StartAt;
   history?: History;
@@ -486,4 +487,4 @@ export function MapObjectView(props: {
       </div>
     </div>
   );
-}
+});

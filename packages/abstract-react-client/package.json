@@ -27,6 +27,8 @@
     "@mapward/core": "workspace:*",
     "@mapward/display": "workspace:*",
     "@xyflow/react": "catalog:",
+    "mobx": "catalog:",
+    "mobx-react-lite": "catalog:",
     "react": "catalog:",
     "rxjs": "catalog:"
   },

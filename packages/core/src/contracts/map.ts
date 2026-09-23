@@ -36,6 +36,20 @@ export const mapBridge = {
    * Карта у сервера одна и следит за собой сама; кнопка — для того, что вотчер пропустил.
    */
   reloadMap: createBridgeMethod(MapRef, T.Void()),
+  /**
+   * Файл карты по подписке — решение 0041: клиент держит ту же живую модель, что сервер, и
+   * читает её файлы сам. Приходит содержимое и дальше каждое изменение; `null` — файла нет.
+   * Путь — только внутри папки карты: сервер другой не отдаёт.
+   */
+  watchMapFile: createBridgeSubscription(
+    T.Object({ mapPath: T.String(), basePath: T.String(), name: T.String(), path: T.String() }),
+    T.Union([T.String(), T.Null()]),
+  ),
+  /** Папка карты по подписке: имена, папка ли, размер. Папки нет — пусто. */
+  watchMapFolder: createBridgeSubscription(
+    T.Object({ mapPath: T.String(), basePath: T.String(), name: T.String(), path: T.String() }),
+    T.Array(T.Object({ name: T.String(), isDirectory: T.Boolean(), size: T.Optional(T.Number()) })),
+  ),
   getCapabilities: createBridgeMethod(T.Void(), Capabilities),
   /**
    * Значения метрик объекта. Подписка — это и есть «объект открыт»: пока она жива, сервер

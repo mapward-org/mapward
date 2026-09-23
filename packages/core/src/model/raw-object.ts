@@ -1,22 +1,16 @@
 import { Check } from "typebox/value";
-import { ActionConfig, childAddress, MetricConfig, ObjectIndex } from "@mapward/core";
-import type {
-  ConfigLayer,
-  MapAction,
-  MapFile,
-  MapMetric,
-  MapObject,
-  MapStage,
-  MetricGroup,
-} from "@mapward/core";
-import type { FileEntry } from "../../../ports/index.ts";
-import { join } from "../../../lib/path.ts";
-import { flag, frontmatter } from "../../../lib/frontmatter.ts";
+import { childAddress } from "./address.ts";
 import { anchorDisplay } from "./anchor-display.ts";
+import type { ConfigLayer, MapAction, MapFile, MapMetric, MapStage } from "./model.ts";
+import { ActionConfig, MetricConfig, ObjectIndex } from "./schema.ts";
+import type { MetricGroup } from "./schema.ts";
+import { join } from "../lib/path.ts";
+import { flag, frontmatter } from "../lib/frontmatter.ts";
 
 /**
  * Объект карты так, как он написан на диске, — до наследования и подстановок. Каждая функция
- * здесь получает уже прочитанное: читает файлы реактивная модель (решение 0041).
+ * здесь получает уже прочитанное: читает файлы живая модель (решение 0041), и на сервере, и на
+ * клиенте одинаково.
  */
 
 export const INDEX = "_index.json";
@@ -26,28 +20,46 @@ export const ACTIONS = "_actions";
 export const WORKFLOW = "_directives.workflow";
 export const CONFIG = "config.json";
 
+/** Что лежит в папке: имя, папка ли, и размер, когда хост его назвал. */
+export type FolderEntry = { name: string; isDirectory: boolean; size?: number };
+
 /**
  * Служебное начинается с `_` — решение 0002. Остальное в папке карты это её содержимое.
  * Скрытое, с точки, — тоже не объект: там лежат локальные прогоны карты (решение 0038).
  */
 export const isService = (name: string) => name.startsWith("_") || name.startsWith(".");
 
-export type Raw = MapObject & {
-  rawExtends?: string;
-  // Промптовые поля склеиваются, а не подменяются, поэтому своё приходится помнить отдельно:
-  // прототип наследуется не один раз, и склейка поверх уже склеенного удвоила бы общее.
-  rawPrompt?: string;
-  rawWorkflowPrompt?: string;
-  // По той же причине — слои и метрики: они не подменяются, а дописываются прототиповыми,
-  // и считать надо от своего, а не от того, что уже получилось.
-  rawLayers: ConfigLayer[];
-  rawMetrics: MapMetric[];
-  rawActions: MapAction[];
-  rawMetricGroups: MetricGroup[];
+/** Где лежит состояние прогонов директивы: его пишут директивы, по нему модель знает статус. */
+export const directiveStatePath = (objectPath: string, directive: string) =>
+  join(objectPath, "_directives.state", `${directive.replace(/\.md$/, "")}.state.json`);
+
+/** Своё у объекта: что написано в его файлах, без того, что придёт от прототипа. */
+export type OwnObject = {
+  address: string;
+  path: string;
+  name: string;
+  isGroup: boolean;
+  /** Куда ведёт `extends` объекта — его прототип. */
+  extends?: string;
+  props: Record<string, unknown>;
+  previewSize?: ObjectIndex["preview-size"];
+  previewLayout?: ObjectIndex["preview-metrics-layout"];
+  detailsLayout?: ObjectIndex["details-metrics-layout"];
+  previewStyle?: ObjectIndex["preview-style"];
+  layers: ConfigLayer[];
+  metrics: MapMetric[];
+  actions: MapAction[];
+  directives: MapFile[];
+  workflow: MapStage[];
+  prompt?: string;
+  workflowPrompt?: string;
+  workflowMode?: "merge" | "replace";
+  metricGroups: MetricGroup[];
+  metricGroupsMode?: "merge" | "replace";
 };
 
 /** Файлы папки, без подпапок. */
-export function filesOf(dir: string, entries: FileEntry[]): MapFile[] {
+export function filesOf(dir: string, entries: FolderEntry[]): MapFile[] {
   return entries
     .filter((entry) => !entry.isDirectory)
     .map((entry) => ({
@@ -169,15 +181,10 @@ export type ObjectParts = {
   actions: MapAction[];
   directives: MapFile[];
   workflow: MapStage[];
-  children: Raw[];
 };
 
-/**
- * Reads the tree as written on disk. Inheritance and substitution come after — they need the
- * whole map to look things up in.
- */
-export function rawObject(parts: ObjectParts): Raw {
-  const { path, address, index, metrics, actions } = parts;
+export function ownObject(parts: ObjectParts): OwnObject {
+  const { path, address, index } = parts;
   const own: ObjectIndex = Check(ObjectIndex, index) ? index : {};
   // У группы `_index.json` нет вовсе, и слоя тоже нет: показывать нечего, а пустой путь
   // выглядел бы файлом, которого не существует.
@@ -189,28 +196,21 @@ export function rawObject(parts: ObjectParts): Raw {
     path,
     name: own.name ?? parts.folder,
     isGroup: index === undefined,
+    extends: own.extends,
     props: own.props ?? {},
     previewSize: own["preview-size"],
     previewLayout: own["preview-metrics-layout"],
     detailsLayout: own["details-metrics-layout"],
     previewStyle: own["preview-style"],
     layers,
-    metrics,
+    metrics: parts.metrics,
+    actions: parts.actions,
     directives: parts.directives,
-    actions,
     workflow: parts.workflow,
     prompt: own.prompt,
     workflowPrompt: own["directives-workflow"]?.prompt,
     workflowMode: own["directives-workflow"]?.mode,
     metricGroups: own["metric-groups"]?.groups ?? [],
     metricGroupsMode: own["metric-groups"]?.mode,
-    children: parts.children,
-    rawPrompt: own.prompt,
-    rawWorkflowPrompt: own["directives-workflow"]?.prompt,
-    rawExtends: own.extends,
-    rawLayers: layers,
-    rawMetrics: metrics,
-    rawActions: actions,
-    rawMetricGroups: own["metric-groups"]?.groups ?? [],
-  } as Raw;
+  };
 }

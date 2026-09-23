@@ -40,6 +40,8 @@ export function serveBridge(
     getMap: (ref) => server.getMap(ref),
     watchMap: (ref) => server.watchMap(ref),
     reloadMap: (ref) => server.reloadMap(ref),
+    watchMapFile: (params) => server.watchMapFile(params),
+    watchMapFolder: (params) => server.watchMapFolder(params),
     watchMetrics: (params) => server.watchMetrics(params),
     watchDisplay: (params) => server.watchDisplay(params),
     runMetric: (params) => server.runMetric(params),

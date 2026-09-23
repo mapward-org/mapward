@@ -129,6 +129,13 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     reloadMap: (ref: MapRef): Promise<void> => map.reload(ref),
 
     /**
+     * Файлы карты для клиента — решение 0041: у клиента та же живая модель, и файлы он читает
+     * сам, по подписке, из того же чтения, что у сервера. Только внутри папки карты.
+     */
+    watchMapFile: (params: MapRef & { path: string }) => map.watchFile(params, params.path),
+    watchMapFolder: (params: MapRef & { path: string }) => map.watchFolder(params, params.path),
+
+    /**
      * Группа — это вкладка объекта: метрики вне неё не собираются вовсе (решение 0025).
      * Названные ключи бьют группу — так подписывается таб одной метрики (решение 0026).
      */

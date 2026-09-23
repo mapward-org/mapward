@@ -1,6 +1,6 @@
 import type { FileReader, FileWriter } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
-import { directiveStatePath } from "../../../../kernel/directive-files.ts";
+import { directiveStatePath } from "@mapward/core";
 import { isDirectiveName } from "../../domain/directive-name.ts";
 
 /**

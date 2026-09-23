@@ -1,5 +1,5 @@
-import type { MetricConfig } from "@mapward/core";
-import { dirname, join } from "../../../lib/path.ts";
+import type { MetricConfig } from "./schema.ts";
+import { dirname, join } from "../lib/path.ts";
 
 const isAbsolute = (path: string) => path.startsWith("/") || /^[a-zA-Z]:\//.test(path);
 

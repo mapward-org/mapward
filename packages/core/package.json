@@ -24,6 +24,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "mobx": "catalog:",
     "rxjs": "catalog:",
     "typebox": "catalog:"
   },
