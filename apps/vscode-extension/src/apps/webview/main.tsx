@@ -21,14 +21,21 @@ const api = vsCodeApi();
 // oxlint-disable-next-line no-underscore-dangle -- имя переменной страницы, а не наше поле
 const fromPage = (globalThis as { __mapwardTarget?: TabTarget }).__mapwardTarget;
 const target = fromPage ?? (api.getState() as TabTarget | undefined);
-// Сохраняется сразу: перезапуск окна случается когда угодно, а спросить об этом вебвью нельзя.
+// Сохраняется сразу и при каждом переходе в табе — вместе с историей (решение 0036): перезапуск
+// окна случается когда угодно, а спросить об этом вебвью нельзя. Закрытый таб редактор забывает
+// сам, и история уходит вместе с ним.
 if (target) api.setState(target);
+const saveTarget = (next: TabTarget) => api.setState(next);
 
 const root = document.getElementById("root");
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <MapwardApp client={client} icon={icon} {...(target ? { target } : {})} />
+      <MapwardApp
+        client={client}
+        icon={icon}
+        {...(target ? { target, onTarget: saveTarget } : {})}
+      />
     </StrictMode>,
   );
 }

@@ -13,6 +13,15 @@ import { DirectiveSection } from "../_directives/compose/directive-section.tsx";
 import { MetaScreen } from "../_meta/compose/meta-screen.tsx";
 import { Markdown } from "../_metrics/ui/markdown.tsx";
 import { breadcrumbTrail } from "../pure-model/breadcrumbs.ts";
+import {
+  amend,
+  currentScreen,
+  startHistory,
+  stepTarget,
+  stepTo,
+  visit,
+  type History,
+} from "../pure-model/navigation.ts";
 import { activeDirectives, newestFirst } from "../pure-model/directives.ts";
 import { Breadcrumbs } from "../ui/breadcrumbs.tsx";
 import { GroupTabs } from "../ui/group-tabs.tsx";
@@ -48,25 +57,44 @@ const metaIcons = {
  */
 export type StartAt = { address?: string; group?: string; metric?: string };
 
-export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
+const startScreen = (start: StartAt | undefined) => ({
+  address: start?.address ?? "mapward://",
+  ...(start?.group === undefined ? {} : { group: start.group }),
+  ...(start?.metric === undefined ? {} : { solo: start.metric }),
+});
+
+/**
+ * `history` и `onHistory` — где вид хранит свою историю, решение 0036. Экран об этом не знает:
+ * у таба она едет с тем, на чём он открыт, у сайдбара лежит в состоянии вида. Без `history`
+ * история начинается со `start`.
+ */
+export function MapObjectView(props: {
+  mapConfig: Ref;
+  start?: StartAt;
+  history?: History;
+  onHistory?: (history: History) => void;
+}) {
   const map = useMap(props.mapConfig);
   const actions = useMapActions();
-  // Where you are belongs to the map you are looking at: switching maps starts over.
-  const [address, setAddress] = useState<string | undefined>(props.start?.address);
   /**
-   * Второй режим того же объекта, а не вторая панель: мета-информация показывается вместо
-   * сетки метрик и уходит по «назад» — решение 0024. Состояние React, а не состояние вида:
-   * переживать перезапуск ему незачем, а возвращаться на метрики при переходе — нужно.
+   * Где ты и откуда пришёл — одна история на вид, решение 0036. Шаг — объект; вкладка,
+   * мета-экран и метрика во всю ширину уточняют текущий шаг и восстанавливаются вместе с ним.
+   * Мета-экран — второй режим того же объекта (0024), вкладки у каждого объекта свои (0025),
+   * поэтому переход на другой объект возвращает к его метрикам и первой вкладке.
    */
-  const [meta, setMeta] = useState(false);
-  /**
-   * Какая вкладка открыта и не показана ли в ней одна метрика во всю ширину — решения 0025
-   * и 0026. Тоже состояние интерфейса: уход на другой объект возвращает к его первой вкладке,
-   * потому что вкладки у каждого объекта свои.
-   */
-  const [group, setGroup] = useState<string | undefined>(props.start?.group);
-  const [solo, setSolo] = useState<string | undefined>(props.start?.metric);
-  const terminals = useTerminals(props.mapConfig, address ?? "mapward://");
+  const [history, setHistory] = useState<History>(
+    () => props.history ?? startHistory(startScreen(props.start)),
+  );
+  const update = (next: History) => {
+    setHistory(next);
+    props.onHistory?.(next);
+  };
+  const { address, group, solo } = currentScreen(history);
+  const meta = currentScreen(history).meta ?? false;
+  const setMeta = (value: boolean) => update(amend(history, { meta: value }));
+  const setGroup = (key: string) => update(amend(history, { group: key }));
+  const setSolo = (key: string | undefined) => update(amend(history, { solo: key }));
+  const terminals = useTerminals(props.mapConfig, address);
   // Клиент рисует только то, что хост обещал уметь — решение 0014.
   const can = useCapabilities();
   // Под ctrl подсвечивается то, что откроется табом: иконок у ссылок нет — решение 0035.
@@ -74,7 +102,7 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
 
   if (!map) return <Loading text="Читаем карту…" />;
 
-  const current = (address && findObject(map, address)) || map;
+  const current = findObject(map, address) ?? map;
   const path = breadcrumbTrail(map, current.address);
   const openGroup = pickGroup(current, group);
   const shown = groupMetrics(current, group);
@@ -82,13 +110,20 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
   // открыть на метрику, чью вкладку никто не называл, и пустой экран был бы враньём.
   const soloMetric = solo ? current.metrics.find((metric) => metric.key === solo) : undefined;
 
-  const go = (next: string) => {
-    setAddress(next);
-    setMeta(false);
-    // Вкладки у нового объекта свои, и метрика, показанная во весь экран, была метрикой
-    // прежнего: таб, уведённый по ссылке, становится обычным видом объекта.
-    setGroup(undefined);
-    setSolo(undefined);
+  // Новый шаг — обычный вид объекта: метрика во весь экран была метрикой прежнего.
+  const go = (next: string) => update(visit(history, next));
+
+  /** Стрелки — назад и вперёд по истории, к родителю ведут крошки (0036). */
+  const alive = (target: string) => findObject(map, target) !== undefined;
+  const arrow = (direction: -1 | 1) => {
+    const index = stepTarget(history, direction, alive);
+    if (index === undefined) return undefined;
+    const target = currentScreen(stepTo(history, index)).address;
+    return {
+      name: findObject(map, target)?.name ?? target,
+      address: target,
+      go: () => update(stepTo(history, index)),
+    };
   };
 
   /**
@@ -185,7 +220,7 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
 
   return (
     <div className="flex h-full flex-col pb-2">
-      <Breadcrumbs trail={path} onGo={go} {...objectTab} />
+      <Breadcrumbs trail={path} onGo={go} back={arrow(-1)} forward={arrow(1)} {...objectTab} />
 
       <ObjectHeader
         name={current.name}
@@ -214,8 +249,8 @@ export function MapObjectView(props: { mapConfig: Ref; start?: StartAt }) {
               </HeaderButton>
             )}
             {/*
-              Вход и выход — одна кнопка: тогл вместо стрелки «назад», которая обещала бы
-              историю переходов, а её нет (решение 0028).
+              Вход и выход — одна кнопка (решение 0028): мета-экран шагом истории не считается,
+              и стрелки над заголовком ведут с объекта, а не из меты (0036).
             */}
             <HeaderButton title={meta ? "К метрикам" : "Об объекте"} onClick={() => setMeta(!meta)}>
               {meta ? MetricsIcon : MetaIcon}
