@@ -15,33 +15,45 @@ function Chevron(props: { open: boolean }) {
   );
 }
 
-/** Sections fold the way workspace roots do in the explorer — a habit that already exists. */
-export function Accordion(props: { sections: Section[] }) {
-  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+/**
+ * Sections fold the way workspace roots do in the explorer — a habit that already exists.
+ *
+ * A folded section is hidden, not unmounted: the map inside keeps its open nodes, selection and
+ * scroll. A section never opened is not mounted at all — it loads on first unfold. Which
+ * sections are closed comes from outside: keeping it is the caller's business.
+ */
+export function Accordion(props: {
+  sections: Section[];
+  closed: ReadonlySet<string>;
+  onToggle: (key: string) => void;
+}) {
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
 
-  const toggle = (key: string) =>
-    setClosed((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  // Запоминается во время рендера, а не эффектом: иначе развёрнутая секция первый кадр была бы
+  // пустой.
+  const unseen = props.sections.filter((s) => !props.closed.has(s.key) && !opened.has(s.key));
+  if (unseen.length > 0) setOpened(new Set([...opened, ...unseen.map((s) => s.key)]));
 
   return (
     <div className="flex h-full flex-col">
       {props.sections.map((section) => {
-        const open = !closed.has(section.key);
+        const open = !props.closed.has(section.key);
+        const mounted = open || opened.has(section.key);
         return (
           <section key={section.key} className={open ? "flex min-h-0 flex-1 flex-col" : ""}>
             <button
               type="button"
-              onClick={() => toggle(section.key)}
+              onClick={() => props.onToggle(section.key)}
               className="flex w-full items-center gap-px py-[3px] pr-2 text-left text-[11px] font-semibold tracking-wide uppercase hover:bg-[var(--mw-list-hoverBackground)]"
             >
               <Chevron open={open} />
               <span className="truncate">{section.title}</span>
             </button>
-            {open && <div className="min-h-0 flex-1 overflow-auto pb-1 pl-5">{section.body}</div>}
+            {mounted && (
+              <div hidden={!open} className="min-h-0 flex-1 overflow-auto pb-1 pl-5">
+                {section.body}
+              </div>
+            )}
           </section>
         );
       })}
