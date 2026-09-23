@@ -10,3 +10,4 @@ export {
   setMcpUrl,
   showTerminal,
 } from "./adapters/terminals.ts";
+export { stageName } from "./pure-model/names.ts";
