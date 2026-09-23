@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { expect, test } from "vitest";
 import { ComponentDisplay } from "../../../../../packages/abstract-react-client/src/features/map-object/_metrics/ui/component-display.tsx";
+import { Display } from "../../../../../packages/abstract-react-client/src/features/map-object/_metrics/ui/displays.tsx";
 
 /**
  * Ячейка дисплея-компонента — решение 0037. У клиента нет `react-dom`, поэтому рендер проверяется
@@ -82,4 +83,80 @@ test("экшон строки и ActionButton набора рисует то, ч
   expect(html).toContain("тест");
   expect(html).toContain("[строка rerun {&quot;f&quot;:1}]");
   expect(html).toContain("[кнопка release Выпустить]");
+});
+
+/** Раскрытие папок `FileTree` набора едет контекстом по `id` дерева — запоминает сетка. */
+test("FileTree набора раскрыт по сохранённому состоянию своего id", () => {
+  const code = [
+    'var jsx = require("react/jsx-runtime");',
+    'var kit = require("@mapward/display");',
+    'var items = [{ label: "src", isDir: true, children: [{ label: "core.ts" }] }];',
+    "module.exports = { default: function View() {",
+    '  return jsx.jsxs("div", { children: [',
+    '    jsx.jsx("p", { children: "левое" }), jsx.jsx(kit.FileTree, { id: "left", items: items }),',
+    "  ] });",
+    "} };",
+  ].join("\n");
+  const asked: string[] = [];
+  const open = (opened: boolean) =>
+    render({
+      build: { code, builtAt: "now" },
+      links: {
+        onOpen: () => {},
+        treeOpen: (id) => {
+          asked.push(id);
+          return { ready: true, isOpen: (path) => opened && path === "src", toggle: () => {} };
+        },
+      },
+    });
+
+  expect(open(true)).toContain("core.ts");
+  expect(open(false)).not.toContain("core.ts");
+  expect(asked).toContain("left");
+});
+
+test("пока сохранённое не пришло, дерево набора не рисуется", () => {
+  const code = [
+    'var jsx = require("react/jsx-runtime");',
+    'var kit = require("@mapward/display");',
+    "module.exports = { default: function View() {",
+    '  return jsx.jsx(kit.FileTree, { items: [{ label: "src", isDir: true }] });',
+    "} };",
+  ].join("\n");
+  const html = render({
+    build: { code, builtAt: "now" },
+    links: {
+      onOpen: () => {},
+      treeOpen: () => ({ ready: false, isOpen: () => false, toggle: () => {} }),
+    },
+  });
+  expect(html).not.toContain("src");
+});
+
+/** Встроенный дисплей `tree` с раскрытыми папками `opened`. */
+const tree = (opened: string[]) =>
+  renderToString(
+    createElement(Display, {
+      data: {
+        kind: "tree",
+        children: [
+          {
+            label: "src",
+            isDir: true,
+            children: [{ label: "ui", isDir: true, children: [{ label: "row.tsx" }] }],
+          },
+        ],
+      },
+      collected: true,
+      onOpen: () => {},
+      renderMap: () => null,
+      renderComponent: () => null,
+      treeOpen: { ready: true, isOpen: (path) => opened.includes(path), toggle: () => {} },
+    }),
+  );
+
+test("встроенное дерево раскрыто по сохранённому состоянию", () => {
+  expect(tree(["src", "src/ui"])).toContain("row.tsx");
+  // Вложенная папка помнит себя, но под закрытой родительской не видна.
+  expect(tree(["src/ui"])).not.toContain("row.tsx");
 });

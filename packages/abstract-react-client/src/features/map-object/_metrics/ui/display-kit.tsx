@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type * as Kit from "@mapward/display";
 import type { ActionRef, LinkItem, Status, TreeItem } from "@mapward/display";
+import { DEFAULT_TREE, type TreeOpen } from "../pure-model/tree-open.ts";
 import { FileTree as Tree } from "./file-tree.tsx";
 import { Link as LinkRow, LinkList, type RenderRowAction } from "./displays.tsx";
 import { Markdown as Block, MarkdownLine } from "./markdown.tsx";
@@ -17,6 +18,8 @@ export type KitLinks = {
   onOpenTab?: (link: string) => void;
   renderRowAction?: RenderRowAction;
   renderActionButton?: (action: ActionRef, label?: string) => ReactNode;
+  /** Раскрытие дерева по его `id`: запоминает сетка, автору компонента передавать нечего. */
+  treeOpen?: (id: string) => TreeOpen;
 };
 
 const KitContext = createContext<KitLinks>({ onOpen: () => {} });
@@ -61,8 +64,17 @@ function List(props: { items: LinkItem[]; empty?: string }) {
   return <LinkList items={props.items} {...links} {...action} />;
 }
 
-function FileTree(props: { items: TreeItem[] }) {
-  return <Tree nodes={props.items} {...useLinks()} {...useRowAction()} />;
+/** `id` различает деревья одной метрики; одно дерево — `id` не нужен, оно «по умолчанию». */
+function FileTree(props: { items: TreeItem[]; id?: string }) {
+  const open = useContext(KitContext).treeOpen?.(props.id ?? DEFAULT_TREE);
+  return (
+    <Tree
+      nodes={props.items}
+      {...useLinks()}
+      {...useRowAction()}
+      {...(open === undefined ? {} : { open })}
+    />
+  );
 }
 
 /** Та же кнопка, что ставит в клетку раскладка, — решение 0038. */

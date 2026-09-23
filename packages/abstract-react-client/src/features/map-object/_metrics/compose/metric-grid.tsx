@@ -2,6 +2,7 @@ import { useId, type ReactNode } from "react";
 import type { Layout, LinkNode, MapAction, MapMetric, MapObject, MapRelation } from "@mapward/core";
 import type { DisplayAction } from "@mapward/display";
 import { ago, toDisplay } from "../pure-model/display.ts";
+import { DEFAULT_TREE, treeOpen, type OpenFolders } from "../pure-model/tree-open.ts";
 import { cellAttribute, planGrid, soloGrid } from "../pure-model/grid.ts";
 import { useMetrics } from "../adapters/use-metrics.ts";
 import { useViewState } from "../../../../services/state/index.ts";
@@ -93,6 +94,16 @@ export function MetricGrid(props: {
     `folded:${props.object.address}`,
     {},
   );
+  // Раскрытые папки деревьев — той же природы: у человека, на объект и метрику, в сетке и в табе
+  // метрики одни и те же.
+  const [openFolders, setOpenFolders, foldersReady] = useViewState<Record<string, OpenFolders>>(
+    `tree-open:${props.object.address}`,
+    {},
+  );
+  const openTree = (key: string) => (tree: string) =>
+    treeOpen(openFolders[key] ?? {}, foldersReady, tree, (next) =>
+      setOpenFolders({ ...openFolders, [key]: next }),
+    );
   const now = Date.now();
 
   const isFolded = (key: string, collapsed: boolean | undefined) =>
@@ -146,6 +157,7 @@ export function MetricGrid(props: {
               {...(props.onOpenObjectTab === undefined ? {} : { onOpenTab: props.onOpenObjectTab })}
               renderMap={(map) => props.renderMap(map, metric.address)}
               {...(actions === undefined ? {} : { renderAction: actions.renderRow })}
+              treeOpen={openTree(metric.key)(DEFAULT_TREE)}
               renderComponent={(data) => (
                 <MetricComponent
                   mapRef={props.mapRef}
@@ -159,6 +171,7 @@ export function MetricGrid(props: {
                     : { onOpenTab: props.onOpenObjectTab })}
                   actions={actions?.list ?? []}
                   onRun={actions?.run ?? (() => {})}
+                  treeOpen={openTree(metric.key)}
                   {...(actions === undefined
                     ? {}
                     : {

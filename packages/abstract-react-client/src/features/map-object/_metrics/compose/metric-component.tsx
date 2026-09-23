@@ -24,6 +24,8 @@ export function MetricComponent(props: {
   onRun: (action: string, inputs?: Record<string, unknown>) => void;
   renderRowAction?: KitLinks["renderRowAction"];
   renderActionButton?: KitLinks["renderActionButton"];
+  /** Раскрытие деревьев набора по `id` — запоминает сетка. */
+  treeOpen?: KitLinks["treeOpen"];
 }) {
   const build = useDisplayBuild(props.mapRef, props.metric.address);
   const { object, metric, value } = props;
@@ -59,6 +61,7 @@ export function MetricComponent(props: {
         ...(props.renderActionButton === undefined
           ? {}
           : { renderActionButton: props.renderActionButton }),
+        ...(props.treeOpen === undefined ? {} : { treeOpen: props.treeOpen }),
       }}
     />
   );

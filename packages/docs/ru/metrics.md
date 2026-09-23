@@ -209,7 +209,9 @@ export default function Display({ data, open }: DisplayProps<Data>) {
 | `open(link)` | открыть ссылку, как любую ссылку карты: файл, `mapward://`, `https://` |
 
 Из `@mapward/display` приходят кусочки, которыми нарисована сама карта: `Link`, `Markdown`,
-`StatusDot`, `List`, `FileTree`. Их пункты — те же, что у `list` и `tree`. `react` и
+`StatusDot`, `List`, `FileTree`. Их пункты — те же, что у `list` и `tree`. Раскрытые папки
+`FileTree` карта запоминает сама, как и у готового `tree`: у человека, на объект и метрику.
+Деревьев в компоненте несколько — дайте каждому свой `id`, иначе они раскрываются заодно. `react` и
 `@mapward/display` отдаёт карта, в сборку они не кладутся: две копии React на странице ломают
 хуки.
 

@@ -135,8 +135,11 @@ export declare function StatusDot(props: {
 /** Список пунктов — готовый дисплей `list`. `empty` — что сказать, когда пунктов нет. */
 export declare function List(props: { items: LinkItem[]; empty?: string }): ReactElement;
 
-/** Файловое дерево — готовый дисплей `tree`. */
-export declare function FileTree(props: { items: TreeItem[] }): ReactElement;
+/**
+ * Файловое дерево — готовый дисплей `tree`. Раскрытые папки карта запоминает сама, на объект и
+ * метрику. `id` нужен, только если деревьев в метрике несколько: он их и различает.
+ */
+export declare function FileTree(props: { items: TreeItem[]; id?: string }): ReactElement;
 
 /**
  * Кнопка экшона — та же, что ставит в клетку раскладка. `action` — ключ или адрес, `inputs` —

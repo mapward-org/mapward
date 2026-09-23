@@ -8,6 +8,7 @@ import type {
   StatusMark,
 } from "../pure-model/display.ts";
 import { gitColor, isObjectLink, placeholder } from "../pure-model/display.ts";
+import type { TreeOpen } from "../pure-model/tree-open.ts";
 import { tabHover } from "../../ui/tab-modifier.ts";
 import { FileTree } from "./file-tree.tsx";
 import { GitMark } from "./git-mark.tsx";
@@ -119,6 +120,8 @@ export function Display(props: {
   renderComponent: (data: unknown) => ReactNode;
   /** Кнопка экшона строки списка и узла дерева — решение 0038. */
   renderAction?: RenderRowAction;
+  /** Раскрытие папок дерева: хранит сетка, дисплей только передаёт. */
+  treeOpen?: TreeOpen;
 }) {
   const { data } = props;
   // Одним куском, чтобы не переписывать необязательное поле в каждой ветке ниже.
@@ -147,7 +150,15 @@ export function Display(props: {
     case "list":
       return <LinkList items={data.items} onOpen={props.onOpen} {...tab} {...action} />;
     case "tree":
-      return <FileTree nodes={data.children} onOpen={props.onOpen} {...tab} {...action} />;
+      return (
+        <FileTree
+          nodes={data.children}
+          onOpen={props.onOpen}
+          {...tab}
+          {...action}
+          {...(props.treeOpen === undefined ? {} : { open: props.treeOpen })}
+        />
+      );
     case "map":
       return props.renderMap({ nodes: data.nodes, relations: data.relations });
     case "component":

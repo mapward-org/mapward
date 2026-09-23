@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { TreeNode } from "../pure-model/display.ts";
 import type { RenderRowAction } from "./displays.tsx";
 import { gitColor, isObjectLink } from "../pure-model/display.ts";
+import { folderPath, type TreeOpen } from "../pure-model/tree-open.ts";
 import { fileIcon } from "../pure-model/file-icon.ts";
 import { useIcon } from "../../../../ports/icons.tsx";
 import { GitMark } from "./git-mark.tsx";
@@ -21,13 +22,19 @@ const Chevron = (props: { open: boolean; visible: boolean }) => (
 function Row(props: {
   node: TreeNode;
   depth: number;
+  /** Путь папки от корня — по нему раскрытие и запоминается. */
+  path: string;
+  /** Раскрытие хранит сетка; без него строка помнит его сама, пока жива. */
+  open?: TreeOpen;
   onOpen: (link: string) => void;
   onOpenTab?: (link: string) => void;
   renderAction?: RenderRowAction;
 }) {
   const { node } = props;
   const folder = node.isDir ?? (node.children?.length ?? 0) > 0;
-  const [open, setOpen] = useState(false);
+  const [openHere, setOpenHere] = useState(false);
+  const open = props.open ? props.open.isOpen(props.path) : openHere;
+  const toggle = () => (props.open ? props.open.toggle(props.path) : setOpenHere(!openHere));
   const icon = useIcon();
   // Табом открывают объект: папка складывается, файл открывается файлом — решение 0026. Иконки
   // у строки нет (0035): под ctrl имя объекта подчёркивается, как ссылка в редакторе.
@@ -36,6 +43,7 @@ function Row(props: {
   // Вниз по дереву жест едет так же: объект может лежать на любой глубине.
   const tabProp = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
   const actionProp = props.renderAction === undefined ? {} : { renderAction: props.renderAction };
+  const openProp = props.open === undefined ? {} : { open: props.open };
 
   return (
     <li>
@@ -44,7 +52,7 @@ function Row(props: {
           type="button"
           onClick={(event) =>
             folder
-              ? setOpen(!open)
+              ? toggle()
               : link && (tab && (event.ctrlKey || event.metaKey) ? tab(link) : props.onOpen(link))
           }
           {...(tab === undefined ? {} : { title: "Ctrl + клик — открыть отдельным табом" })}
@@ -89,9 +97,11 @@ function Row(props: {
               key={`${child.label ?? index}`}
               node={child}
               depth={props.depth + 1}
+              path={folderPath(props.path, child.label, index)}
               onOpen={props.onOpen}
               {...tabProp}
               {...actionProp}
+              {...openProp}
             />
           ))}
         </ul>
@@ -105,9 +115,14 @@ export function FileTree(props: {
   onOpen: (link: string) => void;
   onOpenTab?: (link: string) => void;
   renderAction?: RenderRowAction;
+  /** Раскрытие, которое переживает уход с объекта и перезагрузку окна; без него — до ухода. */
+  open?: TreeOpen;
 }) {
   const tabProp = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
   const actionProp = props.renderAction === undefined ? {} : { renderAction: props.renderAction };
+  const openProp = props.open === undefined ? {} : { open: props.open };
+  // Сохранённое ещё не пришло: закрытое дерево сейчас раскрылось бы через кадр и прыгнуло.
+  if (props.open && !props.open.ready) return null;
   return (
     <ul>
       {props.nodes.map((node, index) => (
@@ -115,9 +130,11 @@ export function FileTree(props: {
           key={`${node.label ?? index}`}
           node={node}
           depth={0}
+          path={folderPath("", node.label, index)}
           onOpen={props.onOpen}
           {...tabProp}
           {...actionProp}
+          {...openProp}
         />
       ))}
     </ul>
