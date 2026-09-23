@@ -637,6 +637,43 @@ test("only the stage told to do so marks the directive done", async () => {
   expect(state.directive).toBe("текст директивы");
 });
 
+/**
+ * Кто ждёт ответа — решение 0034: конец этапа кладёт директиву в список, запуск следующего
+ * убирает. Список живёт в сервере, поэтому видно его и без MCP.
+ */
+test("a finished stage waits for the human until the next one starts", async () => {
+  const disk: Record<string, string> = { ...workflowTree };
+  const server = createMapServer({
+    ...ports,
+    files: {
+      ...fakeFiles(disk),
+      write: (path, text) => {
+        disk[path] = text;
+        return Promise.resolve();
+      },
+    },
+  });
+  const seen: { directive: string; stage: string; object: string }[][] = [];
+  const subscription = server.watchTurns().subscribe((list) => seen.push(list));
+
+  await server.finishDirective({ ...ref, ...directive, stage: "Обсудить" });
+  expect(seen.at(-1)).toMatchObject([
+    { directive: directive.directive, stage: "Обсудить", object: "Карта" },
+  ]);
+
+  await server.runDirective({ ...ref, ...directive, stage: "Выполнить" });
+  expect(seen.at(-1)).toEqual([]);
+
+  await server.finishDirective({ ...ref, ...directive, stage: "Выполнить" });
+  server.dismissTurn({
+    mapPath: ref.mapPath,
+    address: "mapward://",
+    directive: directive.directive,
+  });
+  expect(seen.at(-1)).toEqual([]);
+  subscription.unsubscribe();
+});
+
 test("an unknown stage names the ones the object has", async () => {
   await expect(
     callWith({ ...workflowTree }, "run_directive", { ...directive, stage: "нет такого" }),

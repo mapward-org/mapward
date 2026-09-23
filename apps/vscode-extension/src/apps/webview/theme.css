@@ -6,6 +6,9 @@
  * код для этого не придётся.
  */
 :root {
+  /* Число «ждут ответа» — как число на иконке панели в левой полосе (0034) */
+  --mw-badge-background: var(--vscode-activityBarBadge-background);
+  --mw-badge-foreground: var(--vscode-activityBarBadge-foreground);
   --mw-button-background: var(--vscode-button-background);
   --mw-button-foreground: var(--vscode-button-foreground);
   --mw-button-hoverBackground: var(--vscode-button-hoverBackground);

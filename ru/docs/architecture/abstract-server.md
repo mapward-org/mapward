@@ -31,6 +31,11 @@ src/
 Стор метрик живёт здесь же (`application/services/metric-store.ts`): значения, свежесть по `staleTime`,
 интервалы и отмена по уходу — решение [0013](../decisions/0013-metrics-store.md).
 
+Список «ждут ответа» — фича `features/directive-turns`: директивы, где этап кончился и ход у
+человека. Правила списка в `domain/`, сам список в памяти и подписка на него — в
+`application/`. Кладёт и убирает пункты сборка сервера: `finishDirective` и `runDirective`,
+клик по пункту — `dismissTurn` — решение [0034](../decisions/0034-directive-turns.md).
+
 ## Правила
 
 Реализаций портов в пакете нет. Они живут в приложениях (`vscode-extension`, `cli`) или в

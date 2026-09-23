@@ -45,6 +45,10 @@ export function serveBridge(
     /** Тот же объект во всю ширину редактора — решение 0026. */
     openInTab: (params) => openTab(params),
 
+    /** Кто ждёт ответа — список держит сервер, мост его только передаёт (решение 0034). */
+    watchTurns: () => server.watchTurns(),
+    dismissTurn: (params) => server.dismissTurn(params),
+
     getMapState: (params) => server.getMapState(params),
     setMapState: (params) => server.setMapState(params),
 

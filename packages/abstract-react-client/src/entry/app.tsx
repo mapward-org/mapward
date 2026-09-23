@@ -4,6 +4,7 @@ import { ProviderBridgeClient } from "../ports/bridge.tsx";
 import { ProviderIcons, type RenderIcon } from "../ports/icons.tsx";
 import { Maps } from "../features/maps/index.ts";
 import { MapObjectView } from "../features/map-object/index.ts";
+import { DirectiveTurns } from "../features/directive-turns/index.ts";
 
 /**
  * На чём открыт таб — решение 0026: карта названа целиком, потому что таб живёт сам по себе и
@@ -49,7 +50,12 @@ export function MapwardApp(props: {
             }}
           />
         ) : (
-          <Maps renderMap={(map) => <MapObjectView mapConfig={map} />} />
+          // Кто ждёт ответа — поверх всех карт, а не внутри одной: список общий на окно, а карт
+          // в сайдбаре бывает несколько. В табе его нет: таб открыт на одном объекте (0034).
+          <>
+            <Maps renderMap={(map) => <MapObjectView mapConfig={map} />} />
+            <DirectiveTurns />
+          </>
         )}
       </ProviderIcons>
     </ProviderBridgeClient>

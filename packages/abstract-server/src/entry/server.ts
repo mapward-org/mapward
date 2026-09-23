@@ -25,6 +25,7 @@ import {
   readMapState,
   writeMapState,
 } from "../features/map-object/application/use-cases/map-state.ts";
+import { createTurnStore, type TurnKey } from "../features/directive-turns/index.ts";
 
 export type MapServer = ReturnType<typeof createMapServer>;
 
@@ -48,6 +49,7 @@ export type ServerSettings = {
 export function createMapServer(ports: ServerPorts, settings: ServerSettings = {}) {
   const read = (ref: MapRef) => readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
   const metrics = createMetricStore(ports, read, settings);
+  const turns = createTurnStore();
 
   /** Объект, директива и действующие на нём этапы — всё из модели, а не склейкой путей. */
   const locate = async (params: MapRef & { address: string; directive: string }) => {
@@ -213,6 +215,12 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
         stage: stage.name,
         now: new Date(),
       });
+      // Этап начался — человек взял ход, директива больше не ждёт ответа (решение 0034).
+      turns.taken({
+        mapPath: params.mapPath,
+        address: found.object.address,
+        directive: found.file.name,
+      });
 
       return {
         stage: stage.name,
@@ -245,8 +253,29 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
         marksDone: stage.marksDone,
         now: new Date(),
       });
+      // Ход у человека. Кладётся после записи состояния: не записалось — ждать нечего.
+      turns.finished({
+        mapPath: params.mapPath,
+        address: found.object.address,
+        object: found.object.name,
+        directive: found.file.name,
+        path: found.file.path,
+        stage: stage.name,
+        at: new Date().toISOString(),
+      });
 
       return { stage: stage.name, done: stage.marksDone };
+    },
+
+    /**
+     * Директивы, где ход у человека, — решение 0034. Живёт в памяти: перезапуск его стирает, и
+     * так и задумано — это стек текущей работы, а не архив.
+     */
+    watchTurns: () => turns.watch(),
+
+    /** Человек открыл пункт — ход взят, как если бы он запустил следующий этап. */
+    dismissTurn: (params: TurnKey) => {
+      turns.taken(params);
     },
 
     getMapState: (params: { mapPath: string }) => readMapState(ports, params),

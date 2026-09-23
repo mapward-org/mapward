@@ -10,6 +10,7 @@ export * from "./contracts/bridge.ts";
 export * from "./contracts/protocol.ts";
 export * from "./contracts/map.ts";
 export * from "./contracts/state.ts";
+export * from "./contracts/turns.ts";
 export * from "./contracts/config.ts";
 export * from "./contracts/app.ts";
 export * from "./lib/bridge/client.ts";
