@@ -1,5 +1,5 @@
 import type { DisplayProps, TreeItem } from "@mapward/display";
-import { FileTree, Link, List, Markdown, StatusDot } from "@mapward/display";
+import { ActionButton, FileTree, Link, List, Markdown, StatusDot } from "@mapward/display";
 import type { Data } from "./display.data";
 
 /**
@@ -36,6 +36,11 @@ export default function Display({ data, object, metric }: DisplayProps<Data>) {
       <section className="flex flex-col gap-1">
         <h4 className="m-0 text-[11px] uppercase opacity-60">FileTree</h4>
         <FileTree items={data.tree as TreeItem[]} />
+      </section>
+
+      <section className="flex flex-col gap-1">
+        <h4 className="m-0 text-[11px] uppercase opacity-60">ActionButton</h4>
+        <ActionButton action="reveal" inputs={{ path: object.path }} label="показать карту в проводнике" />
       </section>
 
       <Markdown inline text={`метрика \`${metric.key}\`, объект «${object.name}»`} />

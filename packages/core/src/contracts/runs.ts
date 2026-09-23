@@ -11,7 +11,10 @@ export const RunSource = T.Union([
   T.Literal("display"),
   T.Literal("mcp"),
   T.Literal("cli"),
+  /** Метрика собралась сама: при открытии объекта или по интервалу. */
   T.Literal("refresh"),
+  /** Метрика пересобрана после успешного экшона — она из `refreshes`. */
+  T.Literal("action"),
 ]);
 
 export const RunStatus = T.Union([

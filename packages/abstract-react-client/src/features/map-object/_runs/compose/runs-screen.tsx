@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Run } from "@mapward/core";
+import { useViewState } from "../../../../services/state/index.ts";
 import { useStopRun } from "../adapters/use-runs.ts";
-import { pickRun } from "../pure-model/runs.ts";
+import { inTab, type RunsTab } from "../pure-model/runs.ts";
 import { RunsView } from "../ui/runs-view.tsx";
 
 /**
@@ -16,6 +17,13 @@ export function RunsScreen(props: {
   onSelect: (id: string) => void;
 }) {
   const stop = useStopRun(props.mapPath);
+  // Вкладка — удобство человека, как свёрнутые метрики: помнится у него, а в историю не идёт.
+  const [tab, setTab] = useViewState<RunsTab>("runs-tab", "actions");
+  const shown = inTab(props.runs, tab);
+  // Названный прогон показывается, даже если он с другой вкладки: на него ведёт красная точка
+  // метрики, и прятать его за вкладкой значило бы вести в пустоту.
+  const named =
+    props.selected === undefined ? undefined : props.runs.find((run) => run.id === props.selected);
   const running = props.runs.some((run) => run.status === "running");
   const [now, setNow] = useState(() => Date.now());
 
@@ -29,8 +37,11 @@ export function RunsScreen(props: {
 
   return (
     <RunsView
-      runs={props.runs}
-      selected={pickRun(props.runs, props.selected)}
+      runs={shown}
+      total={props.runs.length}
+      tab={tab}
+      onTab={setTab}
+      selected={named ?? shown[0]}
       now={now}
       onSelect={props.onSelect}
       onStop={stop}

@@ -1,0 +1,14 @@
+{
+  "label": "Показать в проводнике",
+  "description": "Открыть папку в проводнике, файл — выделенным в его папке. Тестовый экшон: ничего не меняет.",
+  "inputs": {
+    "path": { "type": "string", "required": true, "description": "путь к файлу или папке" }
+  },
+  "runners": [
+    {
+      "kind": "script",
+      "name": "проводник",
+      "run": "node \"${{ mapward:// }}/_actions/reveal/reveal.mjs\""
+    }
+  ]
+}

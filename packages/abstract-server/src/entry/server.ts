@@ -55,7 +55,7 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
   // поэтому стор берётся через замыкание — к первому прогону он уже есть.
   const runs = createRunStore(ports, {
     readMap: read,
-    runMetric: (ref, address) => metrics.run(ref, address, { wait: false, source: "refresh" }),
+    runMetric: (ref, address) => metrics.run(ref, address, { wait: false, source: "action" }),
   });
   const metrics = createMetricStore(ports, read, settings, runs);
   const displays = createDisplayBuilds(ports, read);

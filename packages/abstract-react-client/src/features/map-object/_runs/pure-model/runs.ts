@@ -15,7 +15,7 @@ export const runningCount = (runs: Run[], target: string): number =>
 
 /**
  * Какой прогон открыт справа: названный, если он ещё есть, иначе самый свежий. Прогон мог
- * уйти из двадцати последних, пока экран висел в истории, — тогда пустой правой половины нет.
+ * уйти из последних, пока экран висел в истории, — тогда пустой правой половины нет.
  */
 export const pickRun = (runs: Run[], id: string | undefined): Run | undefined =>
   (id === undefined ? undefined : runs.find((run) => run.id === id)) ?? runs[0];
@@ -26,8 +26,31 @@ export const sourceLabel: Record<RunSource, string> = {
   display: "строка дисплея",
   mcp: "агент",
   cli: "терминал",
-  refresh: "обновление",
+  refresh: "сама",
+  action: "после экшона",
 };
+
+/**
+ * Вкладки экрана прогонов. Метрики собираются часто — при каждом открытии объекта и по
+ * интервалу, — и эти сборы топили бы экшоны. Поэтому то, что метрика запустила сама, лежит на
+ * своей вкладке, а на «метриках» — запущенное кем-то: кнопкой, агентом, терминалом, экшоном.
+ */
+export type RunsTab = "all" | "actions" | "metrics" | "auto";
+
+export const RUNS_TABS: { key: RunsTab; label: string }[] = [
+  { key: "all", label: "все" },
+  { key: "actions", label: "экшоны" },
+  { key: "metrics", label: "метрики" },
+  { key: "auto", label: "автоматические метрики" },
+];
+
+export function tabOf(run: Run): Exclude<RunsTab, "all"> {
+  if (run.kind === "action") return "actions";
+  return run.source === "refresh" ? "auto" : "metrics";
+}
+
+export const inTab = (runs: Run[], tab: RunsTab): Run[] =>
+  tab === "all" ? runs : runs.filter((run) => tabOf(run) === tab);
 
 export const statusLabel: Record<RunStatus, string> = {
   running: "идёт",

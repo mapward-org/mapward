@@ -47,6 +47,7 @@ export type MetricHistory = {
   recordMetric(
     mapPath: string,
     info: { target: string; object: string; label: string; source: RunSource; config: unknown },
+    cancel?: () => void,
   ): RunRecorder;
 };
 
@@ -216,16 +217,22 @@ export function createMetricStore(
     const record =
       force === "transform"
         ? undefined
-        : history?.recordMetric(ref.mapPath, {
-            target: metric.address,
-            object: owner.address,
-            label: config.label ?? metric.key,
-            source: options.source ?? (force === "all" ? "ui" : "refresh"),
-            config,
-          });
+        : history?.recordMetric(
+            ref.mapPath,
+            {
+              target: metric.address,
+              object: owner.address,
+              label: config.label ?? metric.key,
+              source: options.source ?? (force === "all" ? "ui" : "refresh"),
+              config,
+            },
+            cancel,
+          );
     let stageLog: string | undefined;
-    const report = (log: string) => {
+    let stageOutput: unknown;
+    const report = (log: string, output?: unknown) => {
       stageLog = log || undefined;
+      stageOutput = output;
     };
 
     // Истёкшее время отменяет прогон теми же средствами, что кнопка, но неудачей считается
@@ -252,6 +259,7 @@ export function createMetricStore(
               );
               record?.step("сбор");
               stageLog = undefined;
+              stageOutput = undefined;
               return collect(
                 ports,
                 metric,
@@ -264,7 +272,7 @@ export function createMetricStore(
             })
           : entry.collected;
       entry.collected = collected;
-      record?.stepDone(collected.ok ? "success" : "failure", stageLog);
+      record?.stepDone(collected.ok ? "success" : "failure", stageLog, stageOutput);
 
       entry.result = hasTransforms
         ? await limited(() => {
@@ -274,6 +282,7 @@ export function createMetricStore(
             );
             record?.step("трансформ");
             stageLog = undefined;
+            stageOutput = undefined;
             return transform(
               ports,
               builtins,
@@ -287,7 +296,9 @@ export function createMetricStore(
             ).finally(stopDeadline);
           })
         : collected;
-      if (hasTransforms) record?.stepDone(entry.result.ok ? "success" : "failure", stageLog);
+      if (hasTransforms) {
+        record?.stepDone(entry.result.ok ? "success" : "failure", stageLog, stageOutput);
+      }
       record?.end(entry.result.ok ? "success" : "failure");
     } catch (error) {
       // Отмена — не неудача: значение остаётся прежним, писать нечего. Таймаут — неудача.
@@ -419,7 +430,10 @@ export function createMetricStore(
           if (!interval) continue;
           // Интервал тикает, пока объект открыт хотя бы в одном виде.
           timers.push(
-            ports.timers.every(Number(interval), () => void start(ref, metric, object, "all")),
+            ports.timers.every(
+              Number(interval),
+              () => void start(ref, metric, object, "all", { source: "refresh" }),
+            ),
           );
         }
       })();

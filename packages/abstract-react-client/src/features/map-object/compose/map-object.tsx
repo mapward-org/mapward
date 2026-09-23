@@ -47,6 +47,7 @@ import {
   WorkflowIcon,
 } from "../ui/icons.tsx";
 import { HeaderButton, ObjectHeader } from "../ui/object-header.tsx";
+import { ViewTabs, type ObjectView } from "../ui/view-tabs.tsx";
 import { Loading } from "../../../lib/ui/loading.tsx";
 import { Section, SectionButton } from "../../../lib/ui/section.tsx";
 
@@ -104,7 +105,6 @@ export function MapObjectView(props: {
   };
   const { address, group, solo } = currentScreen(history);
   const meta = currentScreen(history).meta ?? false;
-  const setMeta = (value: boolean) => update(amend(history, { meta: value }));
   /**
    * Экран прогонов — третий режим объекта, как мета-экран (решение 0038), и выбранный прогон
    * едет в истории вместе с ним.
@@ -112,7 +112,11 @@ export function MapObjectView(props: {
   const runsOpen = currentScreen(history).runs ?? false;
   const selectedRun = currentScreen(history).run;
   const setRuns = (value: boolean, run?: string) =>
-    update(amend(history, { runs: value, run: value ? run : undefined }));
+    update(amend(history, { meta: false, runs: value, run: value ? run : undefined }));
+  /** Вид объекта одним полем: мини-вкладки под шапкой переключают из любого в любой. */
+  const view: ObjectView = runsOpen ? "runs" : meta ? "meta" : "metrics";
+  const setView = (next: ObjectView) =>
+    update(amend(history, { meta: next === "meta", runs: next === "runs", run: undefined }));
   const setGroup = (key: string) => update(amend(history, { group: key }));
   const setSolo = (key: string | undefined) => update(amend(history, { solo: key }));
   const terminals = useTerminals(props.mapConfig, address);
@@ -345,22 +349,23 @@ export function MapObjectView(props: {
                 {TabIcon}
               </HeaderButton>
             )}
-            {/*
-              Вход и выход — одна кнопка (решение 0028): мета-экран шагом истории не считается,
-              и стрелки над заголовком ведут с объекта, а не из меты (0036).
-            */}
-            <HeaderButton title={meta ? "К метрикам" : "Об объекте"} onClick={() => setMeta(!meta)}>
-              {meta ? MetricsIcon : MetaIcon}
-            </HeaderButton>
-            {/* Прогоны входят и выходят так же, одной кнопкой (0038). */}
-            <HeaderButton
-              title={runsOpen ? "К метрикам" : "Прогоны"}
-              onClick={() => setRuns(!runsOpen)}
-            >
-              {runsOpen ? MetricsIcon : RunsIcon}
-            </HeaderButton>
           </>
         }
+      />
+
+      {/*
+        Виды объекта — мини-вкладками, а не кнопками «туда и обратно» в шапке: сразу видно, где
+        ты, и переход из любого вида в любой — один клик. Вид шагом истории по-прежнему не
+        считается: стрелки над заголовком ведут с объекта (0036).
+      */}
+      <ViewTabs
+        active={view}
+        onSelect={setView}
+        tabs={[
+          { key: "metrics", label: "метрики", icon: MetricsIcon },
+          { key: "meta", label: "об объекте", icon: MetaIcon },
+          { key: "runs", label: "прогоны", icon: RunsIcon },
+        ]}
       />
 
       {/*

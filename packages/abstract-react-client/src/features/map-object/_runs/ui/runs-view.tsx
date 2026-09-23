@@ -3,6 +3,8 @@ import type { Run, RunStatus, RunStep } from "@mapward/core";
 import {
   duration,
   pretty,
+  RUNS_TABS,
+  type RunsTab,
   sourceLabel,
   startedLabel,
   statusColor,
@@ -58,7 +60,7 @@ function Step(props: { step: RunStep; index: number; now: number }) {
           {duration(step.startedAt, step.finishedAt, props.now)}
         </span>
       </div>
-      {step.output && <Text title="вывод" text={step.output} />}
+      {step.output && <Text title="результат" text={step.output} />}
       {step.log && <Text title="лог" text={step.log} error={step.status === "failure"} />}
     </li>
   );
@@ -142,49 +144,74 @@ function Details(props: { run: Run; now: number; onStop?: (id: string) => void }
  */
 export function RunsView(props: {
   runs: Run[];
+  /** Сколько прогонов у объекта всего, на всех вкладках. */
+  total: number;
+  tab: RunsTab;
+  onTab: (tab: RunsTab) => void;
   selected: Run | undefined;
   now: number;
   onSelect: (id: string) => void;
   onStop?: (id: string) => void;
 }) {
-  if (props.runs.length === 0) {
+  if (props.total === 0) {
     return <div className="p-3 opacity-60">прогонов у объекта ещё не было</div>;
   }
 
   return (
-    <div className="flex h-full min-h-0">
-      <ul className="m-0 w-2/5 max-w-64 min-w-28 shrink-0 list-none overflow-y-auto border-r border-[var(--mw-menu-border,#8884)] p-0">
-        {props.runs.map((run) => (
-          <li key={run.id}>
-            <button
-              type="button"
-              onClick={() => props.onSelect(run.id)}
-              className={`flex w-full flex-col px-2 py-1 text-left hover:bg-[var(--mw-list-hoverBackground)] ${
-                run.id === props.selected?.id
-                  ? "bg-[var(--mw-list-activeSelectionBackground,#8883)]"
-                  : ""
-              }`}
-            >
-              <span className="flex min-w-0 items-center gap-1">
-                <Dot status={run.status} />
-                <span className="truncate">{run.label}</span>
-              </span>
-              <span className="truncate pl-3 text-[11px] opacity-60">
-                {run.kind === "action" ? "экшон" : "метрика"} · {sourceLabel[run.source]} ·{" "}
-                {startedLabel(run.startedAt, props.now)}
-              </span>
-            </button>
-          </li>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 flex-wrap gap-1 border-b border-[var(--mw-menu-border,#8884)] px-2 py-1">
+        {RUNS_TABS.map((entry) => (
+          <button
+            key={entry.key}
+            type="button"
+            onClick={() => props.onTab(entry.key)}
+            className={`rounded-sm px-1.5 text-[11px] hover:bg-[var(--mw-list-hoverBackground)] ${
+              entry.key === props.tab
+                ? "bg-[var(--mw-list-activeSelectionBackground,#8883)]"
+                : "opacity-70"
+            }`}
+          >
+            {entry.label}
+          </button>
         ))}
-      </ul>
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        {props.selected && (
-          <Details
-            run={props.selected}
-            now={props.now}
-            {...(props.onStop === undefined ? {} : { onStop: props.onStop })}
-          />
-        )}
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <ul className="m-0 w-2/5 max-w-64 min-w-28 shrink-0 list-none overflow-y-auto border-r border-[var(--mw-menu-border,#8884)] p-0">
+          {props.runs.length === 0 && (
+            <li className="px-2 py-1 text-[11px] opacity-60">на этой вкладке прогонов нет</li>
+          )}
+          {props.runs.map((run) => (
+            <li key={run.id}>
+              <button
+                type="button"
+                onClick={() => props.onSelect(run.id)}
+                className={`flex w-full flex-col px-2 py-1 text-left hover:bg-[var(--mw-list-hoverBackground)] ${
+                  run.id === props.selected?.id
+                    ? "bg-[var(--mw-list-activeSelectionBackground,#8883)]"
+                    : ""
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-1">
+                  <Dot status={run.status} />
+                  <span className="truncate">{run.label}</span>
+                </span>
+                <span className="truncate pl-3 text-[11px] opacity-60">
+                  {run.kind === "action" ? "экшон" : "метрика"} · {sourceLabel[run.source]} ·{" "}
+                  {startedLabel(run.startedAt, props.now)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          {props.selected && (
+            <Details
+              run={props.selected}
+              now={props.now}
+              {...(props.onStop === undefined ? {} : { onStop: props.onStop })}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

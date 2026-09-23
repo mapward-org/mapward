@@ -32,7 +32,8 @@ export type RunDeps = {
  */
 export type RunRecorder = {
   step(name: string): void;
-  stepDone(status: RunStatus, log?: string): void;
+  /** `output` — результат стадии; в шаг он ложится JSON-ом, обрезанный до предела. */
+  stepDone(status: RunStatus, log?: string, output?: unknown): void;
   end(status: RunStatus, error?: string): void;
 };
 
@@ -48,6 +49,14 @@ type MapRuns = {
 const dir = (mapPath: string) => join(mapPath, RUNS_DIR);
 
 const lastStep = (run: Run): RunStep | undefined => run.steps.at(-1);
+
+/** Предел вывода шага: история хранится целиком, а дерево файлов раздуло бы её (решение 0038). */
+const OUTPUT_LIMIT = 200_000;
+
+export function capped(text: string | undefined): string | undefined {
+  if (text === undefined || text.length <= OUTPUT_LIMIT) return text;
+  return `${text.slice(0, OUTPUT_LIMIT)}\n… отрезано ${text.length - OUTPUT_LIMIT} знаков`;
+}
 
 /**
  * Хранилище прогонов — решение 0038. Живут они у сервера и на диске карты, в `.mapward/runs/`:
@@ -208,7 +217,7 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
           // По порядку: следующий шаг идёт после того, как предыдущий сделал своё.
           // oxlint-disable-next-line no-await-in-loop
           const result = await runner(ref, spec, object, values, token);
-          stepEnd(ref.mapPath, step, "success", result);
+          stepEnd(ref.mapPath, step, "success", { log: result.log, output: capped(result.output) });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           stepEnd(ref.mapPath, step, token.cancelled ? "stopped" : "failure", { log: message });
@@ -321,20 +330,36 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
     });
   }
 
-  /** Прогон метрики: стадии сообщает стор метрик, храним и показываем здесь. */
+  /**
+   * Прогон метрики: стадии сообщает стор метрик, храним и показываем здесь. Отмену он отдаёт
+   * вместе с записью — иначе «остановить» у прогона метрики было бы нечем исполнить.
+   */
   function recordMetric(
     mapPath: string,
     info: { target: string; object: string; label: string; source: RunSource; config: unknown },
+    cancel?: () => void,
   ): RunRecorder {
     void load(mapPath, info.object);
     const run = begin(mapPath, { kind: "metric", ...info });
+    let finish: ((value: Run) => void) | undefined;
+    const done = new Promise<Run>((resolve) => {
+      finish = resolve;
+    });
+    if (cancel) stateOf(mapPath).controls.set(run.id, { cancel, done });
     return {
       step: (name) => void stepStart(mapPath, run, name),
-      stepDone: (status, log) => {
+      stepDone: (status, log, output) => {
         const step = lastStep(run);
-        if (step?.status === "running") stepEnd(mapPath, step, status, log ? { log } : {});
+        if (step?.status !== "running") return;
+        stepEnd(mapPath, step, status, {
+          ...(log ? { log } : {}),
+          ...(output === undefined ? {} : { output: capped(JSON.stringify(output, null, 2)) }),
+        });
       },
-      end: (status, error) => void end(mapPath, run, status, error),
+      end: (status, error) => {
+        stateOf(mapPath).controls.delete(run.id);
+        void end(mapPath, run, status, error).then(() => finish?.(run));
+      },
     };
   }
 

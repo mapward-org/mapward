@@ -9,6 +9,18 @@ import { runPrompt, runScript } from "./execute.ts";
 
 export type Collected = { updatedAt: string; ok: boolean; data: unknown };
 
+/** Лог и результат стадии — в шаг прогона метрики на экране прогонов (решение 0038). */
+export type StageReport = (log: string, output?: unknown) => void;
+
+/**
+ * Ответ агента как есть — в лог стадии: он разбирается в данные, и без этого на экране прогонов
+ * не видно, что агент сказал на самом деле (решение 0038).
+ */
+export const answerLog = (stderr: string, stdout: string): string | undefined =>
+  [stderr.trim(), stdout.trim() && `ответ агента:\n${stdout.trim()}`]
+    .filter(Boolean)
+    .join("\n\n") || undefined;
+
 type FileNode = {
   name: string;
   link: string;
@@ -122,7 +134,7 @@ async function collector(
         env: env(),
         cancel,
       });
-      return { value: parseAnswer(stdout), log: stderr || undefined };
+      return { value: parseAnswer(stdout), log: answerLog(stderr, stdout) };
     }
     case "read-dir": {
       return {
@@ -197,8 +209,7 @@ export async function collect(
   cwd: string,
   cancel?: Cancellation,
   previous?: Collected,
-  /** Лог стадии — прогону метрики на экране прогонов (решение 0038). */
-  report?: (log: string) => void,
+  report?: StageReport,
 ): Promise<Collected> {
   const specs = metric.config.collectors ?? [];
   // Прошлое значение — сперва то, что уже показано, потом кэш на диске. У метрики без
@@ -228,7 +239,7 @@ export async function collect(
           );
 
     const collected: Collected = { updatedAt: ports.clock.now(), ok: true, data };
-    report?.(log);
+    report?.(log, data);
     await write(ports, metric, collected, log);
     return collected;
   } catch (error) {

@@ -1,4 +1,4 @@
-import { exec, spawn } from "node:child_process";
+import { exec, spawn, type ChildProcess } from "node:child_process";
 import { readdir, readFile, mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { watch } from "node:fs";
@@ -84,6 +84,25 @@ const files = {
   },
 };
 
+/**
+ * Снять процесс вместе с детьми. Через оболочку `kill` снимает саму оболочку, а `claude` или
+ * скрипт под ней живут дальше — поэтому «остановить» не останавливало ничего (решение 0038).
+ * На Windows дерево снимает `taskkill /T`; на остальных процесс заведён своей группой, и снимается
+ * группа целиком.
+ */
+function killTree(child: ChildProcess): void {
+  if (child.pid === undefined || child.exitCode !== null) return;
+  if (process.platform === "win32") {
+    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    child.kill();
+  }
+}
+
 function runProcess(
   command: string,
   options: {
@@ -101,9 +120,11 @@ function runProcess(
       env: options.env,
       windowsHide: true,
       shell: options.shell,
+      // Своя группа — чтобы отмена могла снять и детей; на Windows это делает `taskkill`.
+      detached: process.platform !== "win32",
     });
 
-    options.cancel?.onCancel(() => child.kill());
+    options.cancel?.onCancel(() => killTree(child));
 
     let stdout = "";
     let stderr = "";
@@ -134,7 +155,7 @@ export function createPorts(): ServerPorts {
             (error, stdout, stderr) =>
               error ? reject(error) : resolve({ stdout: String(stdout), stderr: String(stderr) }),
           );
-          options.cancel?.onCancel(() => child.kill());
+          options.cancel?.onCancel(() => killTree(child));
         });
       },
       pipe(command, options) {

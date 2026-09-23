@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Run } from "@mapward/core";
-import { duration, lastRun, pickRun, runningCount, startedLabel } from "./runs.ts";
+import { duration, inTab, lastRun, pickRun, runningCount, startedLabel, tabOf } from "./runs.ts";
 
 const run = (id: string, target: string, status: Run["status"] = "success"): Run => ({
   id,
@@ -49,4 +49,14 @@ test("сегодняшний прогон — временем, прежний �
   const at = new Date(2026, 8, 23, 9, 5).toISOString();
   expect(startedLabel(at, new Date(2026, 8, 23, 18, 0).getTime())).toBe("09:05");
   expect(startedLabel(at, new Date(2026, 8, 25, 18, 0).getTime())).toBe("23.09 09:05");
+});
+
+test("сборы, которые метрика сделала сама, лежат на своей вкладке, а не среди метрик", () => {
+  const auto = { ...run("a", "mapward://a/_metrics/files"), source: "refresh" as const };
+  const after = { ...run("b", "mapward://a/_metrics/files"), source: "action" as const };
+  const action = { ...run("c", "mapward://a/_actions/release"), kind: "action" as const };
+
+  expect([auto, after, action].map(tabOf)).toEqual(["auto", "metrics", "actions"]);
+  expect(inTab([auto, after, action], "all")).toHaveLength(3);
+  expect(inTab([auto, after, action], "metrics").map((entry) => entry.id)).toEqual(["b"]);
 });

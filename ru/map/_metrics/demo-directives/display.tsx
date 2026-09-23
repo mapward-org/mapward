@@ -62,6 +62,8 @@ export default function Display({ data, open }: DisplayProps<Data>) {
           link: directive.file,
           status: directive.status === "done" ? "success" : "pending",
           description: `${directive.stage ?? "не начата"} · кругов ${directive.runs}`,
+          // Кнопка справа у строки, ссылка — на самой строке (решение 0038).
+          action: { run: "reveal", inputs: { path: directive.file } },
         }))}
         empty="нет директив в работе"
       />

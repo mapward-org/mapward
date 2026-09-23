@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { DisplayProps } from "@mapward/display";
-import { StatusDot } from "@mapward/display";
+import { ActionButton, StatusDot } from "@mapward/display";
 import type { Data } from "./display.data";
 
 /**
@@ -35,21 +35,31 @@ export default function Display({ data, open }: DisplayProps<Data>) {
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2">
         {found.map((decision) => (
-          <button
+          <div
             key={decision.number}
-            type="button"
-            onClick={() => open(decision.file)}
-            className="flex flex-col items-start gap-1 rounded border border-[var(--mw-panel-border)] p-2 text-left hover:bg-[var(--mw-list-hoverBackground)]"
+            className="flex flex-col items-start gap-1 rounded border border-[var(--mw-panel-border)] p-2"
           >
-            <span className="flex items-center gap-1 text-[11px] opacity-70">
-              <StatusDot
-                status={decision.draft ? "pending" : "success"}
-                hint={decision.draft ? "черновик агента" : "принято"}
-              />
-              {decision.number}
-            </span>
-            <span className="line-clamp-2">{decision.title}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => open(decision.file)}
+              className="flex w-full flex-col items-start gap-1 text-left hover:underline"
+            >
+              <span className="flex items-center gap-1 text-[11px] opacity-70">
+                <StatusDot
+                  status={decision.draft ? "pending" : "success"}
+                  hint={decision.draft ? "черновик агента" : "принято"}
+                />
+                {decision.number}
+              </span>
+              <span className="line-clamp-2">{decision.title}</span>
+            </button>
+            {/* Кнопка экшона корня — решение 0038: запуск тем же путём, что кнопка в шапке. */}
+            <ActionButton
+              action="reveal"
+              inputs={{ path: decision.file }}
+              label="показать в проводнике"
+            />
+          </div>
         ))}
       </div>
     </div>

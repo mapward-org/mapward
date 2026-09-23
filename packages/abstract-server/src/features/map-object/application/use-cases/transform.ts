@@ -2,7 +2,7 @@ import type { MapMetric, MapObject } from "@mapward/core";
 import type { Cancellation, ServerPorts } from "../../../../ports/index.ts";
 import type { Builtins } from "../services/builtin.ts";
 import { objectEnv, parseAnswer } from "../../domain/agent.ts";
-import { writeCache, writeLogs, type Collected } from "./collect.ts";
+import { answerLog, writeCache, writeLogs, type Collected, type StageReport } from "./collect.ts";
 import { displayHint } from "./display-schema.ts";
 
 /**
@@ -53,7 +53,7 @@ async function step(
       const intro = spec.prompt ? `${String(spec.prompt)}\n\n` : "";
       const prompt = `${intro}${hint}\n\nДанные:\n${payload}`;
       const { stdout, stderr } = await ports.agent.run({ prompt, cwd, env, cancel });
-      return { value: parseAnswer(stdout), log: stderr || undefined };
+      return { value: parseAnswer(stdout), log: answerLog(stderr, stdout) };
     }
     default:
       throw new Error(`Трансформ ${String(spec.kind)} ещё не поддержан`);
@@ -69,8 +69,7 @@ export async function transform(
   collected: Collected,
   cancel?: Cancellation,
   previous?: Collected,
-  /** Лог стадии — прогону метрики на экране прогонов (решение 0038). */
-  report?: (log: string) => void,
+  report?: StageReport,
 ): Promise<Collected> {
   const specs = metric.config.transforms ?? [];
   if (specs.length === 0 || !collected.ok) return collected;
@@ -99,7 +98,7 @@ export async function transform(
     return { ...(previous ?? collected), ok: false, updatedAt: ports.clock.now() };
   }
 
-  report?.(logs.join("\n"));
+  report?.(logs.join("\n"), value);
   if (logs.length > 0) {
     await writeLogs(ports.files, metric, "transform.logs.json", logs.join("\n"));
   }

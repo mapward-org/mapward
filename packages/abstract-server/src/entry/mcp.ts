@@ -736,6 +736,7 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
           ...ref,
           metric: address,
           ...timeouts(args),
+          source: "mcp",
           // Ждать по умолчанию: прогон зовут ради значения. `wait: false` нужен дорогой
           // метрике — прогон идёт дальше у сервера, а досматривается через read_object.
           ...(args.wait === false ? { wait: false } : {}),

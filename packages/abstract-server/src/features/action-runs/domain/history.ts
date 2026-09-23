@@ -1,7 +1,7 @@
 import type { Run } from "@mapward/core";
 
 /** Сколько прогонов помнить на экшон или метрику — решение 0038: логи жирные, копить их незачем. */
-export const KEEP = 20;
+export const KEEP = 10;
 
 /** Папка прогонов в корне карты: `.`-папка в модель не попадает и `_`-правилом не задета. */
 export const RUNS_DIR = ".mapward/runs";

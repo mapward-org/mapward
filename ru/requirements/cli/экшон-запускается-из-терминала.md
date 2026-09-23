@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 object: mapward://apps/cli-application
 ---
 
