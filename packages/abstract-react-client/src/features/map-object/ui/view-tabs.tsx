@@ -6,7 +6,8 @@ export type ObjectView = "metrics" | "meta" | "runs";
 /**
  * Мини-вкладки видов объекта. Раньше их переключали две кнопки в шапке, каждая со своим «туда и
  * обратно», и где ты сейчас, было видно только по иконке на кнопке. Вкладки говорят это сразу и
- * переключают в один клик из любого вида в любой.
+ * переключают в один клик из любого вида в любой. Своей строки у них нет: они стоят в строке
+ * истории, за стрелками.
  */
 export function ViewTabs(props: {
   active: ObjectView;
@@ -14,7 +15,7 @@ export function ViewTabs(props: {
   tabs: { key: ObjectView; label: string; icon: ReactNode }[];
 }) {
   return (
-    <div className="flex shrink-0 gap-1 px-2 pb-1">
+    <div className="flex gap-1">
       {props.tabs.map((tab) => {
         const active = tab.key === props.active;
         return (

@@ -1,4 +1,5 @@
 import type { MapFile } from "@mapward/core";
+import { matches } from "./search.ts";
 
 /** Three states, straight from decision 0002: no copy, a different copy, the same copy. */
 export const statusHint = { new: "новая", changed: "изменилась", done: "выполнена" };
@@ -49,22 +50,12 @@ export const newestFirst = (files: MapFile[]): MapFile[] => files.toReversed();
 export const directiveLabel = (file: MapFile): string =>
   file.name.replace(/\.md$/i, "").replace(/^\d{4}-\d{2}-\d{2}-\d{4}-/, "");
 
-/** Дефисы и подчёркивания имени читаются пробелами: слово набирают так, как его видят. */
-const words = (text: string): string =>
-  text
-    .toLowerCase()
-    .replace(/[-_\s]+/g, " ")
-    .trim();
-
 /**
- * Фильтр списка по названию: подстрока без регистра. Ищется по имени целиком, а не только
- * по подписи: дата в имени тоже поиск — «2026-09-21» находит директивы того дня. Пустой
- * запрос ничего не отбирает.
+ * Фильтр списка по названию. Ищется по имени целиком, а не только по подписи: дата в имени
+ * тоже поиск — «2026-09-21» находит директивы того дня.
  */
-export const matchDirectives = (files: MapFile[], query: string): MapFile[] => {
-  const needle = words(query);
-  return needle === "" ? files : files.filter((file) => words(file.name).includes(needle));
-};
+export const matchDirectives = (files: MapFile[], query: string): MapFile[] =>
+  files.filter((file) => matches(query, file.name));
 
 /**
  * Незакрытые директивы — `new` и `changed`. Работа идёт именно с ними, поэтому они висят

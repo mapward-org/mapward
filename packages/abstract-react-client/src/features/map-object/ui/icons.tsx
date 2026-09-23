@@ -43,14 +43,6 @@ export const NewDirectiveIcon = (
   </svg>
 );
 
-/** Поиск по списку: лупа — линза и ручка в том же боксе, что остальные иконки заголовков. */
-export const SearchIcon = (
-  <svg viewBox="0 0 16 16" className={box} fill="none" stroke="currentColor" strokeWidth="1.2">
-    <circle cx="7" cy="7" r="3.5" />
-    <path d="m9.6 9.6 3.4 3.4" strokeLinecap="round" />
-  </svg>
-);
-
 /** Об объекте: карточка с полями — всё, что объект о себе знает (решение 0024). */
 export const MetaIcon = (
   <svg viewBox="0 0 16 16" className={box} fill="none" stroke="currentColor" strokeWidth="1.2">

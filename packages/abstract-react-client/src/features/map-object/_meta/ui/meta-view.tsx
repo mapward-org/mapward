@@ -1,8 +1,14 @@
 import type { ReactNode } from "react";
-import type { ConfigLayer, MapMetric, MapObject } from "@mapward/core";
+import type { ConfigLayer, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { ListRow, type MenuAction } from "../../../../lib/ui/list-row.tsx";
 import { Section } from "../../../../lib/ui/section.tsx";
-import { howCollected, layerLabel, originHint, ownerHint, propRows } from "../pure-model/meta.ts";
+import {
+  howCollected,
+  layerLabel,
+  originHint,
+  ownerHint,
+  type MetaFound,
+} from "../pure-model/meta.ts";
 
 export type MetaIcons = {
   index: ReactNode;
@@ -19,8 +25,13 @@ export type MetaIcons = {
  * Разделы сворачиваются, а действия строки лежат в меню на кнопке «слои» — решение 0028.
  * Возврат к метрикам — мини-вкладка вида под шапкой, поэтому «назад» внутри экрана нет.
  *
- * Раздел директив рисует соседний подмодуль целиком, с заголовком и поиском, а сводит их
- * вместе `map-object/compose` — так же, как карту детей в сетке метрик (решение 0015).
+ * Поиск один на весь экран: поле стоит над разделами и не уезжает при прокрутке, а каждый
+ * раздел показывает только совпавшие строки. Раздел без совпадений не рисуется, чтобы
+ * найденное не терялось между пустыми заголовками; не совпало нигде — одна строка об этом.
+ * Что совпало, считает `searchMeta`, а вид только рисует отобранное.
+ *
+ * Раздел директив рисует соседний подмодуль целиком, а сводит их вместе `map-object/compose` —
+ * так же, как карту детей в сетке метрик (решение 0015). Вид отдаёт ему уже отобранный список.
  */
 export function MetaView(props: {
   map: MapObject;
@@ -31,9 +42,15 @@ export function MetaView(props: {
   onOpenMetricConfig?: (metric: MapMetric) => void;
   /** Файл слоя — единственное, что можно править. */
   onOpenFile?: (path: string) => void;
-  /** Раздел «Директивы» целиком: заголовок с поиском живёт вместе со списком. */
-  directives: ReactNode;
+  /** Набранный запрос — поле откликается сразу, а `found` может догонять его позже. */
+  query: string;
+  onQuery: (query: string) => void;
+  found: MetaFound;
+  /** Раздел «Директивы» целиком, по отобранному списку. */
+  directives: (files: MapFile[]) => ReactNode;
 }) {
+  const found = props.found;
+  const searching = props.query.trim() !== "";
   const openFile = props.onOpenFile;
   const openObjectConfig = props.onOpenObjectConfig;
   const openMetricConfig = props.onOpenMetricConfig;
@@ -61,98 +78,106 @@ export function MetaView(props: {
   const objectMenu = menu(openObjectConfig, props.object.layers);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1 overflow-auto pb-6">
-      <Section icon={props.icons.index} title="Объект">
-        <ListRow
-          label={props.object.name}
-          hint={originHint(props.object.layers)}
-          title={props.object.address}
-          {...(objectMenu === undefined ? {} : { menu: objectMenu })}
-        />
-        <dl className="flex flex-col px-3 pt-1 text-[11px] opacity-70">
-          <div className="flex gap-2">
-            <dt className="w-28 shrink-0 truncate">адрес</dt>
-            <dd className="truncate">{props.object.address}</dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="w-28 shrink-0 truncate">на диске</dt>
-            <dd className="truncate" title={props.object.path}>
-              {props.object.path}
-            </dd>
-          </div>
-          {propRows(props.object.props).map((prop) => (
-            <div key={prop.key} className="flex gap-2">
-              <dt className="w-28 shrink-0 truncate" title={prop.key}>
-                {prop.key}
-              </dt>
-              <dd className="truncate" title={prop.value}>
-                {prop.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </Section>
+    <div className="flex h-full min-h-0 flex-col">
+      <input
+        type="search"
+        value={props.query}
+        placeholder="поиск по объекту"
+        onChange={(event) => props.onQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") props.onQuery("");
+        }}
+        className="mx-3 my-1 shrink-0 rounded-sm border border-[var(--mw-input-border,#8884)] bg-[var(--mw-input-background,transparent)] px-1.5 py-0.5 text-[12px] text-[var(--mw-input-foreground,inherit)] outline-none focus:border-[var(--mw-focusBorder,#48f)]"
+      />
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-auto pb-6">
+        {found.nothing && <p className="px-3 py-0.5 text-[11px] opacity-50">не нашлось</p>}
 
-      {props.object.metrics.length > 0 && (
-        <Section icon={props.icons.metrics} title="Метрики">
-          {props.object.metrics.map((metric) => {
-            const metricMenu = menu(
-              openMetricConfig === undefined ? undefined : () => openMetricConfig(metric),
-              metric.layers,
-            );
-            return (
-              <ListRow
-                key={metric.key}
-                label={metric.config.label ?? metric.key}
-                title={howCollected(metric)}
-                hint={originHint(metric.layers)}
-                {...(metricMenu === undefined ? {} : { menu: metricMenu })}
-              />
-            );
-          })}
-        </Section>
-      )}
+        {found.object && (
+          <Section icon={props.icons.index} title="Объект">
+            <ListRow
+              label={props.object.name}
+              hint={originHint(props.object.layers)}
+              title={props.object.address}
+              {...(objectMenu === undefined ? {} : { menu: objectMenu })}
+            />
+            {found.fields.length > 0 && (
+              <dl className="flex flex-col px-3 pt-1 text-[11px] opacity-70">
+                {found.fields.map((row) => (
+                  <div key={row.key} className="flex gap-2">
+                    <dt className="w-28 shrink-0 truncate" title={row.key}>
+                      {row.key}
+                    </dt>
+                    <dd className="truncate" title={row.value}>
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </Section>
+        )}
 
-      {/*
+        {found.metrics.length > 0 && (
+          <Section icon={props.icons.metrics} title="Метрики">
+            {found.metrics.map((metric) => {
+              const metricMenu = menu(
+                openMetricConfig === undefined ? undefined : () => openMetricConfig(metric),
+                metric.layers,
+              );
+              return (
+                <ListRow
+                  key={metric.key}
+                  label={metric.config.label ?? metric.key}
+                  title={howCollected(metric)}
+                  hint={originHint(metric.layers)}
+                  {...(metricMenu === undefined ? {} : { menu: metricMenu })}
+                />
+              );
+            })}
+          </Section>
+        )}
+
+        {/*
         Этапы стоят перед директивами: по ним читают, что у директивы вообще можно запустить,
         а архив — это то, куда заглядывают реже.
       */}
-      {props.object.workflow.length > 0 && (
-        <Section icon={props.icons.workflow} title="Этапы директив">
-          {props.object.workflow.map((stage) => (
-            <ListRow
-              key={stage.name}
-              label={stage.name}
-              // Откуда этап взялся: свой, от прототипа или дефолт инструмента. Иначе по экрану
-              // не отличить настроенный воркфлоу от встроенного (решение 0017).
-              hint={stage.path === "" ? "по умолчанию" : (ownerHint(stage.owner) ?? "свой")}
-              {...(stage.marksDone ? { hintClass: "text-[var(--mw-charts-green,#3a3)]" } : {})}
-              {...(openFile === undefined || stage.path === ""
-                ? {}
-                : { onSelect: () => openFile(stage.path) })}
-            />
-          ))}
-        </Section>
-      )}
+        {found.workflow.length > 0 && (
+          <Section icon={props.icons.workflow} title="Этапы директив">
+            {found.workflow.map((stage) => (
+              <ListRow
+                key={stage.name}
+                label={stage.name}
+                // Откуда этап взялся: свой, от прототипа или дефолт инструмента. Иначе по экрану
+                // не отличить настроенный воркфлоу от встроенного (решение 0017).
+                hint={stage.path === "" ? "по умолчанию" : (ownerHint(stage.owner) ?? "свой")}
+                {...(stage.marksDone ? { hintClass: "text-[var(--mw-charts-green,#3a3)]" } : {})}
+                {...(openFile === undefined || stage.path === ""
+                  ? {}
+                  : { onSelect: () => openFile(stage.path) })}
+              />
+            ))}
+          </Section>
+        )}
 
-      {/* Экшоны — над директивами: их запускают и правят чаще, чем листают архив директив. */}
-      {props.object.actions.length > 0 && (
-        <Section icon={props.icons.actions} title="Экшоны">
-          {/* На мета-экране экшон — это его конфиг: открыть и поправить, а не запустить. */}
-          {props.object.actions.map((action) => (
-            <ListRow
-              key={action.address}
-              label={action.config.label ?? action.key}
-              {...(ownerHint(action.owner) === undefined
-                ? {}
-                : { hint: ownerHint(action.owner) as string })}
-              {...(openFile === undefined ? {} : { onSelect: () => openFile(action.configPath) })}
-            />
-          ))}
-        </Section>
-      )}
+        {/* Экшоны — над директивами: их запускают и правят чаще, чем листают архив директив. */}
+        {found.actions.length > 0 && (
+          <Section icon={props.icons.actions} title="Экшоны">
+            {/* На мета-экране экшон — это его конфиг: открыть и поправить, а не запустить. */}
+            {found.actions.map((action) => (
+              <ListRow
+                key={action.address}
+                label={action.config.label ?? action.key}
+                {...(ownerHint(action.owner) === undefined
+                  ? {}
+                  : { hint: ownerHint(action.owner) as string })}
+                {...(openFile === undefined ? {} : { onSelect: () => openFile(action.configPath) })}
+              />
+            ))}
+          </Section>
+        )}
 
-      {props.directives}
+        {(!searching || found.directives.length > 0) && props.directives(found.directives)}
+      </div>
     </div>
   );
 }

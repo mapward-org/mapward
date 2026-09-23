@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { tabHover } from "./tab-modifier.ts";
 
 /** Куда ведёт стрелка: объект по ту сторону шага истории. Идти некуда — стрелки нет. */
@@ -11,6 +12,11 @@ export type Arrow = { name: string; address: string; go: () => void };
  * Стрелки — назад и вперёд по истории вида, а не к родителю: к родителю ведёт последняя крошка
  * (решение 0036). Видны всегда, даже на корне: пропадая, они сдвигали бы крошки при каждом
  * переходе, поэтому когда идти некуда, стрелка гаснет.
+ *
+ * `views` — вкладки видов объекта, сразу за стрелками и до крошек: так они стоят на одном месте
+ * на любом объекте, а длинные крошки переносятся после них. Что это за вкладки, строка не знает —
+ * их передают готовыми, как стрелки. Приглушены только крошки: открытая вкладка не должна
+ * выглядеть погасшей.
  */
 export function Breadcrumbs(props: {
   trail: { address: string; name: string }[];
@@ -19,6 +25,7 @@ export function Breadcrumbs(props: {
   forward?: Arrow | undefined;
   /** Предок открывается и отдельным табом: ctrl + клик — решение 0026, без иконки — 0035. */
   onOpenTab?: (address: string) => void;
+  views?: ReactNode;
 }) {
   const tab = props.onOpenTab;
   const arrow = (target: Arrow | undefined, sign: string, label: string) => (
@@ -29,19 +36,20 @@ export function Breadcrumbs(props: {
       onClick={(event) =>
         target && (tab && (event.ctrlKey || event.metaKey) ? tab(target.address) : target.go())
       }
-      className="px-0.5 disabled:cursor-default disabled:opacity-30"
+      className="rounded-sm px-1 text-[16px] leading-none opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent"
     >
       {sign}
     </button>
   );
   return (
-    <nav className="flex flex-wrap items-center gap-1 px-2 py-1 text-[11px] opacity-70">
+    <nav className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1 text-[11px]">
       <span className="flex items-center pr-1">
         {arrow(props.back, "←", "Назад")}
         {arrow(props.forward, "→", "Вперёд")}
       </span>
+      {props.views !== undefined && <span className="flex items-center pr-1">{props.views}</span>}
       {props.trail.map((step, index) => (
-        <span key={step.address} className="flex items-center gap-1">
+        <span key={step.address} className="flex items-center gap-1 opacity-70">
           {index > 0 && <span className="opacity-50">/</span>}
           <button
             type="button"

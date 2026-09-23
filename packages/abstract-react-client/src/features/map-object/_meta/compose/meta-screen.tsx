@@ -1,6 +1,8 @@
+import { useDeferredValue, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { objectIndex } from "@mapward/core";
-import type { MapObject } from "@mapward/core";
+import type { MapFile, MapObject } from "@mapward/core";
+import { searchMeta } from "../pure-model/meta.ts";
 import { MetaView, type MetaIcons } from "../ui/meta-view.tsx";
 
 type Actions = {
@@ -12,6 +14,10 @@ type Actions = {
  * Мета-экран объекта: собирает вид с действиями моста. Что хост умеет, решается здесь —
  * клиент не рисует того, чего ему не обещали (решение 0014), а имена и происхождение
  * показываются всегда: это текст.
+ *
+ * Здесь же живёт запрос поиска. Поле откликается на каждую букву, а отбор по разделам идёт по
+ * отложенному значению: на объекте с сотней директив набор не ждёт перерисовки списков. Запрос
+ * никуда не сохраняется, а на другом объекте экран пересоздаётся, и поле начинается пустым.
  */
 export function MetaScreen(props: {
   map: MapObject;
@@ -19,15 +25,21 @@ export function MetaScreen(props: {
   can: { openFile: boolean; virtualDocs: boolean };
   icons: MetaIcons;
   actions: Actions;
-  directives: ReactNode;
+  directives: (files: MapFile[]) => ReactNode;
 }) {
   const { object, actions } = props;
+  const [query, setQuery] = useState("");
+  const deferred = useDeferredValue(query);
+  const found = useMemo(() => searchMeta(object, deferred), [object, deferred]);
 
   return (
     <MetaView
       map={props.map}
       object={object}
       icons={props.icons}
+      query={query}
+      onQuery={setQuery}
+      found={found}
       directives={props.directives}
       {...(props.can.openFile ? { onOpenFile: actions.open } : {})}
       {...(props.can.virtualDocs

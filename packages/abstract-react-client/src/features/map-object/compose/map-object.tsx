@@ -42,7 +42,6 @@ import {
   MetricsIcon,
   NewDirectiveIcon,
   RunsIcon,
-  SearchIcon,
   TabIcon,
   WorkflowIcon,
 } from "../ui/icons.tsx";
@@ -313,7 +312,29 @@ export function MapObjectView(props: {
     // `relative` — для формы экшона: она ложится поверх вида, а не окном редактора (0038).
     <div className="relative flex h-full flex-col pb-2">
       {launcher.form}
-      <Breadcrumbs trail={path} onGo={go} back={arrow(-1)} forward={arrow(1)} {...objectTab} />
+      {/*
+        Виды объекта — мини-вкладками в строке истории, за стрелками: сразу видно, где ты, и
+        переход из любого вида в любой — один клик, а своей строки они не отнимают. Вид шагом
+        истории по-прежнему не считается: стрелки ведут с объекта (0036).
+      */}
+      <Breadcrumbs
+        trail={path}
+        onGo={go}
+        back={arrow(-1)}
+        forward={arrow(1)}
+        {...objectTab}
+        views={
+          <ViewTabs
+            active={view}
+            onSelect={setView}
+            tabs={[
+              { key: "metrics", label: "метрики", icon: MetricsIcon },
+              { key: "meta", label: "об объекте", icon: MetaIcon },
+              { key: "runs", label: "прогоны", icon: RunsIcon },
+            ]}
+          />
+        }
+      />
 
       <ObjectHeader
         name={current.name}
@@ -351,21 +372,6 @@ export function MapObjectView(props: {
             )}
           </>
         }
-      />
-
-      {/*
-        Виды объекта — мини-вкладками, а не кнопками «туда и обратно» в шапке: сразу видно, где
-        ты, и переход из любого вида в любой — один клик. Вид шагом истории по-прежнему не
-        считается: стрелки над заголовком ведут с объекта (0036).
-      */}
-      <ViewTabs
-        active={view}
-        onSelect={setView}
-        tabs={[
-          { key: "metrics", label: "метрики", icon: MetricsIcon },
-          { key: "meta", label: "об объекте", icon: MetaIcon },
-          { key: "runs", label: "прогоны", icon: RunsIcon },
-        ]}
       />
 
       {/*
@@ -448,16 +454,17 @@ export function MapObjectView(props: {
           />
         ) : meta ? (
           <MetaScreen
+            // Другой объект — другой экран: запрос поиска с прошлого сюда не переезжает.
+            key={current.address}
             map={map}
             object={current}
             can={can}
             icons={metaIcons}
             actions={actions}
-            directives={
+            directives={(files) => (
               <DirectiveSection
                 icon={DirectivesIcon}
-                searchIcon={SearchIcon}
-                files={newestFirst(current.directives)}
+                files={newestFirst(files)}
                 stages={current.workflow}
                 {...(openDirective === undefined ? {} : { onOpen: openDirective })}
                 {...(runStage === undefined ? {} : { onRunStage: runStage })}
@@ -470,7 +477,7 @@ export function MapObjectView(props: {
                     }
                   : {})}
               />
-            }
+            )}
           />
         ) : (
           grid(shown)
