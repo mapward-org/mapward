@@ -22,6 +22,7 @@ import type {
 import type { FilesPort } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
 import { flag, frontmatter } from "../../../../lib/frontmatter.ts";
+import { anchorDisplay } from "../../domain/component.ts";
 import { mergeIndex, mergeMetric } from "../../domain/merge.ts";
 import { defaultStages } from "../../domain/prompts.ts";
 import { substituteDeep } from "../../domain/substitution.ts";
@@ -145,7 +146,8 @@ async function readMetrics(
       cachePath: join(dir, entry.name),
       // Первый слой — тот файл, с которого мердж начинается; остальные припишет `extends`.
       layers: [{ address: own, path: configPath, from: "own" }],
-      config: Check(MetricConfig, raw) ? raw : {},
+      // Пути компонента — от этого файла, пока слой ещё виден (решение 0037).
+      config: Check(MetricConfig, raw) ? anchorDisplay(raw, configPath) : {},
     });
   }
 
@@ -272,7 +274,7 @@ async function extendMetric(
     // Only the config is taken from the parent; the cache stays where the metric itself lives.
     cachePath: metric.cachePath,
     layers: [{ address, path: configPath, from: "extends" }],
-    config: raw,
+    config: anchorDisplay(raw, configPath),
   };
   // The parent may extend something in turn.
   await extendMetric(files, parent, mapPath, seen);

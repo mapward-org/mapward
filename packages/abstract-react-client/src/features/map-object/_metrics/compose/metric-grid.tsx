@@ -6,6 +6,7 @@ import { useMetrics } from "../adapters/use-metrics.ts";
 import { useViewState } from "../../../../services/state/index.ts";
 import { Display } from "../ui/displays.tsx";
 import { MetricCell } from "../ui/metric-cell.tsx";
+import { MetricComponent } from "./metric-component.tsx";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
@@ -114,6 +115,19 @@ export function MetricGrid(props: {
               onOpen={props.onOpen}
               {...(props.onOpenObjectTab === undefined ? {} : { onOpenTab: props.onOpenObjectTab })}
               renderMap={(map) => props.renderMap(map, metric.address)}
+              renderComponent={(data) => (
+                <MetricComponent
+                  mapRef={props.mapRef}
+                  object={props.object}
+                  metric={metric}
+                  value={value}
+                  data={data}
+                  onOpen={props.onOpen}
+                  {...(props.onOpenObjectTab === undefined
+                    ? {}
+                    : { onOpenTab: props.onOpenObjectTab })}
+                />
+              )}
             />
           </MetricCell>
         );

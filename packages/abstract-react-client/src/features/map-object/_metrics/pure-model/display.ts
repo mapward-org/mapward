@@ -116,6 +116,9 @@ export function toDisplay(kind: string | undefined, data: unknown): DisplayData 
             relations: (record.relations ?? []) as MapRelation[],
           }
         : { kind: "unknown", reason: "ждём { nodes, relations }" };
+    // Форму компонента проверяет его схема на сервере (решение 0037): здесь данные идут как есть.
+    case "component":
+      return { kind: "component", data };
     default:
       return { kind: "unknown", reason: `дисплей ${kind ?? "не задан"}` };
   }

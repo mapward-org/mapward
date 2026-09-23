@@ -63,3 +63,7 @@ description: одной строкой, по ней решают, открыва
 - сборка: mtime `src` против `dist` врёт — `tsc` кладёт `.d.ts` рядом с исходниками; спрашивай `turbo run build --dry=json` — [файл](сравнение-времён-src-и-dist-врёт.md)
 - сборка: `_index.json` карты форматирует `oxfmt` только через stdin — по пути `ru/**` игнорируется, prettier даёт другой стиль — [файл](json-карты-форматирует-oxfmt-через-stdin.md)
 - расширение: VS Code ставит в вебвью `scrollbar-color` на `html` — пока не снят, `::-webkit-scrollbar` не работает, полосы со стрелками и чёрной дорожкой — [файл](вебвью-vscode-ставит-scrollbar-color.md)
+- cli: тест в `apps/*/src` берёт `@mapward/abstract-server` из `dist` — после правки сервера сперва собрать пакет — [файл](тесты-приложений-берут-сервер-из-dist.md)
+- сборка: расширение бандлит сервер из `src` по `paths`, не из его `dist` — плагины сборки сервера нужны и ему (`tsdown.raw.ts`) — [файл](расширение-бандлит-сервер-из-исходников.md)
+- сборка: `packages/*/src/**/*.d.ts` в `.gitignore` — ambient-объявление руками пиши в `.ts` без import/export — [файл](d-ts-в-src-пакетов-игнорируется.md)
+- окружение: `python3` из Bash пишет CRLF — `newline=""`; `pnpm add` переписывает `pnpm-workspace.yaml` — [файл](python-в-bash-пишет-crlf.md)

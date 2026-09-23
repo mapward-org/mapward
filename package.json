@@ -18,7 +18,9 @@
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",
+    "@mapward/display": "workspace:*",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
     "oxfmt": "^0.64.0",
     "oxlint": "^1.79.0",
     "tsdown": "catalog:",

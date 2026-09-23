@@ -1,0 +1,10 @@
+{
+  "name": "display",
+  "extends": "mapward://prototypes/package",
+  "props": {
+    "codePath": "packages/display",
+    "docsPath": "ru/docs/architecture/packages.md",
+    "packageName": "@mapward/display",
+    "architectureDoc": "ru/docs/architecture/display.md"
+  }
+}

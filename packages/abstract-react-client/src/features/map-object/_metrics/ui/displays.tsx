@@ -13,7 +13,7 @@ import { GitMark } from "./git-mark.tsx";
 import { Markdown, MarkdownLine } from "./markdown.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
-function Link(props: {
+export function Link(props: {
   node: StatusMark & Mark & { label?: string; link?: string };
   onOpen: (link: string) => void;
   /**
@@ -57,6 +57,30 @@ function Link(props: {
   );
 }
 
+/** Список пунктов — дисплей `list`; его же берёт набор `@mapward/display` (решение 0037). */
+export function LinkList(props: {
+  items: LinkNode[];
+  onOpen: (link: string) => void;
+  onOpenTab?: (link: string) => void;
+}) {
+  const tab = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
+  return (
+    <ul>
+      {props.items.map((item, index) => (
+        <li key={`${item.label ?? index}`} className="mb-1">
+          <Link node={item} onOpen={props.onOpen} {...tab} />
+          {item.description && (
+            <div className="pl-3 text-[11px] opacity-70">
+              {/* Вторая строка — тоже разметка: проверке нужны жирный, код и ссылки (0027). */}
+              <MarkdownLine text={item.description} onOpen={props.onOpen} {...tab} />
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function Display(props: {
   data: DisplayData;
   /** Whether the metric has run at all: a cell that never ran is not a cell with bad data. */
@@ -70,6 +94,11 @@ export function Display(props: {
    * решение 0015.
    */
   renderMap: (map: { nodes: LinkNode[]; relations: MapRelation[] }) => ReactNode;
+  /**
+   * Свой компонент метрики — решение 0037. Собирает его сервер, а выполняет `compose`: слою
+   * `ui` мост не положен.
+   */
+  renderComponent: (data: unknown) => ReactNode;
 }) {
   const { data } = props;
   // Одним куском, чтобы не переписывать необязательное поле в каждой ветке ниже.
@@ -95,25 +124,13 @@ export function Display(props: {
         </span>
       );
     case "list":
-      return (
-        <ul>
-          {data.items.map((item, index) => (
-            <li key={`${item.label ?? index}`} className="mb-1">
-              <Link node={item} onOpen={props.onOpen} {...tab} />
-              {item.description && (
-                <div className="pl-3 text-[11px] opacity-70">
-                  {/* Вторая строка — тоже разметка: проверке нужны жирный, код и ссылки (0027). */}
-                  <MarkdownLine text={item.description} onOpen={props.onOpen} {...tab} />
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      );
+      return <LinkList items={data.items} onOpen={props.onOpen} {...tab} />;
     case "tree":
       return <FileTree nodes={data.children} onOpen={props.onOpen} {...tab} />;
     case "map":
       return props.renderMap({ nodes: data.nodes, relations: data.relations });
+    case "component":
+      return props.renderComponent(data.data);
     default:
       return (
         <span className="text-[var(--mw-errorForeground)]" title={data.reason}>

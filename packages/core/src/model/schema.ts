@@ -80,6 +80,11 @@ export const MetricConfig = T.Object({
       kind: T.String(),
       // Decision 0010: what to say when there is nothing to show — an error would be a lie.
       empty: T.Optional(T.String()),
+      // Решение 0037: дисплей `component` — свой `.tsx` рядом с метрикой. Путь считается от
+      // папки того `config.json`, где он написан: компонент прототипа лежит у прототипа.
+      component: T.Optional(T.String()),
+      // JSON-схема данных компонента: объектом или путём к `.json`, от той же папки.
+      schema: T.Optional(T.Unknown()),
     }),
   ),
   // Decision 0010: a metric may come folded; what the person folds by hand wins over it.

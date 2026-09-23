@@ -3,7 +3,7 @@ import type { MapMetric, MapObject } from "@mapward/core";
 import type { Cancellation, FilesPort, ServerPorts } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
 import { excluded, matchesAny } from "../../domain/glob.ts";
-import { shapeHint } from "@mapward/core";
+import { displayHint } from "./display-schema.ts";
 import { objectEnv, parseAnswer } from "../../domain/agent.ts";
 
 export type Collected = { updatedAt: string; ok: boolean; data: unknown };
@@ -84,7 +84,8 @@ async function collector(
   spec: Record<string, unknown>,
   cwd: string,
   owner: MapObject,
-  displayKind: string | undefined,
+  /** Что сказать агенту о форме ответа: форма дисплея или схема компонента (решение 0037). */
+  hint: string,
   cancel?: Cancellation,
 ): Promise<{ value: unknown; log?: string }> {
   const env = () => objectEnv(owner, cwd, ports.env.vars());
@@ -112,7 +113,7 @@ async function collector(
       // human wrote, but not the address of the object the metric hangs on.
       const about = `Объект карты: «${owner.name}», адрес ${owner.address}, путь ${owner.path}.`;
       // The display knows its own shape, so the agent is told it rather than guessing.
-      const prompt = `${about}\n\n${String(spec.prompt)}\n\n${shapeHint(displayKind)}`;
+      const prompt = `${about}\n\n${String(spec.prompt)}\n\n${hint}`;
       const { stdout, stderr } = await ports.agent.run({ prompt, cwd, env: env(), cancel });
       return { value: parseAnswer(stdout), log: stderr || undefined };
     }
@@ -201,8 +202,9 @@ export async function collect(
       : undefined);
 
   try {
+    const hint = await displayHint(ports.files, metric.config.display);
     const results = await Promise.all(
-      specs.map((spec) => collector(ports, spec, cwd, owner, metric.config.display?.kind, cancel)),
+      specs.map((spec) => collector(ports, spec, cwd, owner, hint, cancel)),
     );
     const log = results
       .map((result) => result.log)

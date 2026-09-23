@@ -3,7 +3,14 @@ import { useBridgeClient } from "../../../../ports/bridge.tsx";
 import { useObservable } from "../../../../lib/rxjs-react/index.ts";
 import type { MapMetric } from "@mapward/core";
 
-export type Collected = { updatedAt?: string; ok?: boolean; data?: unknown; busy?: boolean };
+export type Collected = {
+  updatedAt?: string;
+  ok?: boolean;
+  data?: unknown;
+  busy?: boolean;
+  /** Что не прошло схему компонента — решение 0037. */
+  invalid?: string[];
+};
 export type Snapshot = Record<string, Collected>;
 
 type Ref = { mapPath: string; basePath: string; name: string };

@@ -3,6 +3,7 @@ import { argv, cwd, exit } from "node:process";
 import { createMapServer, findMaps, parseSettings, serveMcp } from "@mapward/abstract-server";
 import type { Settings } from "@mapward/abstract-server";
 import type { MapObject, ResolvedMap } from "@mapward/core";
+import { displayCheck } from "./display-check.ts";
 import { createPorts } from "./ports.ts";
 import { stdioTransport } from "./stdio.ts";
 
@@ -16,6 +17,9 @@ const USAGE = `mapward <команда>
   object [адрес] [карта]      объект целиком: поля, метрики со значениями, дети
   metric <адрес> [карта]      собрать метрику и напечатать результат
   mcp [карта]                 поднять mcp-сервер над картой
+  display check <адрес> [карта]
+                              дисплей-компонент метрики: тип данных по схеме, типы,
+                              сборка и последнее значение против схемы
 
 Адрес метрики — mapward://<объект>/_metrics/<имя>. Карта выбирается по имени, если их
 несколько; по умолчанию берётся первая.`;
@@ -46,7 +50,7 @@ function find(object: MapObject, address: string): MapObject | undefined {
 }
 
 async function main(): Promise<void> {
-  const [command, first, second] = argv.slice(2);
+  const [command, first, second, third] = argv.slice(2);
   const ports = createPorts();
   const maps = await findMaps(ports.files, cwd().replaceAll("\\", "/"));
 
@@ -115,6 +119,19 @@ async function main(): Promise<void> {
     const value = await server.runMetric({ ...map, metric: address });
     console.log(JSON.stringify(value, null, 2));
     return;
+  }
+
+  if (command === "display" && first === "check") {
+    if (!second) {
+      console.error(USAGE);
+      exit(1);
+      return;
+    }
+    const map = pick(maps, third ?? undefined);
+    const server = createMapServer(ports, await settingsOf(ports, map.configPath));
+    const ok = await displayCheck(ports, server, map, second);
+    // Вотчеров здесь нет, но esbuild держит процесс — выходим сами.
+    exit(ok ? 0 : 1);
   }
 
   if (command === "mcp") {

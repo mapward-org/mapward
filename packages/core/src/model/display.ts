@@ -53,7 +53,12 @@ export type DisplayShape =
   | { kind: "status"; ok: boolean; summary?: string }
   | { kind: "list"; items: LinkNode[] }
   | { kind: "tree"; children: TreeNode[] }
-  | { kind: "map"; nodes: LinkNode[]; relations: MapRelation[] };
+  | { kind: "map"; nodes: LinkNode[]; relations: MapRelation[] }
+  /**
+   * Свой компонент метрики — решение 0037. Формы у него нет: данные проверяет его схема на
+   * сервере, а клиент отдаёт их компоненту как есть.
+   */
+  | { kind: "component"; data: unknown };
 
 /**
  * Те же формы словами — их сервер кладёт в промпт, чтобы агент не угадывал (решение 0004).
@@ -69,9 +74,30 @@ export const SHAPES: Record<string, string> = {
   map: '{ "nodes": [{ "label"?: string, "link"?: string }], "relations": [{ "from"?: string, "to"?: string, "label"?: string, "link"?: string }] }',
 };
 
-export function shapeHint(kind: string | undefined): string {
+/**
+ * У компонента формы в инструменте нет — её объявляет он сам, JSON-схемой (решение 0037).
+ * Схема уходит агенту целиком: это та же подсказка, что у готовых дисплеев, только своя.
+ */
+export function shapeHint(kind: string | undefined, schema?: unknown): string {
+  if (kind === "component" && schema !== undefined) {
+    return `Ответь только json, который проходит эту JSON-схему, без пояснений: ${JSON.stringify(schema)}`;
+  }
   const shape = kind ? SHAPES[kind] : undefined;
   return shape
     ? `Ответь только json такой формы, без пояснений: ${shape}`
     : "Ответь только json, без пояснений";
 }
+
+/**
+ * Собранный компонент метрики — решение 0037. Код — CommonJS: `react` и `@mapward/display` в
+ * нём не лежат, их отдаёт клиент, иначе на странице две копии React и хуки ломаются.
+ *
+ * `errors` вместо кода — сборка не прошла; строки уже с файлом и позицией, клиенту остаётся
+ * их показать.
+ */
+export type DisplayBuild = {
+  code?: string;
+  css?: string;
+  errors?: string[];
+  builtAt: string;
+};

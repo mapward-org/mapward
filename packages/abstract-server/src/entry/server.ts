@@ -10,6 +10,7 @@ import {
   type ReadOptions,
   type RunOptions,
 } from "../features/map-object/application/services/metric-store.ts";
+import { createDisplayBuilds } from "../features/map-object/application/services/display-builds.ts";
 import {
   createDirective,
   deleteDirective,
@@ -49,6 +50,7 @@ export type ServerSettings = {
 export function createMapServer(ports: ServerPorts, settings: ServerSettings = {}) {
   const read = (ref: MapRef) => readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
   const metrics = createMetricStore(ports, read, settings);
+  const displays = createDisplayBuilds(ports, read);
   const turns = createTurnStore();
 
   /** Объект, директива и действующие на нём этапы — всё из модели, а не склейкой путей. */
@@ -93,6 +95,16 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
         ...(params.group === undefined ? {} : { group: params.group }),
         ...(params.metrics === undefined ? {} : { metrics: params.metrics }),
       }),
+
+    /**
+     * Собранный компонент метрики — решение 0037. Пересобирается сам, когда меняется компонент
+     * или то, что он импортирует; подписка приносит новую сборку.
+     */
+    watchDisplay: (params: MapRef & { metric: string }) => displays.watch(params, params.metric),
+
+    /** Сборка без слежки: ей отвечает `mapward display check`. */
+    buildDisplay: (params: MapRef & { metric: string }) =>
+      displays.buildOnce(params, params.metric),
 
     runMetric: (params: MapRef & { metric: string } & RunOptions & { wait?: boolean }) =>
       metrics.run(params, params.metric, params),

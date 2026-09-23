@@ -40,6 +40,7 @@ export function serveBridge(
     getMap: (ref) => server.getMap(ref),
     watchMap: (ref) => server.watchMap(ref),
     watchMetrics: (params) => server.watchMetrics(params),
+    watchDisplay: (params) => server.watchDisplay(params),
     runMetric: (params) => server.runMetric(params),
 
     /** Тот же объект во всю ширину редактора — решение 0026. */

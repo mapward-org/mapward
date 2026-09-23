@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "required": ["directives"],
+  "properties": {
+    "directives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "object", "file", "status", "stage", "runs"],
+        "properties": {
+          "name": { "type": "string" },
+          "object": { "type": "string" },
+          "file": { "type": "string" },
+          "status": { "enum": ["open", "done"] },
+          "stage": { "type": ["string", "null"] },
+          "runs": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

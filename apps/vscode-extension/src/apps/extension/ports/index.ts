@@ -1,4 +1,6 @@
 import { exec, spawn } from "node:child_process";
+import { readFile, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import * as vscode from "vscode";
 import type {
   Cancellation,
@@ -18,6 +20,15 @@ const encode = (text: string) => new TextEncoder().encode(text);
 const uri = (path: string) => vscode.Uri.file(path);
 
 const files = {
+  /** У `workspace.fs` ссылок нет, а сборке компонента нужен настоящий путь пакета (0037). */
+  async realpath(path: string): Promise<string | undefined> {
+    try {
+      return await realpath(path);
+    } catch {
+      return undefined;
+    }
+  },
+
   async read(path: string): Promise<string | undefined> {
     try {
       return decode(await vscode.workspace.fs.readFile(uri(path)));
@@ -175,6 +186,8 @@ export function createPorts(): ServerPorts {
       },
     },
     env: { vars: () => process.env },
+    // `.wasm` esbuild копируется в `dist` при сборке: в `.vsix` едет только он (решение 0037).
+    bundler: { wasm: () => readFile(join(__dirname, "esbuild.wasm")) },
     // Редактор умеет всё: терминалы, открыть файл, спросить строку, показать текст без файла
     // на диске и открыть объект табом — решения 0014, 0019 и 0026.
     capabilities: { terminals: true, openFile: true, ask: true, virtualDocs: true, tabs: true },

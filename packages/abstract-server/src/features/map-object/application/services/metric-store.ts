@@ -6,6 +6,7 @@ import { createCancellation } from "../../../../lib/cancellation.ts";
 import { createLimit } from "../../../../lib/limit.ts";
 import { collect, readCache, writeLogs, type Collected } from "../use-cases/collect.ts";
 import { transform } from "../use-cases/transform.ts";
+import { checkDisplayData } from "../use-cases/display-schema.ts";
 import { createBuiltins } from "./builtin.ts";
 
 /** Что видно про метрику снаружи: значение, когда его собрали, чем кончилось и идёт ли прогон. */
@@ -20,6 +21,11 @@ export type MetricValue = {
    * говорит, ответ это или его отсутствие; когда собиралась, написано в `updatedAt`.
    */
   collected: boolean;
+  /**
+   * Данные не прошли схему компонента — решение 0037: строка на поле, путь и что ожидалось.
+   * Метрика тогда красная, а компонент не рисуется: ему пришло не то, что он объявил.
+   */
+  invalid?: string[];
 };
 
 export type MetricsSnapshot = Record<string, MetricValue>;
@@ -54,6 +60,8 @@ type Entry = {
   result?: Collected;
   busy: boolean;
   hydrated: boolean;
+  /** Что не прошло схему компонента; считается, когда меняется `result`. */
+  invalid?: string[];
   running?: Promise<void>;
   cancel?: () => void;
 };
@@ -62,10 +70,11 @@ const noop = () => {};
 
 const valueOf = (entry: Entry): MetricValue => ({
   updatedAt: entry.result?.updatedAt,
-  ok: entry.result?.ok,
+  ok: entry.invalid === undefined ? entry.result?.ok : false,
   data: entry.result?.data,
   busy: entry.busy,
   collected: entry.result !== undefined,
+  ...(entry.invalid === undefined ? {} : { invalid: entry.invalid }),
 });
 
 /** Отменяется только то, что об этом просили: `cancelOnLeave` у коллектора или трансформа. */
@@ -106,6 +115,13 @@ export function createMetricStore(
     return created;
   };
 
+  /** Схему компонента проверяет сервер, а не клиент: валидатор есть только здесь (0037). */
+  async function validate(metric: MapMetric, entry: Entry): Promise<void> {
+    if (!entry.result) return;
+    const errors = await checkDisplayData(ports.files, metric.config.display, entry.result.data);
+    entry.invalid = errors.length > 0 ? errors : undefined;
+  }
+
   const entryOf = (mapPath: string, address: string): Entry => {
     const all = entriesOf(mapPath);
     const existing = all.get(address);
@@ -128,6 +144,7 @@ export function createMetricStore(
     const result = transformed ?? collected;
     if (result) {
       entry.result = result;
+      await validate(metric, entry);
       changes.next(mapPath);
     }
   }
@@ -252,6 +269,7 @@ export function createMetricStore(
       }
     } finally {
       stopDeadline();
+      await validate(metric, entry);
       entry.busy = false;
       entry.cancel = undefined;
       changes.next(ref.mapPath);

@@ -70,6 +70,19 @@ export const mapBridge = {
     }),
     T.Void(),
   ),
+  /**
+   * Собранный компонент метрики — решение 0037. Подписка, а не вызов: правка компонента или
+   * того, что он импортирует, пересобирает его, и ячейка перерисовывается сама.
+   */
+  watchDisplay: createBridgeSubscription(
+    T.Object({
+      mapPath: T.String(),
+      basePath: T.String(),
+      name: T.String(),
+      metric: T.String(),
+    }),
+    T.Unknown(),
+  ),
   runMetric: createBridgeMethod(
     T.Object({
       mapPath: T.String(),

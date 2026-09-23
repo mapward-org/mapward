@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "required": ["note", "items", "tree"],
+  "properties": {
+    "note": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label"],
+        "properties": {
+          "label": { "type": "string" },
+          "status": { "type": "string" },
+          "color": { "type": "string" },
+          "hint": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "tree": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["label"],
+      "properties": {
+        "label": { "type": "string" },
+        "link": { "type": "string" },
+        "isDir": { "type": "boolean" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+      }
+    }
+  }
+}

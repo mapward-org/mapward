@@ -1,4 +1,6 @@
 import { defineConfig } from "tsdown";
+// Сервер бандлится из исходников, а в нём css tailwind импортируется `?raw` (решение 0037).
+import { raw } from "../../packages/abstract-server/tsdown.raw.ts";
 
 /**
  * Прод-режим включается переменной окружения, а не отдельным конфигом: сборка одна, и разойтись
@@ -25,6 +27,7 @@ export default defineConfig([
     // хосте он попадает в симлинки монорепы и работает, а установленное расширение падает на
     // активации, и сайдбар крутит спиннер вечно. Проверяется составом `require` в бандле.
     deps: { alwaysBundle: [/.*/], neverBundle: ["vscode"] },
+    plugins: [raw],
   },
   {
     entry: { webview: "src/apps/webview/main.tsx" },

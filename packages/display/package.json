@@ -1,0 +1,34 @@
+{
+  "name": "@mapward/display",
+  "version": "0.0.0",
+  "description": "Types for a metric display written as a React component: props and the building blocks the map hands it.",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unrun": "catalog:"
+  },
+  "peerDependencies": {
+    "@types/react": "^19.0.0"
+  }
+}

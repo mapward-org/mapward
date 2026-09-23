@@ -1,0 +1,33 @@
+{
+  "label": "Решения — компонент",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/demo-decisions/collect.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "display": {
+    "kind": "component",
+    "component": "./display.tsx",
+    "schema": {
+      "type": "object",
+      "required": ["decisions"],
+      "properties": {
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["number", "title", "file", "draft"],
+            "properties": {
+              "number": { "type": "string" },
+              "title": { "type": "string" },
+              "file": { "type": "string" },
+              "draft": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -31,6 +31,12 @@ src/
 Стор метрик живёт здесь же (`application/services/metric-store.ts`): значения, свежесть по `staleTime`,
 интервалы и отмена по уходу — решение [0013](../decisions/0013-metrics-store.md).
 
+Дисплей-компонент метрики — там же, в `features/map-object`: сборка `.tsx` esbuild-ом в
+WebAssembly и css tailwind на его классы — юзкейс `build-display`, кэш и слежка за
+прочитанными файлами — сервис `display-builds`, схема данных — `display-schema`. Файлы сборка
+читает портом, `.wasm` просит порт `bundler`; css tailwind едет внутри пакета текстом через
+`?raw` — решение [0037](../decisions/0037-component-display.md).
+
 Список «ждут ответа» — фича `features/directive-turns`: директивы, где этап кончился и ход у
 человека. Правила списка в `domain/`, сам список в памяти и подписка на него — в
 `application/`. Кладёт и убирает пункты сборка сервера: `finishDirective` и `runDirective`,

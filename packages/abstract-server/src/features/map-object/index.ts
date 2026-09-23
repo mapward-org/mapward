@@ -19,4 +19,7 @@ export {
   deleteDirective,
   directiveName,
 } from "./application/use-cases/directives.ts";
+export { createDisplayBuilds } from "./application/services/display-builds.ts";
+export { checkDisplayData, readDisplaySchema } from "./application/use-cases/display-schema.ts";
+export { dataDeclaration, schemaErrors, schemaType } from "./domain/component.ts";
 export { readMapState, writeMapState } from "./application/use-cases/map-state.ts";

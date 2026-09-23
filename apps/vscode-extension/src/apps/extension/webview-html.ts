@@ -19,6 +19,9 @@ export function webviewHtml(
     ),
   ).join("");
 
+  // `unsafe-eval` — ради дисплея-компонента метрики (решение 0037): его код собирает сервер и
+  // приносит строкой, а выполнить строку без этого разрешения нельзя. Код карты свой: его пишет
+  // автор карты или её агент, как и скрипты метрик, которые и так идут в оболочке.
   // Адрес уезжает в страницу значением, а не вызовом: скрипту вебвью неоткуда спросить, на чём
   // его открыли, а `postMessage` следом означал бы кадр с пустым экраном перед первым ответом.
   const startup =
@@ -33,7 +36,7 @@ export function webviewHtml(
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}' 'unsafe-eval';" />
     <link rel="stylesheet" href="${asset("webview.css")}" />
     <style nonce="${nonce}">
       @font-face {

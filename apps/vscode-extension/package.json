@@ -20,7 +20,7 @@
   "type": "commonjs",
   "main": "./dist/extension.cjs",
   "scripts": {
-    "build": "tsdown && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify && node scripts/copy-codicons.mjs",
+    "build": "tsdown && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify && node scripts/copy-codicons.mjs && node scripts/copy-esbuild-wasm.mjs",
     "dev": "pnpm run \"/^dev:/\"",
     "typecheck": "tsc",
     "package": "node scripts/package-vsix.mjs",
@@ -33,6 +33,7 @@
     "@mapward/abstract-server": "workspace:*",
     "@mapward/core": "workspace:*",
     "@xyflow/react": "catalog:",
+    "esbuild-wasm": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "rxjs": "catalog:",

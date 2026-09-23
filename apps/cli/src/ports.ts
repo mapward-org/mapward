@@ -1,5 +1,6 @@
 import { exec, spawn } from "node:child_process";
-import { readdir, readFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { watch } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -17,6 +18,14 @@ import type {
  */
 
 const files = {
+  async realpath(path: string): Promise<string | undefined> {
+    try {
+      return await realpath(path);
+    } catch {
+      return undefined;
+    }
+  },
+
   async read(path: string): Promise<string | undefined> {
     try {
       return await readFile(path, "utf8");
@@ -151,6 +160,18 @@ export function createPorts(): ServerPorts {
     },
 
     env: { vars: () => process.env },
+
+    /**
+     * `.wasm` esbuild лежит в `node_modules` рядом с cli — решение 0037: cli ставится пакетом,
+     * и его зависимости с ним.
+     */
+    bundler: {
+      wasm: async () => {
+        const require = createRequire(import.meta.url);
+        const dir = dirname(require.resolve("esbuild-wasm/package.json"));
+        return readFile(join(dir, "esbuild.wasm"));
+      },
+    },
 
     /**
      * Ни терминала редактора, ни вкладки под текст без файла у cli нет, и клиент узнаёт об

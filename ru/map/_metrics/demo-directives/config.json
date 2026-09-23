@@ -1,0 +1,11 @@
+{
+  "label": "Директивы — компонент",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/demo-directives/collect.mjs\""
+    }
+  ],
+  "display": { "kind": "component", "component": "./display.tsx", "schema": "./schema.json" }
+}

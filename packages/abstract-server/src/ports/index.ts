@@ -21,6 +21,11 @@ export type FilesPort = {
   read(path: string): Promise<string | undefined>;
   list(path: string): Promise<FileEntry[]>;
   write(path: string, text: string): Promise<void>;
+  /**
+   * Настоящий путь за ссылками. Нужен сборке компонента (решение 0037): пакеты pnpm лежат по
+   * ссылкам и свои зависимости находят от настоящего места. Хост не умеет — путь как есть.
+   */
+  realpath?(path: string): Promise<string | undefined>;
   /** Убрать файл. Файла нет — это тоже успех: удаление зовут ради того, чтобы его не стало. */
   remove(path: string): Promise<void>;
   /**
@@ -74,6 +79,13 @@ export type TimersPort = {
 /** Переменные окружения процесса: скрипт метрики ждёт их рядом со своими. */
 export type EnvPort = { vars(): ProcessEnv };
 
+/**
+ * Сборщик дисплея-компонента — решение 0037. Сам esbuild в WebAssembly лежит в сервере, а
+ * приложение отдаёт только его `.wasm`: где он лежит, знает оно одно — в расширении это
+ * `dist`, в cli — `node_modules`.
+ */
+export type BundlerPort = { wasm(): Promise<Uint8Array> };
+
 export type { Cancellation, ProcessEnv };
 
 /**
@@ -90,4 +102,6 @@ export type ServerPorts = {
   timers: TimersPort;
   env: EnvPort;
   capabilities: Capabilities;
+  /** Хоста без сборщика компонент метрики не показывает, а говорит, что собрать нечем. */
+  bundler?: BundlerPort;
 };

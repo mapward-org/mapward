@@ -1,9 +1,9 @@
 import type { MapMetric, MapObject } from "@mapward/core";
 import type { Cancellation, ServerPorts } from "../../../../ports/index.ts";
 import type { Builtins } from "../services/builtin.ts";
-import { shapeHint } from "@mapward/core";
 import { objectEnv, parseAnswer } from "../../domain/agent.ts";
 import { writeCache, writeLogs, type Collected } from "./collect.ts";
+import { displayHint } from "./display-schema.ts";
 
 /**
  * A collector returns what the source has; a display waits for its own shape. The transform
@@ -19,7 +19,8 @@ async function step(
   input: unknown,
   owner: MapObject,
   cwd: string,
-  displayKind: string | undefined,
+  /** Что сказать агенту о форме ответа: форма дисплея или схема компонента (решение 0037). */
+  hint: string,
   cancel?: Cancellation,
 ): Promise<{ value: unknown; log?: string }> {
   const env = objectEnv(owner, cwd, ports.env.vars());
@@ -50,7 +51,7 @@ async function step(
       // Usually there is no text to write: the display knows the shape, and the data speaks
       // for itself — decision 0004.
       const intro = spec.prompt ? `${String(spec.prompt)}\n\n` : "";
-      const prompt = `${intro}${shapeHint(displayKind)}\n\nДанные:\n${payload}`;
+      const prompt = `${intro}${hint}\n\nДанные:\n${payload}`;
       const { stdout, stderr } = await ports.agent.run({ prompt, cwd, env, cancel });
       return { value: parseAnswer(stdout), log: stderr || undefined };
     }
@@ -76,19 +77,11 @@ export async function transform(
   let value = collected.data;
 
   try {
+    const hint = await displayHint(ports.files, metric.config.display);
     for (const spec of specs) {
       // In order, each one fed by the last: that is what makes them a pipeline.
       // oxlint-disable-next-line no-await-in-loop
-      const result = await step(
-        ports,
-        builtins,
-        spec,
-        value,
-        owner,
-        cwd,
-        metric.config.display?.kind,
-        cancel,
-      );
+      const result = await step(ports, builtins, spec, value, owner, cwd, hint, cancel);
       value = result.value;
       if (result.log) logs.push(result.log);
     }

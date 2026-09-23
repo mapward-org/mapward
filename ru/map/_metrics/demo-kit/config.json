@@ -1,0 +1,33 @@
+{
+  "label": "Набор @mapward/display",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "static",
+      "value": {
+        "note": "Витрина набора: **Markdown**, `код` и [ссылка на решение](ru/docs/decisions/0037-component-display.md).",
+        "items": [
+          { "label": "прошло", "status": "success", "description": "статус `success`" },
+          { "label": "упало", "status": "fail", "description": "статус `fail`" },
+          { "label": "ждёт", "status": "pending", "hint": "в очереди" },
+          { "label": "свой цвет", "color": "#b180d7", "hint": "color перебивает статус" }
+        ],
+        "tree": [
+          {
+            "label": "packages/display",
+            "isDir": true,
+            "children": [
+              { "label": "package.json", "link": "packages/display/package.json" },
+              {
+                "label": "src",
+                "isDir": true,
+                "children": [{ "label": "index.ts", "link": "packages/display/src/index.ts" }]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "display": { "kind": "component", "component": "./display.tsx", "schema": "./schema.json" }
+}

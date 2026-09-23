@@ -52,6 +52,13 @@ MCP-сервер карты поднимается здесь же: `apps/extens
 терминалов — решение [0032](../decisions/0032-stage-buttons-in-directive-file.md). Она же решает,
 временные терминалы или постоянные: по тому, встал ли MCP-сервер на порт из `mcpPort`.
 
+Дисплей-компонент метрики собирает сервер, а расширение отдаёт ему `.wasm` esbuild: при сборке
+`scripts/copy-esbuild-wasm.mjs` кладёт его в `dist`, порт `bundler` читает оттуда. Сам esbuild и
+tailwind бандлятся в `extension.cjs`, а css tailwind сервер импортирует `?raw` — поэтому
+`tsdown.config.ts` берёт плагин `raw` у `abstract-server`. Код компонента вебвью выполняет
+строкой, отсюда `unsafe-eval` в политике безопасности `webview-html.ts` — решение
+[0037](../decisions/0037-component-display.md).
+
 Список «ждут ответа» держит сервер, мост только передаёт его сайдбару (`watchTurns`,
 `dismissTurn`). То же число `apps/extension/map-view.ts` ставит на иконку карты в левой полосе,
 полем `badge` вида сайдбара: его видно и при закрытой панели — решение
