@@ -1,6 +1,14 @@
 #!/usr/bin/env node
+import { statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { argv, cwd, exit } from "node:process";
-import { createMapServer, findMaps, parseSettings, serveMcp } from "@mapward/abstract-server";
+import {
+  bundleBuild,
+  createMapServer,
+  findMaps,
+  parseSettings,
+  serveMcp,
+} from "@mapward/abstract-server";
 import type { Settings } from "@mapward/abstract-server";
 import { findActionOwner } from "@mapward/core";
 import type { MapObject, ResolvedMap } from "@mapward/core";
@@ -230,6 +238,14 @@ async function main(): Promise<void> {
       // Карта названа командой, но сервер всё равно отдаёт список: так обращается агент (0009).
       first ? [map] : maps,
       stdioTransport(),
+      // Из какого бандла отвечает сервер — решение 0039.
+      bundleBuild(fileURLToPath(import.meta.url), (path) => {
+        try {
+          return statSync(path).mtimeMs;
+        } catch {
+          return undefined;
+        }
+      }),
     );
     return;
   }

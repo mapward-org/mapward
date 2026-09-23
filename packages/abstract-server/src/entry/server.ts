@@ -12,12 +12,14 @@ import {
 } from "../features/map-object/application/services/metric-store.ts";
 import { createDisplayBuilds } from "../features/map-object/application/services/display-builds.ts";
 import {
+  appendReply,
   createDirective,
   deleteDirective,
   finishStage,
   startStage,
 } from "../features/map-object/application/use-cases/directives.ts";
 import {
+  promptFingerprint,
   stagePrompt,
   stageRequest,
   defaultStageText,
@@ -238,7 +240,7 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
      * не видит, а это ровно то, от чего уходили.
      */
     runDirective: async (
-      params: MapRef & { address: string; directive: string; stage?: string },
+      params: MapRef & { address: string; directive: string; stage?: string; known?: string },
     ) => {
       const found = await locate(params);
       const stage = pickStage(found.stages, params.stage);
@@ -264,28 +266,38 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
         directive: found.file.name,
       });
 
-      return {
-        stage: stage.name,
-        marksDone: stage.marksDone,
-        directive: found.file.path,
-        prompt: stagePrompt({
-          stage,
-          text: body(text),
-          hook: found.object.workflowPrompt,
-          directivePath: found.file.path,
-          object: found.object,
-          mapPath: params.mapPath,
-        }),
-      };
+      const prompt = stagePrompt({
+        stage,
+        text: body(text),
+        hook: found.object.workflowPrompt,
+        directivePath: found.file.path,
+        object: found.object,
+        mapPath: params.mapPath,
+      });
+      const promptHash = promptFingerprint(prompt);
+      const head = { stage: stage.name, marksDone: stage.marksDone, directive: found.file.path };
+
+      // Тот же текст второй раз — пять килобайт на круг, которые агент уже держит в контексте
+      // (решение 0039). Отпечаток называет сам агент: сервер не знает, какая сессия зовёт, и
+      // новая, ничего не назвав, получает промпт целиком.
+      return params.known === promptHash
+        ? { ...head, unchanged: true, promptHash }
+        : { ...head, promptHash, prompt };
     },
 
     /** Этап закончен. Помечает ли это директиву выполненной, решает сам этап. */
     finishDirective: async (
-      params: MapRef & { address: string; directive: string; stage?: string },
+      params: MapRef & { address: string; directive: string; stage?: string; reply?: string },
     ) => {
       const found = await locate(params);
       const stage = pickStage(found.stages, params.stage);
       if (!stage) throw new Error(`У объекта нет этапа ${String(params.stage)}`);
+
+      // Реплика — до состояния: этап, который помечает директиву выполненной, снимает копию уже
+      // с ней (решение 0039).
+      if (params.reply !== undefined) {
+        await appendReply(ports, { directivePath: found.file.path, reply: params.reply });
+      }
 
       await finishStage(ports, {
         objectPath: found.object.path,

@@ -24,6 +24,37 @@ export type McpTransport = {
 
 type Request = { jsonrpc: "2.0"; id?: number | string; method: string; params?: unknown };
 
+/**
+ * Из какой сборки отвечает сервер — решение 0039. Живой MCP обслуживает собранный бандл, а не
+ * исходники, и агент, проверяющий свою правку, иначе не отличит «правка не сработала» от «окно
+ * не перезагрузили». Собирает это хост: только он знает, из какого файла загружен.
+ *
+ * `stale` — файл бандла на диске новее того, что загружено: пересобрали, а окно не перезагрузили.
+ */
+export type McpBuild = { bundle: string; builtAt?: string; loadedAt: string; stale: boolean };
+
+/**
+ * Сведения о сборке для `serveMcp` по файлу бандла. Время сборки — время файла на момент загрузки:
+ * вшивать его при сборке значило бы трогать конфиги обоих хостов ради одного числа. Файлы
+ * читает хост, поэтому `mtime` приходит снаружи — у сервера своего доступа к диску нет.
+ */
+export function bundleBuild(
+  bundle: string,
+  mtime: (path: string) => number | undefined,
+  loadedAt = new Date(),
+): () => McpBuild {
+  const built = mtime(bundle);
+  return () => {
+    const now = mtime(bundle);
+    return {
+      bundle,
+      ...(built === undefined ? {} : { builtAt: new Date(built).toISOString() }),
+      loadedAt: loadedAt.toISOString(),
+      stale: built !== undefined && now !== undefined && now > built,
+    };
+  };
+}
+
 const PROTOCOL = "2024-11-05";
 
 /**
@@ -242,7 +273,9 @@ async function describe(
 const TOOLS = [
   {
     name: "list_maps",
-    description: "Карты, которые отдаёт этот сервер. Имя карты указывается в остальных вызовах.",
+    description:
+      "Карты, которые отдаёт этот сервер. Имя карты указывается в остальных вызовах. " +
+      "Поле build — из какой сборки отвечает сервер; stale: true — пересобрали, а окно не перезагрузили.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -373,7 +406,9 @@ const TOOLS = [
     description:
       "Взять директиву в работу: вернуть промпт этапа и отметить, что прогон начался. " +
       "Кнопок у директивы нет — этим вызовом она и выполняется. " +
-      "Какие этапы есть у объекта, видно в read_object, поле workflow; без stage берётся первый.",
+      "Какие этапы есть у объекта, видно в read_object, поле workflow; без stage берётся первый. " +
+      "Вместе с промптом приходит promptHash: на следующем круге передай его в known, и неизменившийся промпт не приедет заново. " +
+      "Поле build говорит, из какой сборки отвечает сервер; stale: true — пересобрали, а окно не перезагрузили.",
     inputSchema: {
       type: "object",
       properties: {
@@ -386,6 +421,11 @@ const TOOLS = [
           type: "string",
           description: "имя этапа из workflow объекта; без него — первый по порядку",
         },
+        known: {
+          type: "string",
+          description:
+            "promptHash из прошлого ответа run_directive. Совпал — промпт не повторяется, приходит unchanged: true, а прогон отмечается как обычно. Промпта в контексте нет — не передавай",
+        },
         map: { type: "string", description: "имя карты; без него первая" },
       },
       required: ["address", "directive"],
@@ -395,13 +435,19 @@ const TOOLS = [
     name: "finish_directive",
     description:
       "Отметить, что этап закончен. Этап, которому это поручено (marksDone), помечает директиву выполненной: " +
-      "копию текста и время снимает сервер, писать _directives.state руками не надо.",
+      "копию текста и время снимает сервер, писать _directives.state руками не надо. " +
+      "С reply сервер сам дописывает реплику в конец файла директивы: ставит пустую строку перед ней и ничего выше не трогает.",
     inputSchema: {
       type: "object",
       properties: {
         address: { type: "string", description: "mapward:// адрес объекта директивы" },
         directive: { type: "string", description: "имя файла директивы" },
         stage: { type: "string", description: "имя этапа; без него — первый по порядку" },
+        reply: {
+          type: "string",
+          description:
+            'текст реплики в тред, как есть — с "> [AI]" и цитатой. Дописывается в конец директивы до записи состояния, поэтому попадает и в копию выполненной',
+        },
         map: { type: "string", description: "имя карты; без него первая" },
       },
       required: ["address", "directive"],
@@ -519,7 +565,12 @@ const text = (value: unknown) => ({
  *
  * Возвращает функцию остановки.
  */
-export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransport): () => void {
+export function serveMcp(
+  server: MapServer,
+  maps: MapRef[],
+  transport: McpTransport,
+  build?: () => McpBuild,
+): () => void {
   // Карт единицы, и параметр необязателен — поэтому ошибка сразу называет их все: иначе агент
   // тратит вызов `list_maps` на то, что помещается в одну строку.
   const mapOf = (name: unknown): MapRef => {
@@ -540,8 +591,24 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
     transport.send({ jsonrpc: "2.0", id, error: { code: -32_000, message } });
 
   async function call(name: string, args: Record<string, unknown>): Promise<unknown> {
+    // Неизвестный параметр — отказ, а не молчание (решение 0039). Проглоченный параметр
+    // выглядит принятым: агент на старой сборке зовёт новый параметр, получает прежний ответ и
+    // уверенно заключает, что правка не сработала.
+    const tool = TOOLS.find((entry) => entry.name === name);
+    if (tool) {
+      const known = Object.keys(tool.inputSchema.properties);
+      const unknown = Object.keys(args).filter((key) => !known.includes(key));
+      if (unknown.length > 0) {
+        throw new Error(
+          `У ${name} нет параметра ${unknown.join(", ")}. Есть: ${known.join(", ") || "никаких"}.` +
+            (build?.().stale ? " Сервер отвечает из устаревшей сборки — перезагрузи окно." : ""),
+        );
+      }
+    }
+
     if (name === "list_maps") {
-      return text(maps.map((entry) => ({ name: entry.name, mapPath: entry.mapPath })));
+      const listed = maps.map((entry) => ({ name: entry.name, mapPath: entry.mapPath }));
+      return text(build ? { maps: listed, build: build() } : listed);
     }
 
     // Доки — про инструмент, а не про карту, поэтому имя карты здесь ни при чём.
@@ -722,11 +789,20 @@ export function serveMcp(server: MapServer, maps: MapRef[], transport: McpTransp
         directive: String(args.directive ?? ""),
         ...(typeof args.stage === "string" ? { stage: args.stage } : {}),
       };
-      return text(
-        name === "run_directive"
-          ? await server.runDirective(params)
-          : await server.finishDirective(params),
-      );
+      if (name === "finish_directive") {
+        return text(
+          await server.finishDirective({
+            ...params,
+            ...(typeof args.reply === "string" ? { reply: args.reply } : {}),
+          }),
+        );
+      }
+      const started = await server.runDirective({
+        ...params,
+        ...(typeof args.known === "string" ? { known: args.known } : {}),
+      });
+      // Сборка — в каждом прогоне: этап начинают с него, а до list_maps агент доходит не всегда.
+      return text(build ? { ...started, build: build() } : started);
     }
 
     if (name === "run_metric") {

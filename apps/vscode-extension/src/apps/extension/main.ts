@@ -1,5 +1,6 @@
+import { statSync } from "node:fs";
 import * as vscode from "vscode";
-import { createMapServer, parseSettings, serveMcp } from "@mapward/abstract-server";
+import { bundleBuild, createMapServer, parseSettings, serveMcp } from "@mapward/abstract-server";
 import type { MapServer, ServerSettings } from "@mapward/abstract-server";
 import { readMaps, registerVirtualDocs } from "@/features/maps/index.extension.ts";
 import { createPorts } from "./ports/index.ts";
@@ -63,6 +64,15 @@ async function createServer(): Promise<{ server: MapServer; mcpPort?: number }> 
   return { server, ...(mcpPorts[0] === undefined ? {} : { mcpPort: mcpPorts[0] }) };
 }
 
+/** Время файла; файла нет — `undefined`, а не ноль: «не знаю» не значит «давно». */
+const mtimeOf = (path: string): number | undefined => {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return undefined;
+  }
+};
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Обёртка ловит конец этапа, откуда бы он ни пришёл: сервер один и на мост, и на MCP.
   const created = await createServer();
@@ -72,8 +82,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // пока открыта карта, и его адрес уезжает в сессии терминалов.
   const state = await readMaps();
   if (state.kind === "maps") {
+    // Из какого бандла отвечает сервер — решение 0039: `__filename` здесь `dist/extension.cjs`,
+    // и после `pnpm build` без перезагрузки окна он на диске новее загруженного.
+    const build = bundleBuild(__filename, mtimeOf);
     const mcp = await startMcpHttp(
-      (transport) => serveMcp(server, state.maps, transport),
+      (transport) => serveMcp(server, state.maps, transport, build),
       created.mcpPort,
     );
     if (created.mcpPort !== undefined && !mcp.fixed) {

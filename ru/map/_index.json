@@ -14,6 +14,7 @@
           "decisions",
           "decisions-drift",
           "requirements-links",
+          "links",
           "children-list"
         ],
         "details-metrics-layout": {
@@ -24,6 +25,7 @@
             ["decisions"],
             ["decisions-drift"],
             ["requirements-links"],
+            ["links"],
             ["children-list"]
           ],
           "style": {

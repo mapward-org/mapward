@@ -1,0 +1,19 @@
+{
+  "label": "Битые ссылки в доках",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "script",
+      "run": "node \"${{ mapward:// }}/_metrics/links/links.mjs\" \"${{ mapward://@ }}\""
+    }
+  ],
+  "transforms": [
+    {
+      "kind": "git-status"
+    }
+  ],
+  "display": {
+    "kind": "list",
+    "empty": "все ссылки на месте"
+  }
+}

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { ServerPorts } from "../../../../ports/index.ts";
-import { deleteDirective } from "./directives.ts";
+import { appendReply, deleteDirective } from "./directives.ts";
 
 /** Диск в памяти: удаление проверяется тем же способом, что и чтение карты — решение 0014. */
 function fakePorts(tree: Record<string, string>): ServerPorts {
@@ -57,4 +57,20 @@ test("именем директивы не выйти из папки объек
   await expect(
     deleteDirective(fakePorts(tree), { objectPath: OBJECT, directive: "../../_index.json" }),
   ).rejects.toThrow("Не имя директивы");
+});
+
+test("реплика дописывается в конец и не трогает то, что выше", async () => {
+  const path = `${OBJECT}/_directives/${DIRECTIVE}`;
+  const cases: [string, string][] = [
+    ["", "> [AI] да\n"],
+    ["ответ", "ответ\n\n> [AI] да\n"],
+    ["ответ\n", "ответ\n\n> [AI] да\n"],
+    ["ответ\n\n", "ответ\n\n> [AI] да\n"],
+  ];
+  for (const [before, after] of cases) {
+    const tree: Record<string, string> = { [path]: before };
+    // oxlint-disable-next-line no-await-in-loop
+    await appendReply(fakePorts(tree), { directivePath: path, reply: "> [AI] да\n\n" });
+    expect(tree[path]).toBe(after);
+  }
 });

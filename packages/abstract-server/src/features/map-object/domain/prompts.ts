@@ -170,3 +170,18 @@ export function stagePrompt(params: {
 
   return [...head, text, ...(hook ? ["", "--- Кроме того ---", "", hook] : []), ...tail].join("\n");
 }
+
+/**
+ * Отпечаток промпта этапа — решение 0039: по нему агент говорит, что текст у него уже есть, и
+ * сервер не шлёт его заново. Это сравнение, а не защита, поэтому FNV-1a, без зависимостей.
+ * Считается по собранному промпту целиком: поменялись пути, общее правило объекта или сам
+ * этап — отпечаток другой, и текст приедет.
+ */
+export function promptFingerprint(prompt: string): string {
+  let hash = 0x81_1c_9d_c5;
+  for (let at = 0; at < prompt.length; at++) {
+    hash ^= prompt.charCodeAt(at);
+    hash = Math.imul(hash, 0x01_00_01_93);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}

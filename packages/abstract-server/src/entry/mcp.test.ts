@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { FilesPort, ServerPorts } from "../ports/index.ts";
 import { createMapServer } from "./server.ts";
-import { serveMcp, type McpTransport } from "./mcp.ts";
+import { bundleBuild, serveMcp, type McpBuild, type McpTransport } from "./mcp.ts";
 import type { MapRef } from "../features/map-object/application/services/metric-store.ts";
 
 /** Карта в памяти: MCP проверяется без редактора и без диска — решение 0014. */
@@ -594,6 +594,7 @@ async function callWith(
   disk: Record<string, string>,
   name: string,
   args: Record<string, unknown>,
+  build?: () => McpBuild,
 ): Promise<{ result: Record<string, unknown>; writes: Record<string, string> }> {
   const writes: Record<string, string> = {};
   const files = fakeFiles(disk);
@@ -611,13 +612,18 @@ async function callWith(
 
   let handler: ((message: unknown) => void) | undefined;
   const replies: Record<string, unknown>[] = [];
-  serveMcp(server, [ref], {
-    onMessage: (next) => {
-      handler = next;
-      return () => undefined;
+  serveMcp(
+    server,
+    [ref],
+    {
+      onMessage: (next) => {
+        handler = next;
+        return () => undefined;
+      },
+      send: (message) => replies.push(message as Record<string, unknown>),
     },
-    send: (message) => replies.push(message as Record<string, unknown>),
-  });
+    build,
+  );
   handler?.({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } });
   for (let tick = 0; tick < 1000 && replies.length === 0; tick++) await Promise.resolve();
 
@@ -716,6 +722,85 @@ test("an unknown stage names the ones the object has", async () => {
   await expect(
     callWith({ ...workflowTree }, "run_directive", { ...directive, stage: "нет такого" }),
   ).rejects.toThrow(/Обсудить/);
+});
+
+/** Реплику дописывает сервер — решение 0039: в конец, с пустой строкой перед ней. */
+test("finish_directive appends the reply to the end of the directive", async () => {
+  const path = "/map/_directives/2026-09-20-0100-проба.md";
+  const { writes } = await callWith({ ...workflowTree }, "finish_directive", {
+    ...directive,
+    stage: "Выполнить",
+    reply: "> [AI] готово\n\n",
+  });
+
+  // У автора нет перевода строки в конце — реплика всё равно не прилипает к его строке.
+  expect(writes[path]).toBe("текст директивы\n\n> [AI] готово\n");
+  // Реплика записана до состояния: копия выполненной директивы уже с ней.
+  const state = JSON.parse(
+    writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
+  );
+  expect(state.directive).toBe(writes[path]);
+});
+
+test("a finish without a reply leaves the directive alone", async () => {
+  const { writes } = await callWith({ ...workflowTree }, "finish_directive", {
+    ...directive,
+    stage: "Обсудить",
+  });
+  expect(writes["/map/_directives/2026-09-20-0100-проба.md"]).toBeUndefined();
+});
+
+test("a known prompt is not sent again, an unknown one is", async () => {
+  const first = await callWith({ ...workflowTree }, "run_directive", {
+    ...directive,
+    stage: "Обсудить",
+  });
+  const hash = String(first.result.promptHash);
+  expect(first.result.prompt).toBeDefined();
+
+  const again = await callWith({ ...workflowTree }, "run_directive", {
+    ...directive,
+    stage: "Обсудить",
+    known: hash,
+  });
+  expect(again.result).toMatchObject({ unchanged: true, promptHash: hash });
+  expect(again.result.prompt).toBeUndefined();
+  // Прогон отмечен и без промпта: круг был.
+  const state = JSON.parse(
+    again.writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
+  );
+  expect(state.run.stage).toBe("Обсудить");
+
+  const stale = await callWith({ ...workflowTree }, "run_directive", {
+    ...directive,
+    stage: "Обсудить",
+    known: "00000000",
+  });
+  expect(stale.result.prompt).toBe(first.result.prompt);
+});
+
+test("an unknown parameter is refused with the known ones, not swallowed", async () => {
+  await expect(callWith({ ...workflowTree }, "read_object", { deepth: 2 })).rejects.toThrow(
+    /нет параметра deepth.*depth/,
+  );
+});
+
+test("the server says which build it answers from", async () => {
+  let now = 1000;
+  const build = bundleBuild("/ext/dist/extension.cjs", () => now, new Date(0));
+
+  const listed = await callWith({ ...workflowTree }, "list_maps", {}, build);
+  expect(listed.result.build).toMatchObject({ bundle: "/ext/dist/extension.cjs", stale: false });
+
+  // Пересобрали, окно не перезагрузили: файл на диске новее загруженного.
+  now = 2000;
+  const run = await callWith(
+    { ...workflowTree },
+    "run_directive",
+    { ...directive, stage: "Обсудить" },
+    build,
+  );
+  expect(run.result.build).toMatchObject({ stale: true, builtAt: new Date(1000).toISOString() });
 });
 
 test("read_object shows the workflow acting on the object", async () => {
