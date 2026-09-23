@@ -10,6 +10,8 @@ catalog:
   tsdown: ^0.22.14
   unrun: ^0.3.1
   vitest: ^4.1.11
+  # Разбор исходников в тестах правил слоёв клиента (решение 0042)
+  oxc-parser: ^0.151.0
 
   # The extension: webview runtime and editor types
   react: ^19.2.0

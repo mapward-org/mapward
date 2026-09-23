@@ -33,8 +33,11 @@ export const isService = (name: string) => name.startsWith("_") || name.startsWi
 export const directiveStatePath = (objectPath: string, directive: string) =>
   join(objectPath, "_directives.state", `${directive.replace(/\.md$/, "")}.state.json`);
 
-/** Своё у объекта: что написано в его файлах, без того, что придёт от прототипа. */
-export type OwnObject = {
+/**
+ * Своё у объекта из его `_index.json`: всё, кроме списков (метрик, экшонов, директив, этапов) —
+ * те читаются каждый из своей папки и своей частью (решение 0042).
+ */
+export type OwnIndex = {
   address: string;
   path: string;
   name: string;
@@ -47,10 +50,6 @@ export type OwnObject = {
   detailsLayout?: ObjectIndex["details-metrics-layout"];
   previewStyle?: ObjectIndex["preview-style"];
   layers: ConfigLayer[];
-  metrics: MapMetric[];
-  actions: MapAction[];
-  directives: MapFile[];
-  workflow: MapStage[];
   prompt?: string;
   workflowPrompt?: string;
   workflowMode?: "merge" | "replace";
@@ -169,21 +168,15 @@ export function ownAction(
   };
 }
 
-/** Всё, что прочитано про один объект. */
-export type ObjectParts = {
+/** Индекс объекта по его `_index.json`; у группы файла нет вовсе. */
+export function ownIndex(parts: {
   path: string;
   address: string;
   /** Имя папки: им объект зовётся, если своего имени не написал. */
   folder: string;
-  /** `_index.json` как есть; у группы его нет вовсе. */
+  /** `_index.json` как есть. */
   index: unknown;
-  metrics: MapMetric[];
-  actions: MapAction[];
-  directives: MapFile[];
-  workflow: MapStage[];
-};
-
-export function ownObject(parts: ObjectParts): OwnObject {
+}): OwnIndex {
   const { path, address, index } = parts;
   const own: ObjectIndex = Check(ObjectIndex, index) ? index : {};
   // У группы `_index.json` нет вовсе, и слоя тоже нет: показывать нечего, а пустой путь
@@ -203,10 +196,6 @@ export function ownObject(parts: ObjectParts): OwnObject {
     detailsLayout: own["details-metrics-layout"],
     previewStyle: own["preview-style"],
     layers,
-    metrics: parts.metrics,
-    actions: parts.actions,
-    directives: parts.directives,
-    workflow: parts.workflow,
     prompt: own.prompt,
     workflowPrompt: own["directives-workflow"]?.prompt,
     workflowMode: own["directives-workflow"]?.mode,

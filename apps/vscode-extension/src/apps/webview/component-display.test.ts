@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { expect, test } from "vitest";
-import { ComponentDisplay } from "../../../../../packages/abstract-react-client/src/features/map-object/_metrics/ui/component-display.tsx";
-import { Display } from "../../../../../packages/abstract-react-client/src/features/map-object/_metrics/ui/displays.tsx";
+import { ComponentDisplay } from "../../../../../packages/abstract-react-client/src/features/metrics/compose/component-display.tsx";
+import { Display } from "../../../../../packages/abstract-react-client/src/features/metrics/compose/displays.tsx";
 
 /**
  * Ячейка дисплея-компонента — решение 0037. У клиента нет `react-dom`, поэтому рендер проверяется

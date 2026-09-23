@@ -21,6 +21,7 @@
     "@mapward/display": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
+    "oxc-parser": "catalog:",
     "oxfmt": "^0.64.0",
     "oxlint": "^1.79.0",
     "tsdown": "catalog:",

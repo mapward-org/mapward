@@ -1,6 +1,8 @@
-import { useRef, useState } from "react";
+import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
-import { RowMenu, useDismiss, type MenuAction } from "./row-menu.tsx";
+import { Popup } from "../mobx/popup.ts";
+import { useLocalStore } from "../mobx/use-local-store.ts";
+import { RowMenu, type MenuAction } from "./row-menu.tsx";
 
 const RemoveIcon = (
   <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -19,7 +21,7 @@ export type { MenuAction };
  *
  * Крестик остаётся на наведении: он справа, и мышь едет к нему поперёк списка, а не вниз.
  */
-export function ListRow(props: {
+export const ListRow = observer(function ListRow(props: {
   label: string;
   /** Подробность, которой не место в строке: висит тултипом. */
   title?: string;
@@ -32,16 +34,15 @@ export function ListRow(props: {
   onRemove?: () => void;
   children?: ReactNode;
 }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  useDismiss(box, open, () => setOpen(false));
+  // Меню лежит `fixed`: прокрутка списка его закрывает, иначе оно уедет от строки.
+  const popup = useLocalStore(() => new Popup(undefined, true));
 
   const menu = props.menu;
-  const select = props.onSelect ?? (menu ? () => setOpen(!open) : undefined);
+  const select = props.onSelect ?? (menu ? () => popup.toggle() : undefined);
 
   return (
     <div
-      ref={box}
+      ref={popup.hold}
       className={`group/row relative flex items-center hover:bg-[var(--mw-list-hoverBackground)] ${
         props.onRemove ? "pr-7" : "pr-2"
       }`}
@@ -65,8 +66,8 @@ export function ListRow(props: {
           label={menu.label}
           {...(menu.title === undefined ? {} : { title: menu.title })}
           actions={menu.actions}
-          open={open}
-          onOpen={setOpen}
+          open={popup.open}
+          onOpen={(open) => (open ? popup.show() : popup.close())}
         />
       )}
 
@@ -88,4 +89,4 @@ export function ListRow(props: {
       {props.children}
     </div>
   );
-}
+});

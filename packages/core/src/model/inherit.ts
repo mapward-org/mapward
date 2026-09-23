@@ -2,20 +2,27 @@ import { childAddress, mapAddress, parseAddress, readField } from "./address.ts"
 import { defaultStages } from "./default-workflow.ts";
 import { mergeAction, mergeIndex, mergeMetric } from "./merge.ts";
 import { adoptAction, adoptMetric, fromPrototype } from "./model.ts";
-import type { MapFile, MapObject, MapStage } from "./model.ts";
-import type { OwnObject } from "./raw-object.ts";
+import type { MapAction, MapFile, MapMetric, MapObject, MapStage } from "./model.ts";
+import type { OwnIndex } from "./raw-object.ts";
 import type { MetricGroup } from "./schema.ts";
 import { substituteDeep, type Resolve } from "./substitution.ts";
 
 /**
- * Сборка объекта из своего и прототипова — чистые функции (решение 0041). Живая модель зовёт их
- * на каждом объекте отдельно: объект собирается из своих файлов и из уже собранного прототипа,
- * а подстановки — из собранных объектов, на которые они ссылаются. Поэтому здесь один шаг, а не
- * обход дерева: дерево обходит модель.
+ * Сборка объекта из своего и прототипова — чистые функции (решения 0041 и 0042). Объект
+ * собирается по частям: индекс, метрики, экшоны, директивы, этапы. Каждая часть — из своей
+ * части объекта и той же части уже собранного прототипа, поэтому чтение имени не тянет за собой
+ * директивы, а правка директивы не пересобирает метрики. Дерево здесь не обходится: его
+ * обходит живая модель.
  */
 
-/** Объект после наследования, до подстановок: без детей — детей держит модель. */
-export type Inherited = Omit<MapObject, "children">;
+/** Часть объекта, которую собирает индекс: всё, кроме списков и детей. */
+export type IndexPart = Omit<
+  MapObject,
+  "children" | "metrics" | "actions" | "directives" | "workflow"
+>;
+
+/** Кто объект для подстановок и для слоёв наследника: адрес, путь, имя и свойства. */
+export type Named = Pick<MapObject, "address" | "path" | "name" | "props">;
 
 /**
  * Унаследованный файл помечается владельцем: лежит он у прототипа, и править его надо там.
@@ -64,8 +71,8 @@ const joinPrompts = (inherited?: string, own?: string): string | undefined => {
   return parts.length === 0 ? undefined : parts.join("\n\n");
 };
 
-/** Объект без прототипа — ровно то, что он написал сам. */
-function alone(own: OwnObject): Inherited {
+/** Индекс объекта без прототипа — ровно то, что он написал сам. */
+function aloneIndex(own: OwnIndex): IndexPart {
   return {
     address: own.address,
     path: own.path,
@@ -77,10 +84,6 @@ function alone(own: OwnObject): Inherited {
     detailsLayout: own.detailsLayout,
     previewStyle: own.previewStyle,
     layers: own.layers,
-    metrics: own.metrics,
-    directives: own.directives,
-    actions: own.actions,
-    workflow: own.workflow,
     prompt: own.prompt,
     workflowPrompt: own.workflowPrompt,
     workflowMode: own.workflowMode,
@@ -90,11 +93,13 @@ function alone(own: OwnObject): Inherited {
 }
 
 /**
- * Объект поверх собранного прототипа: `extends` объектов (решения 0003 и 0004). Прототипа нет —
- * объект как написан.
+ * Индекс поверх собранного индекса прототипа: `extends` объектов (решения 0003 и 0004).
+ * Промптовые поля складываются, а не подменяются — решение 0018: объект, дописавший себе
+ * строчку, иначе молча потерял бы общее правило карты. Вкладки раздаются прототипом, как этапы
+ * (решение 0025).
  */
-export function inherit(own: OwnObject, prototype: Inherited | undefined): Inherited {
-  const base = alone(own);
+export function inheritIndex(own: OwnIndex, prototype: IndexPart | undefined): IndexPart {
+  const base = aloneIndex(own);
   if (!prototype) return base;
 
   const merged = mergeIndex(
@@ -116,40 +121,6 @@ export function inherit(own: OwnObject, prototype: Inherited | undefined): Inher
     },
   );
 
-  // Metrics of the prototype come along; a metric of the same key overrides its parent.
-  const mineMetrics = new Map(own.metrics.map((metric) => [metric.key, metric]));
-  const metrics = [
-    ...prototype.metrics.map((metric) => {
-      const mine = mineMetrics.get(metric.key);
-      // Свой `config.json` есть — метрика заведена здесь, даже если часть полей от прототипа.
-      // Нет — метрика чужая, и это видно по владельцу, как у директив с экшонами.
-      return mine
-        ? {
-            ...mine,
-            config: mergeMetric(metric.config, mine.config),
-            layers: [...mine.layers, ...fromPrototype(metric.layers)],
-          }
-        : { ...adoptMetric(own, metric), owner: metric.owner ?? prototype.address };
-    }),
-    ...own.metrics.filter((metric) => !prototype.metrics.some((p) => p.key === metric.key)),
-  ];
-
-  // Экшоны — как метрики: свой с тем же ключом перекрывает прототипов (решение 0038).
-  const mineActions = new Map(own.actions.map((action) => [action.key, action]));
-  const actions = [
-    ...prototype.actions.map((action) => {
-      const mine = mineActions.get(action.key);
-      return mine
-        ? {
-            ...mine,
-            config: mergeAction(action.config, mine.config),
-            layers: [...mine.layers, ...fromPrototype(action.layers)],
-          }
-        : { ...adoptAction(own, action), owner: action.owner ?? prototype.address };
-    }),
-    ...own.actions.filter((action) => !prototype.actions.some((p) => p.key === action.key)),
-  ];
-
   return {
     ...base,
     prototypeName: prototype.name,
@@ -160,22 +131,8 @@ export function inherit(own: OwnObject, prototype: Inherited | undefined): Inher
     previewStyle: merged["preview-style"],
     // `_index.json` прототипа — следующий слой объекта, ровно как `extends` у метрики.
     layers: [...own.layers, ...fromPrototype(prototype.layers)],
-    metrics,
-    // По имени, и своё выигрывает: иначе одна и та же директива приезжала бы столько раз,
-    // сколько прототипов в цепочке.
-    directives: byName(prototype.directives, own.directives, prototype.address),
-    actions,
-    // Промптовые поля складываются, а не подменяются — решение 0018: объект, дописавший себе
-    // строчку, иначе молча потерял бы общее правило карты.
     prompt: joinPrompts(prototype.prompt, own.prompt),
     workflowPrompt: joinPrompts(prototype.workflowPrompt, own.workflowPrompt),
-    // Этапы наследуются, как экшоны, но объект может сказать `mode: "replace"` — тогда
-    // унаследованные не приезжают вовсе. Решение 0017.
-    workflow:
-      own.workflowMode === "replace"
-        ? own.workflow
-        : byStage(prototype.workflow, own.workflow, prototype.address),
-    // Вкладки раздаются прототипом так же, как этапы (решение 0025).
     metricGroups:
       own.metricGroupsMode === "replace"
         ? own.metricGroups
@@ -183,14 +140,85 @@ export function inherit(own: OwnObject, prototype: Inherited | undefined): Inher
   };
 }
 
+/** Где объект и кто его прототип — всё, что нужно спискам, чтобы унаследоваться. */
+type Owner = { address: string; path: string };
+
+/** Metrics of the prototype come along; a metric of the same key overrides its parent. */
+export function inheritMetrics(
+  object: Owner,
+  own: MapMetric[],
+  prototype: { address: string; metrics: MapMetric[] } | undefined,
+): MapMetric[] {
+  if (!prototype) return own;
+  const mine = new Map(own.map((metric) => [metric.key, metric]));
+  return [
+    ...prototype.metrics.map((metric) => {
+      const found = mine.get(metric.key);
+      // Свой `config.json` есть — метрика заведена здесь, даже если часть полей от прототипа.
+      // Нет — метрика чужая, и это видно по владельцу, как у директив с экшонами.
+      return found
+        ? {
+            ...found,
+            config: mergeMetric(metric.config, found.config),
+            layers: [...found.layers, ...fromPrototype(metric.layers)],
+          }
+        : { ...adoptMetric(object, metric), owner: metric.owner ?? prototype.address };
+    }),
+    ...own.filter((metric) => !prototype.metrics.some((p) => p.key === metric.key)),
+  ];
+}
+
+/** Экшоны — как метрики: свой с тем же ключом перекрывает прототипов (решение 0038). */
+export function inheritActions(
+  object: Owner,
+  own: MapAction[],
+  prototype: { address: string; actions: MapAction[] } | undefined,
+): MapAction[] {
+  if (!prototype) return own;
+  const mine = new Map(own.map((action) => [action.key, action]));
+  return [
+    ...prototype.actions.map((action) => {
+      const found = mine.get(action.key);
+      return found
+        ? {
+            ...found,
+            config: mergeAction(action.config, found.config),
+            layers: [...found.layers, ...fromPrototype(action.layers)],
+          }
+        : { ...adoptAction(object, action), owner: action.owner ?? prototype.address };
+    }),
+    ...own.filter((action) => !prototype.actions.some((p) => p.key === action.key)),
+  ];
+}
+
+/**
+ * По имени, и своё выигрывает: иначе одна и та же директива приезжала бы столько раз, сколько
+ * прототипов в цепочке.
+ */
+export const inheritDirectives = (
+  own: MapFile[],
+  prototype: { address: string; directives: MapFile[] } | undefined,
+): MapFile[] => (prototype ? byName(prototype.directives, own, prototype.address) : own);
+
+/**
+ * Этапы наследуются, как экшоны, но объект может сказать `mode: "replace"` — тогда
+ * унаследованные не приезжают вовсе. Решение 0017: переопределять можно целиком и частями.
+ */
+export const inheritWorkflow = (
+  own: MapStage[],
+  mode: "merge" | "replace" | undefined,
+  prototype: { address: string; workflow: MapStage[] } | undefined,
+): MapStage[] =>
+  !prototype || mode === "replace" ? own : byStage(prototype.workflow, own, prototype.address);
+
 /** Где искать цели подстановок: собранные объекты по адресу, до своих подстановок. */
-export type Lookup = (address: string) => Inherited | undefined;
+export type Lookup = (address: string) => Named | undefined;
 
 /**
  * Substitution runs after inheritance, so `~` means the concrete object rather than the
  * prototype it borrowed the expression from — decision 0006.
  */
-export function resolver(find: Lookup, self: Inherited, basePath: string, depth = 0): Resolve {
+export function resolver(find: Lookup, self: Named, basePath: string, depth = 0): Resolve {
   return (raw: string): string | undefined => {
     const address = parseAddress(raw);
     if (!address || depth > 10) return undefined;
@@ -218,32 +246,29 @@ export function resolver(find: Lookup, self: Inherited, basePath: string, depth 
 }
 
 /**
- * Объект с подстановками и дефолтными этапами — то, что видят сайдбар и агент.
- *
+ * Индекс с подстановками. Промпт пишет путь адресом, а не вручную: карта переезжает, и зашитый
+ * путь переезжает не с ней. Описание вкладки — такой же текст карты, как промпт.
+ */
+export const resolveIndex = (index: IndexPart, at: Resolve): IndexPart => ({
+  ...index,
+  props: substituteDeep(index.props, at),
+  prompt: substituteDeep(index.prompt, at),
+  workflowPrompt: substituteDeep(index.workflowPrompt, at),
+  metricGroups: substituteDeep(index.metricGroups, at),
+});
+
+/** Конфиги метрик с подстановками: общая метрика берёт пути и имена у объекта. */
+export const resolveMetrics = (metrics: MapMetric[], at: Resolve): MapMetric[] =>
+  metrics.map((metric) => ({ ...metric, config: substituteDeep(metric.config, at) }));
+
+/** У экшона тоже: общий экшон берёт пути и имена у объекта, на котором его нажали. */
+export const resolveActions = (actions: MapAction[], at: Resolve): MapAction[] =>
+  actions.map((action) => ({ ...action, config: substituteDeep(action.config, at) }));
+
+/**
  * Объект, у которого своих этапов нет ни где, ни у прототипов, работает по дефолту — и дефолт
  * кладётся прямо в модель. Иначе его подставлял бы каждый, кто читает карту, и клиент с агентом
  * однажды показали бы разное (решение 0017).
  */
-export function resolve(object: Inherited, find: Lookup, basePath: string): Inherited {
-  const at = resolver(find, object, basePath);
-  return {
-    ...object,
-    props: substituteDeep(object.props, at),
-    // Промпт пишет путь адресом, а не вручную: карта переезжает, и зашитый путь переезжает не с
-    // ней. Подстановка идёт после наследования, поэтому `~` значит объект, а не прототип.
-    prompt: substituteDeep(object.prompt, at),
-    workflowPrompt: substituteDeep(object.workflowPrompt, at),
-    metrics: object.metrics.map((metric) => ({
-      ...metric,
-      config: substituteDeep(metric.config, at),
-    })),
-    // У экшона тоже: общий экшон берёт пути и имена у объекта, на котором его нажали.
-    actions: object.actions.map((action) => ({
-      ...action,
-      config: substituteDeep(action.config, at),
-    })),
-    // Описание вкладки — такой же текст карты, как промпт: в нём пишут пути адресами.
-    metricGroups: substituteDeep(object.metricGroups, at),
-    workflow: object.workflow.length === 0 ? defaultStages() : object.workflow,
-  };
-}
+export const resolveWorkflow = (workflow: MapStage[]): MapStage[] =>
+  workflow.length === 0 ? defaultStages() : workflow;
