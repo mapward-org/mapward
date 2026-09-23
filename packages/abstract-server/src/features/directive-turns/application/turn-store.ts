@@ -7,16 +7,22 @@ import { stageFinished, turnTaken, type Turn, type TurnKey } from "../domain/tur
  *
  * Подписчик сразу получает текущий список, потом каждое изменение — как подписка на карту.
  */
-export function createTurnStore() {
-  const turns = new BehaviorSubject<Turn[]>([]);
+export class TurnStore {
+  private readonly turns = new BehaviorSubject<Turn[]>([]);
 
-  const set = (next: Turn[]) => {
-    if (next !== turns.value) turns.next(next);
-  };
+  watch(): Observable<Turn[]> {
+    return this.turns.asObservable();
+  }
 
-  return {
-    watch: (): Observable<Turn[]> => turns.asObservable(),
-    finished: (turn: Turn) => set(stageFinished(turns.value, turn)),
-    taken: (key: TurnKey) => set(turnTaken(turns.value, key)),
-  };
+  finished(turn: Turn): void {
+    this.set(stageFinished(this.turns.value, turn));
+  }
+
+  taken(key: TurnKey): void {
+    this.set(turnTaken(this.turns.value, key));
+  }
+
+  private set(next: Turn[]): void {
+    if (next !== this.turns.value) this.turns.next(next);
+  }
 }

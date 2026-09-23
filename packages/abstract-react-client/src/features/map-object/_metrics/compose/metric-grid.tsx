@@ -152,6 +152,8 @@ export function MetricGrid(props: {
             <Display
               data={toDisplay(metric.config.display?.kind, value?.data)}
               collected={value?.data !== undefined}
+              // Снимка ещё нет или метрика ещё поднимается — это загрузка, а не «не собиралась».
+              pending={value === undefined || value.loading === true}
               empty={metric.config.display?.empty}
               onOpen={props.onOpen}
               {...(props.onOpenObjectTab === undefined ? {} : { onOpenTab: props.onOpenObjectTab })}

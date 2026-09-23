@@ -10,21 +10,20 @@ import type {
   RunStatus,
   RunStep,
 } from "@mapward/core";
-import type { ServerPorts } from "../../../ports/index.ts";
+import type {
+  ClockPort,
+  EnvPort,
+  FileReader,
+  FileWriter,
+  TimersPort,
+} from "../../../ports/index.ts";
+import type { MapRef } from "../../../kernel/map-ref.ts";
+import { objectEnv } from "../../../kernel/object-env.ts";
 import { createCancellation, type Cancellation } from "../../../lib/cancellation.ts";
 import { join } from "../../../lib/path.ts";
-import { objectEnv } from "../../map-object/domain/agent.ts";
-import { runPrompt, runScript } from "../../map-object/application/use-cases/execute.ts";
 import { checkInputs, fillInputs, inputEnv } from "../domain/inputs.ts";
 import { orphaned, RUNS_DIR, runsFile, trim } from "../domain/history.ts";
-
-export type MapRef = { mapPath: string; basePath: string; name: string };
-
-/** Что прогону нужно от остального сервера: карта и пересборка метрик после успеха. */
-export type RunDeps = {
-  readMap: (ref: MapRef) => Promise<MapObject>;
-  runMetric: (ref: MapRef, address: string) => Promise<unknown>;
-};
+import type { RunsExecutor, RunsMapSource, RunsMetricRefresh } from "../ports.ts";
 
 /**
  * Запись прогона метрики: стор метрик сообщает, что стадия началась и кончилась, а хранит и
@@ -65,33 +64,44 @@ export function capped(text: string | undefined): string | undefined {
  * Прогоны одного экшона идут параллельно: у экшона параметры, и запустить его на разные значения
  * разом — обычное дело. Поэтому у каждого запуска свой номер, свой лог и своя остановка.
  */
-export function createRunStore(ports: ServerPorts, deps: RunDeps) {
-  const maps = new Map<string, MapRuns>();
-  const changes = new Subject<string>();
-  let counter = 0;
+export class RunStore {
+  private readonly maps = new Map<string, MapRuns>();
+  private readonly changes = new Subject<string>();
+  private counter = 0;
 
-  const stateOf = (mapPath: string): MapRuns => {
-    const existing = maps.get(mapPath);
+  constructor(
+    private readonly files: FileReader & FileWriter,
+    private readonly executor: RunsExecutor,
+    private readonly map: RunsMapSource,
+    /** Экшон пишет, метрики читают: после успеха он просит пересобрать названные метрики. */
+    private readonly metrics: RunsMetricRefresh,
+    private readonly env: EnvPort,
+    private readonly timers: TimersPort,
+    private readonly clock: ClockPort,
+  ) {}
+
+  private stateOf(mapPath: string): MapRuns {
+    const existing = this.maps.get(mapPath);
     if (existing) return existing;
     const created: MapRuns = { runs: [], loaded: new Map(), controls: new Map() };
-    maps.set(mapPath, created);
+    this.maps.set(mapPath, created);
     return created;
-  };
+  }
 
   /** Прогоны объекта с диска — один раз на объект. Файла нет или он битый — прогонов нет. */
-  function load(mapPath: string, object: string): Promise<void> {
-    const state = stateOf(mapPath);
+  private load(mapPath: string, object: string): Promise<void> {
+    const state = this.stateOf(mapPath);
     const existing = state.loaded.get(object);
     if (existing) return existing;
     const loading = (async () => {
-      const text = await ports.files.read(join(dir(mapPath), runsFile(object)));
+      const text = await this.files.read(join(dir(mapPath), runsFile(object)));
       if (text === undefined) return;
       try {
         const saved = JSON.parse(text) as Run[];
-        const now = ports.clock.now();
+        const now = this.clock.now();
         const known = new Set(state.runs.map((run) => run.id));
         state.runs.push(...saved.filter((run) => !known.has(run.id)).map((r) => orphaned(r, now)));
-        changes.next(mapPath);
+        this.changes.next(mapPath);
       } catch {
         // Битый файл — не повод падать экрану: прогоны локальные, их потеря ничего не ломает.
       }
@@ -100,74 +110,76 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
     return loading;
   }
 
-  async function persist(mapPath: string, object: string): Promise<void> {
-    const state = stateOf(mapPath);
+  private async persist(mapPath: string, object: string): Promise<void> {
+    const state = this.stateOf(mapPath);
     state.runs = trim(state.runs);
     const mine = state.runs.filter((run) => run.object === object && run.status !== "running");
     const root = dir(mapPath);
     // Звёздочка внутри самой папки: корневой `.gitignore` человеку править не нужно.
     const ignore = join(mapPath, ".mapward", ".gitignore");
-    if ((await ports.files.read(ignore)) === undefined) await ports.files.write(ignore, "*\n");
-    await ports.files.write(join(root, runsFile(object)), JSON.stringify(mine, null, 2) + "\n");
+    if ((await this.files.read(ignore)) === undefined) await this.files.write(ignore, "*\n");
+    await this.files.write(join(root, runsFile(object)), JSON.stringify(mine, null, 2) + "\n");
   }
 
-  const nextId = () => `${Date.parse(ports.clock.now()).toString(36)}-${(++counter).toString(36)}`;
+  private nextId(): string {
+    return `${Date.parse(this.clock.now()).toString(36)}-${(++this.counter).toString(36)}`;
+  }
 
-  function begin(mapPath: string, run: Omit<Run, "id" | "status" | "startedAt" | "steps">): Run {
+  private begin(mapPath: string, run: Omit<Run, "id" | "status" | "startedAt" | "steps">): Run {
     const created: Run = {
       ...run,
-      id: nextId(),
+      id: this.nextId(),
       status: "running",
-      startedAt: ports.clock.now(),
+      startedAt: this.clock.now(),
       steps: [],
     };
-    stateOf(mapPath).runs.unshift(created);
-    changes.next(mapPath);
+    this.stateOf(mapPath).runs.unshift(created);
+    this.changes.next(mapPath);
     return created;
   }
 
-  function stepStart(mapPath: string, run: Run, name: string): RunStep {
-    const step: RunStep = { name, status: "running", startedAt: ports.clock.now() };
+  private stepStart(mapPath: string, run: Run, name: string): RunStep {
+    const step: RunStep = { name, status: "running", startedAt: this.clock.now() };
     run.steps.push(step);
-    changes.next(mapPath);
+    this.changes.next(mapPath);
     return step;
   }
 
-  function stepEnd(
+  private stepEnd(
     mapPath: string,
     step: RunStep,
     status: RunStatus,
     texts: { log?: string; output?: string } = {},
   ): void {
     step.status = status;
-    step.finishedAt = ports.clock.now();
+    step.finishedAt = this.clock.now();
     if (texts.log) step.log = texts.log;
     if (texts.output) step.output = texts.output;
-    changes.next(mapPath);
+    this.changes.next(mapPath);
   }
 
-  async function end(mapPath: string, run: Run, status: RunStatus, error?: string): Promise<void> {
+  private async end(mapPath: string, run: Run, status: RunStatus, error?: string): Promise<void> {
     run.status = status;
-    run.finishedAt = ports.clock.now();
+    run.finishedAt = this.clock.now();
     if (error) run.error = error;
-    changes.next(mapPath);
-    await persist(mapPath, run.object);
+    this.changes.next(mapPath);
+    await this.persist(mapPath, run.object);
   }
 
   /** Один исполнитель экшона. Неизвестный вид — ошибка шага: вид мог появиться позже карты. */
-  async function runner(
+  private async runner(
     ref: MapRef,
     spec: Record<string, unknown>,
     object: MapObject,
     values: Record<string, unknown>,
     cancel: Cancellation,
   ): Promise<{ output: string; log: string }> {
-    const env = { ...objectEnv(object, ref.mapPath, ports.env.vars()), ...inputEnv(values) };
+    const env = { ...objectEnv(object, ref.mapPath, this.env.vars()), ...inputEnv(values) };
 
     switch (spec.kind) {
       case "script": {
         // Данные формы — JSON во входе и переменными: скрипт берёт то, что ему удобнее.
-        const { stdout, stderr } = await runScript(ports, {
+        const { stdout, stderr } = await this.executor.script({
           command: fillInputs(String(spec.run), values),
           cwd: ref.mapPath,
           env,
@@ -182,7 +194,7 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
             ? undefined
             : `Данные формы, с которыми запустили экшон: ${JSON.stringify(values)}`;
         const permissions = spec.permissions as ActionPermissions | undefined;
-        const { stdout, stderr } = await runPrompt(ports, {
+        const { stdout, stderr } = await this.executor.prompt({
           owner: object,
           text: fillInputs(String(spec.prompt), values),
           ...(form === undefined ? {} : { tail: form }),
@@ -199,7 +211,7 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
     }
   }
 
-  async function execute(
+  private async execute(
     ref: MapRef,
     run: Run,
     action: MapAction,
@@ -212,34 +224,39 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
     try {
       if (specs.length === 0) throw new Error("у экшона нет ни одного исполнителя");
       for (const [at, spec] of specs.entries()) {
-        const step = stepStart(ref.mapPath, run, String(spec.name ?? spec.kind ?? at + 1));
+        const step = this.stepStart(ref.mapPath, run, String(spec.name ?? spec.kind ?? at + 1));
         try {
           // По порядку: следующий шаг идёт после того, как предыдущий сделал своё.
           // oxlint-disable-next-line no-await-in-loop
-          const result = await runner(ref, spec, object, values, token);
-          stepEnd(ref.mapPath, step, "success", { log: result.log, output: capped(result.output) });
+          const result = await this.runner(ref, spec, object, values, token);
+          this.stepEnd(ref.mapPath, step, "success", {
+            log: result.log,
+            output: capped(result.output),
+          });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          stepEnd(ref.mapPath, step, token.cancelled ? "stopped" : "failure", { log: message });
+          this.stepEnd(ref.mapPath, step, token.cancelled ? "stopped" : "failure", {
+            log: message,
+          });
           throw error;
         }
       }
-      await end(ref.mapPath, run, "success");
+      await this.end(ref.mapPath, run, "success");
       // Экшон пишет, метрики читают (решение 0038): что он сделал, видно в них, и старое
       // значение рядом со свежим запуском висеть не должно.
       for (const key of action.config.refreshes ?? []) {
-        void deps
-          .runMetric(ref, `${childAddress(object.address, "_metrics")}/${key}`)
+        void this.metrics
+          .run(ref, `${childAddress(object.address, "_metrics")}/${key}`)
           .catch(() => {});
       }
     } catch (error) {
       const limit = expired();
       if (limit !== undefined) {
-        await end(ref.mapPath, run, "failure", `время вышло, предел ${limit} мс`);
+        await this.end(ref.mapPath, run, "failure", `время вышло, предел ${limit} мс`);
       } else if (token.cancelled) {
-        await end(ref.mapPath, run, "stopped", "остановлен");
+        await this.end(ref.mapPath, run, "stopped", "остановлен");
       } else {
-        await end(
+        await this.end(
           ref.mapPath,
           run,
           "failure",
@@ -254,13 +271,13 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
    * Запустить экшон: номер уходит сразу, прогон идёт у сервера. Поля не прошли — прогона нет,
    * в ответ уходят ошибки полей: их показывает форма, а MCP и терминал печатают.
    */
-  async function start(
+  async start(
     ref: MapRef,
     address: string,
     given: Record<string, unknown> = {},
     source: RunSource = "ui",
   ): Promise<RunStarted> {
-    const map = await deps.readMap(ref);
+    const map = await this.map.current(ref);
     const found = findActionOwner(map, address);
     if (!found) throw new Error(`Экшон ${address} не найден`);
     const { action, object } = found;
@@ -268,8 +285,8 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
     const { values, errors } = checkInputs(action.config.inputs, given);
     if (Object.keys(errors).length > 0) return { errors };
 
-    await load(ref.mapPath, object.address);
-    const run = begin(ref.mapPath, {
+    await this.load(ref.mapPath, object.address);
+    const run = this.begin(ref.mapPath, {
       kind: "action",
       target: action.address,
       object: object.address,
@@ -285,47 +302,49 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
     const stopTimer =
       timeout === undefined
         ? () => {}
-        : ports.timers.after(timeout, () => {
+        : this.timers.after(timeout, () => {
             limit = timeout;
             cancel();
           });
 
-    const done = execute(ref, run, action, object, values, token, () => limit).finally(() => {
+    const done = this.execute(ref, run, action, object, values, token, () => limit).finally(() => {
       stopTimer();
-      stateOf(ref.mapPath).controls.delete(run.id);
+      this.stateOf(ref.mapPath).controls.delete(run.id);
     });
-    stateOf(ref.mapPath).controls.set(run.id, { cancel, done });
+    this.stateOf(ref.mapPath).controls.set(run.id, { cancel, done });
     return { id: run.id };
   }
 
   /** Остановить по номеру. Прогона нет или он кончился — делать нечего, и это не ошибка. */
-  function stop(mapPath: string, id: string): void {
-    stateOf(mapPath).controls.get(id)?.cancel();
+  stop(mapPath: string, id: string): void {
+    this.stateOf(mapPath).controls.get(id)?.cancel();
   }
 
   /** Дождаться конца прогона: MCP и терминал зовут экшон ради итога. */
-  async function wait(mapPath: string, id: string): Promise<Run | undefined> {
-    const control = stateOf(mapPath).controls.get(id);
+  async wait(mapPath: string, id: string): Promise<Run | undefined> {
+    const control = this.stateOf(mapPath).controls.get(id);
     if (control) return control.done;
-    return stateOf(mapPath).runs.find((run) => run.id === id);
+    return this.stateOf(mapPath).runs.find((run) => run.id === id);
   }
 
-  const find = (mapPath: string, id: string) => stateOf(mapPath).runs.find((run) => run.id === id);
+  find(mapPath: string, id: string): Run | undefined {
+    return this.stateOf(mapPath).runs.find((run) => run.id === id);
+  }
 
   /** Прогоны объекта, свежие сверху. Подписка сразу получает то, что есть, потом изменения. */
-  function watch(mapPath: string, object: string): Observable<Run[]> {
+  watch(mapPath: string, object: string): Observable<Run[]> {
     return new Observable<Run[]>((subscriber) => {
       const push = () =>
         subscriber.next(
-          trim(stateOf(mapPath).runs)
+          trim(this.stateOf(mapPath).runs)
             .filter((run) => run.object === object)
             // Копия: подписчик по ту сторону моста не должен видеть, как запись меняется на месте.
             .map((run) => JSON.parse(JSON.stringify(run)) as Run),
         );
-      const subscription = changes.subscribe((changed) => {
+      const subscription = this.changes.subscribe((changed) => {
         if (changed === mapPath) push();
       });
-      void load(mapPath, object).then(push);
+      void this.load(mapPath, object).then(push);
       return () => subscription.unsubscribe();
     });
   }
@@ -334,36 +353,32 @@ export function createRunStore(ports: ServerPorts, deps: RunDeps) {
    * Прогон метрики: стадии сообщает стор метрик, храним и показываем здесь. Отмену он отдаёт
    * вместе с записью — иначе «остановить» у прогона метрики было бы нечем исполнить.
    */
-  function recordMetric(
+  recordMetric(
     mapPath: string,
     info: { target: string; object: string; label: string; source: RunSource; config: unknown },
     cancel?: () => void,
   ): RunRecorder {
-    void load(mapPath, info.object);
-    const run = begin(mapPath, { kind: "metric", ...info });
+    void this.load(mapPath, info.object);
+    const run = this.begin(mapPath, { kind: "metric", ...info });
     let finish: ((value: Run) => void) | undefined;
     const done = new Promise<Run>((resolve) => {
       finish = resolve;
     });
-    if (cancel) stateOf(mapPath).controls.set(run.id, { cancel, done });
+    if (cancel) this.stateOf(mapPath).controls.set(run.id, { cancel, done });
     return {
-      step: (name) => void stepStart(mapPath, run, name),
+      step: (name) => void this.stepStart(mapPath, run, name),
       stepDone: (status, log, output) => {
         const step = lastStep(run);
         if (step?.status !== "running") return;
-        stepEnd(mapPath, step, status, {
+        this.stepEnd(mapPath, step, status, {
           ...(log ? { log } : {}),
           ...(output === undefined ? {} : { output: capped(JSON.stringify(output, null, 2)) }),
         });
       },
       end: (status, error) => {
-        stateOf(mapPath).controls.delete(run.id);
-        void end(mapPath, run, status, error).then(() => finish?.(run));
+        this.stateOf(mapPath).controls.delete(run.id);
+        void this.end(mapPath, run, status, error).then(() => finish?.(run));
       },
     };
   }
-
-  return { start, stop, wait, find, watch, recordMetric };
 }
-
-export type RunStore = ReturnType<typeof createRunStore>;

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { dataDeclaration, readDisplaySchema, type MapServer } from "@mapward/abstract-server";
+import { dataDeclaration, DisplaySchema, type MapServer } from "@mapward/abstract-server";
 import { findMetricOwner, type ResolvedMap } from "@mapward/core";
 import type { createPorts } from "./ports.ts";
 
@@ -36,7 +36,7 @@ export async function displayCheck(
   };
 
   // 1. Тип данных по схеме — рядом с компонентом, чтобы `DisplayProps<Data>` знал форму.
-  const { schema, error } = await readDisplaySchema(ports.files, display);
+  const { schema, error } = await new DisplaySchema(ports.files).read(display);
   if (error) fail("схема", [error]);
   const declaration = join(dirname(component), "display.data.d.ts");
   if (schema !== undefined) {

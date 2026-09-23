@@ -31,6 +31,11 @@ export const Capabilities = T.Object({
 export const mapBridge = {
   getMap: createBridgeMethod(MapRef, T.Unknown()),
   watchMap: createBridgeSubscription(MapRef, T.Unknown()),
+  /**
+   * Перечитать карту — кнопка рядом со стрелками навигации, как в браузере (решение 0041).
+   * Карта у сервера одна и следит за собой сама; кнопка — для того, что вотчер пропустил.
+   */
+  reloadMap: createBridgeMethod(MapRef, T.Void()),
   getCapabilities: createBridgeMethod(T.Void(), Capabilities),
   /**
    * Значения метрик объекта. Подписка — это и есть «объект открыт»: пока она жива, сервер

@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { FilesPort, ServerPorts } from "../ports/index.ts";
 import { createMapServer } from "./server.ts";
 import { bundleBuild, serveMcp, type McpBuild, type McpTransport } from "./mcp.ts";
-import type { MapRef } from "../features/map-object/application/services/metric-store.ts";
+import type { MapRef } from "../kernel/map-ref.ts";
 
 /** Карта в памяти: MCP проверяется без редактора и без диска — решение 0014. */
 function fakeFiles(tree: Record<string, string>): FilesPort {

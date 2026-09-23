@@ -16,18 +16,28 @@ import type { ProcessEnv } from "../lib/env.ts";
  */
 export type FileEntry = { name: string; isDirectory: boolean; size?: number };
 
-/** Пути всегда с прямыми слэшами и абсолютные — приложение приводит их к своему виду само. */
-export type FilesPort = {
+/**
+ * Файлы — три порта, а не один: читать, писать и следить нужно разным классам, и класс,
+ * которому достаточно чтения, записи не получает (решение 0041). Пути всегда с прямыми
+ * слэшами и абсолютные — приложение приводит их к своему виду само.
+ */
+export type FileReader = {
   read(path: string): Promise<string | undefined>;
   list(path: string): Promise<FileEntry[]>;
-  write(path: string, text: string): Promise<void>;
   /**
    * Настоящий путь за ссылками. Нужен сборке компонента (решение 0037): пакеты pnpm лежат по
    * ссылкам и свои зависимости находят от настоящего места. Хост не умеет — путь как есть.
    */
   realpath?(path: string): Promise<string | undefined>;
+};
+
+export type FileWriter = {
+  write(path: string, text: string): Promise<void>;
   /** Убрать файл. Файла нет — это тоже успех: удаление зовут ради того, чтобы его не стало. */
   remove(path: string): Promise<void>;
+};
+
+export type FileWatcher = {
   /**
    * Следит за деревом и зовёт обратно с путём того, что изменилось.
    *
@@ -41,6 +51,9 @@ export type FilesPort = {
     options?: { include?: string[] },
   ): () => void;
 };
+
+/** Все три разом — так файлы отдаёт приложение; классам сборка раздаёт их по отдельности. */
+export type FilesPort = FileReader & FileWriter & FileWatcher;
 
 export type ProcessResult = { stdout: string; stderr: string };
 
@@ -100,6 +113,10 @@ export type { Cancellation, ProcessEnv };
  */
 export type { Capabilities };
 
+/**
+ * Всё, что приложение отдаёт серверу. Это граница с приложением, а не зависимость класса:
+ * связку целиком получает только сборка сервера и раздаёт из неё каждому его порты.
+ */
 export type ServerPorts = {
   files: FilesPort;
   shell: ShellPort;

@@ -9,5 +9,5 @@ description: в mcp.test.ts одно дерево карты на весь фа�
 Поэтому объект, добавленный в фикстуру под `packages/` или в корень, роняет чужие тесты, ничего
 не сломав в коде. Новый объект под `prototypes/` безопаснее: его детей никто не перечисляет.
 
-То же и в `read-map.test.ts`, но там фикстур несколько (`tree`, `workflowTree`, `layersTree`,
+То же и в `features/map/application/services/map-model.test.ts` (бывший `read-map.test.ts`), но там фикстур несколько (`tree`, `workflowTree`, `layersTree`,
 `groupsTree`) — новую проверку дешевле заводить своим деревом, чем дописывать в общее.

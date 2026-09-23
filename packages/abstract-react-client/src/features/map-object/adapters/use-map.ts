@@ -32,6 +32,11 @@ export function useMapActions() {
       group?: string;
       metric?: string;
     }) => void bridge.openInTab(params),
+    /**
+     * Перечитать карту — решение 0041. Карта у сервера одна и следит за собой сама; кнопка для
+     * того, что вотчер пропустил. Промис — чтобы кнопка знала, когда перечитывание кончилось.
+     */
+    reloadMap: (ref: Ref): Promise<void> => bridge.reloadMap(ref),
     createDirective: (objectPath: string) => void bridge.createDirective({ objectPath }),
     /** Спрашивает и удаляет хост; список обновится сам — карта следится на файловой системе. */
     deleteDirective: (objectPath: string, directive: string) =>

@@ -129,12 +129,18 @@ export function toDisplay(kind: string | undefined, data: unknown): DisplayData 
  * Nothing to show is an answer, not a failure — decision 0010. A metric that has not run yet
  * used to read as «данные не той формы», which blamed the config for a run that never happened.
  * The metric may say it in its own words through `display.empty`.
+ *
+ * Ответа ещё нет — третье состояние, а не «не собиралась» (решение 0041): снимок не пришёл или
+ * сервер ещё поднимает собранное с диска. Сказать тут «не собиралась» значило бы соврать про
+ * метрику, у которой значение есть.
  */
 export function placeholder(
   data: DisplayData,
   collected: boolean,
   empty: string | undefined,
+  pending = false,
 ): string | undefined {
+  if (pending) return "загружается…";
   if (!collected) return empty ?? "не собиралась";
   if (data.kind === "list" && data.items.length === 0) return empty ?? "нет таких";
   if (data.kind === "tree" && data.children.length === 0) return empty ?? "нет таких";

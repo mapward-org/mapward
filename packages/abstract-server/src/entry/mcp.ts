@@ -5,10 +5,8 @@ import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
 import { projectDeep } from "../lib/projection.ts";
 import { fit } from "../lib/budget.ts";
-import type {
-  MapRef,
-  ReadOptions,
-} from "../features/map-object/application/services/metric-store.ts";
+import type { MapRef } from "../kernel/map-ref.ts";
+import type { ReadOptions } from "../features/metrics/index.ts";
 
 /**
  * MCP — ещё один транспорт к тем же юзкейсам, а не вторая модель карты (решения 0009 и 0014).
@@ -56,6 +54,22 @@ export function bundleBuild(
 }
 
 const PROTOCOL = "2024-11-05";
+
+/**
+ * Карта у сервера одна и догоняет диск вотчером (решение 0041). Агент, который только что
+ * записал объект мимо сервера, может спросить о нём раньше, чем вотчер скажет. Поэтому промах по
+ * адресу — повод перечитать карту и посмотреть ещё раз, а не сразу «не найден».
+ */
+async function freshMap(
+  server: MapServer,
+  ref: MapRef,
+  found: (map: MapObject) => boolean,
+): Promise<MapObject> {
+  const map = await server.getMap(ref);
+  if (found(map)) return map;
+  await server.reloadMap(ref);
+  return server.getMap(ref);
+}
 
 /**
  * Файл объекта: путь нужен тому, кто собирается его открыть или подвинуть, а `owner` говорит,
@@ -631,8 +645,8 @@ export function serveMcp(
     const ref = mapOf(args.map);
 
     if (name === "read_object") {
-      const map = await server.getMap(ref);
       const address = typeof args.address === "string" ? args.address : undefined;
+      const map = await freshMap(server, ref, (tree) => !address || !!findObject(tree, address));
       const object = address ? findObject(map, address) : map;
       if (!object) throw new Error(`Объект ${String(address)} не найден`);
       // `metrics: []` выключает метрики целиком, а `fields: ["metrics.key"]` спрашивает про
@@ -681,8 +695,16 @@ export function serveMcp(
     }
 
     if (name === "read_index") {
-      const map = await server.getMap(ref);
       const address = typeof args.address === "string" ? args.address : undefined;
+      const map = await freshMap(
+        server,
+        ref,
+        (tree) =>
+          !address ||
+          !!findObject(tree, address) ||
+          !!findActionOwner(tree, address) ||
+          !!findMetric(tree, address),
+      );
       const object = address ? findObject(map, address) : map;
 
       // `_metrics` — служебная папка, объектом она не ищется, но у метрики есть собственный

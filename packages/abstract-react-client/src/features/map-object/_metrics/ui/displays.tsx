@@ -104,6 +104,8 @@ export function Display(props: {
   data: DisplayData;
   /** Whether the metric has run at all: a cell that never ran is not a cell with bad data. */
   collected: boolean;
+  /** Ответа ещё нет: значение не пришло с сервера или ещё поднимается с диска (решение 0041). */
+  pending?: boolean;
   empty?: string;
   onOpen: (link: string) => void;
   /** Ссылка на объект открывается ещё и табом — решение 0026. Хост не умеет табы — нет её. */
@@ -128,7 +130,7 @@ export function Display(props: {
   const tab = props.onOpenTab === undefined ? {} : { onOpenTab: props.onOpenTab };
   const action = props.renderAction === undefined ? {} : { renderAction: props.renderAction };
 
-  const note = placeholder(data, props.collected, props.empty);
+  const note = placeholder(data, props.collected, props.empty, props.pending);
   if (note) return <span className="opacity-60">{note}</span>;
 
   switch (data.kind) {

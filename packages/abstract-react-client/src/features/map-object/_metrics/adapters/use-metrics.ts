@@ -8,6 +8,8 @@ export type Collected = {
   ok?: boolean;
   data?: unknown;
   busy?: boolean;
+  /** Собранное ещё поднимается с диска: ответа пока нет (решение 0041). */
+  loading?: boolean;
   /** Что не прошло схему компонента — решение 0037. */
   invalid?: string[];
 };

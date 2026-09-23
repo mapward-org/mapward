@@ -1,8 +1,10 @@
 import { expect, test } from "vitest";
 import type { Run } from "@mapward/core";
 import type { FilesPort, ServerPorts } from "../../../ports/index.ts";
-import { readMap } from "../../map-object/application/use-cases/read-map.ts";
-import { createRunStore, type MapRef } from "./run-store.ts";
+import type { MapRef } from "../../../kernel/map-ref.ts";
+import { MapModel } from "../../map/index.ts";
+import { Executor } from "../../execution/index.ts";
+import { RunStore } from "./run-store.ts";
 
 /** Карта в памяти, куда можно и писать: прогоны ложатся на диск, и это проверяется. */
 function memoryFiles(tree: Record<string, string>): FilesPort {
@@ -97,13 +99,22 @@ const baseTree = (): Record<string, string> => ({
 function store(tree: Record<string, string>, calls: Calls, agent?: ServerPorts["agent"]) {
   const refreshed: string[] = [];
   const ports = fakePorts(tree, calls, agent);
-  const runs = createRunStore(ports, {
-    readMap: (map) => readMap(ports.files, map.mapPath, map.basePath, map.name),
-    runMetric: (_, address) => {
-      refreshed.push(address);
-      return Promise.resolve();
+  const { files, timers, clock } = ports;
+  const map = new MapModel(files, files, timers, clock);
+  const runs = new RunStore(
+    files,
+    new Executor(ports.shell, ports.agent),
+    map,
+    {
+      run: (_, address) => {
+        refreshed.push(address);
+        return Promise.resolve();
+      },
     },
-  });
+    ports.env,
+    timers,
+    clock,
+  );
   return { runs, refreshed };
 }
 

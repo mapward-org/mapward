@@ -39,6 +39,7 @@ export function serveBridge(
     getCapabilities: () => server.capabilities(),
     getMap: (ref) => server.getMap(ref),
     watchMap: (ref) => server.watchMap(ref),
+    reloadMap: (ref) => server.reloadMap(ref),
     watchMetrics: (params) => server.watchMetrics(params),
     watchDisplay: (params) => server.watchDisplay(params),
     runMetric: (params) => server.runMetric(params),

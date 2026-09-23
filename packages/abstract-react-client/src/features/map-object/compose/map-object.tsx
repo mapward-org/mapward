@@ -322,6 +322,7 @@ export function MapObjectView(props: {
         onGo={go}
         back={arrow(-1)}
         forward={arrow(1)}
+        onReload={() => actions.reloadMap(props.mapConfig)}
         {...objectTab}
         views={
           <ViewTabs
