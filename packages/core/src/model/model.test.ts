@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { adoptMetric, groupMetrics, objectIndex, pickGroup } from "./model.ts";
+import { adoptMetric, groupMetrics, objectIndex, pickGroup, previewGroup } from "./model.ts";
 import type { MapObject } from "./model.ts";
 
 /**
@@ -125,6 +125,26 @@ test("the open group falls back to the first one", () => {
   expect(pickGroup(core, "нет такой")?.key).toBe("код");
   // Групп нет вовсе — и вкладок нет: объект работает как раньше.
   expect(pickGroup(object({}), undefined)).toBeUndefined();
+});
+
+/** Превью объекта — его вкладка: названная, а без имени — с `defaultPreview`. */
+test("the card picks its group and never falls back to someone else's", () => {
+  const core = object({
+    metrics: [metric("files"), metric("drift")],
+    metricGroups: [
+      { key: "код", metrics: ["files"] },
+      { key: "превью", metrics: ["drift"], defaultPreview: true },
+      { key: "ещё", metrics: ["files"], defaultPreview: true },
+    ],
+  });
+
+  // Без имени — первая с флагом, а не первая вообще.
+  expect(previewGroup(core, undefined).group?.key).toBe("превью");
+  expect(previewGroup(core, "код").group?.key).toBe("код");
+  // Нет такой вкладки — так и говорится, подмены нет.
+  expect(previewGroup(core, "нет такой")).toEqual({ missing: "нет такой" });
+  // Флага нет ни у одной — у карточки одна шапка.
+  expect(previewGroup(withGroups(), undefined)).toEqual({});
 });
 
 test("a group names its metrics and their order", () => {

@@ -50,11 +50,31 @@ export const actionRefSchema = {
  */
 export type LinkNode = StatusMark &
   GitMark &
-  ActionMark & { label?: string; link?: string; description?: string };
+  ActionMark &
+  ObjectMark & { label?: string; link?: string; description?: string };
+
+/**
+ * Карточка объекта вместо строки. `group` — какую вкладку объекта показать; не названа — вкладка
+ * с `defaultPreview`, а нет и её — у карточки одна шапка. Размер — свойство места, где карточка
+ * нарисована, а не объекта: css-строка, число — пиксели.
+ */
+export type CardSize = string | number;
+export type ObjectRef = {
+  object: string;
+  group?: string;
+  width?: CardSize;
+  maxHeight?: CardSize;
+};
+/**
+ * Пункт с `object` у `list`, `tree` и `map` рисуется карточкой, а не строкой: `label`, `link`,
+ * статус и экшон строки у него не рисуются — имя, ссылка и экшоны у карточки свои.
+ */
+export type ObjectMark = Partial<ObjectRef>;
 
 export type TreeNode = StatusMark &
   GitMark &
-  ActionMark & {
+  ActionMark &
+  ObjectMark & {
     label?: string;
     link?: string;
     description?: string;
@@ -77,6 +97,8 @@ export type DisplayShape =
   | { kind: "list"; items: LinkNode[] }
   | { kind: "tree"; children: TreeNode[] }
   | { kind: "map"; nodes: LinkNode[]; relations: MapRelation[] }
+  /** Одиночный объект карточкой — ставится в клетку сетки по ключу, как любая метрика. */
+  | { kind: "object"; item: ObjectRef }
   /**
    * Свой компонент метрики — решение 0037. Формы у него нет: данные проверяет его схема на
    * сервере, а клиент отдаёт их компоненту как есть.
@@ -87,14 +109,19 @@ export type DisplayShape =
  * Те же формы словами — их сервер кладёт в промпт, чтобы агент не угадывал (решение 0004).
  * Текст и типы лежат рядом нарочно: разъедутся — будет видно в одном файле.
  */
+const OBJECT_FIELDS =
+  '"object"?: "mapward://… — пункт станет карточкой объекта", "group"?: string, "width"?: string | number, "maxHeight"?: string | number';
+
 export const SHAPES: Record<string, string> = {
   text: '{ "text": string }',
   markdown: '{ "text": string }, где text — markdown: заголовки, списки, ссылки, код, **жирный**',
   link: '{ "label"?: string, "link"?: string, "description"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string }',
   status: '{ "ok": boolean, "summary"?: string }',
-  list: '{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string, "action"?: { "run": string, "inputs"?: object } }] }',
-  tree: '{ "children": [{ "label"?: string, "description"?: string, "link"?: string, "isDir"?: boolean, "status"?: "fail" | "success" | "pending" | "idle", "action"?: { "run": string, "inputs"?: object }, "children"?: [...] }] }',
-  map: '{ "nodes": [{ "label"?: string, "link"?: string }], "relations": [{ "from"?: string, "to"?: string, "label"?: string, "link"?: string }] }',
+  list: `{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string, "action"?: { "run": string, "inputs"?: object }, ${OBJECT_FIELDS} }] }`,
+  tree: `{ "children": [{ "label"?: string, "description"?: string, "link"?: string, "isDir"?: boolean, "status"?: "fail" | "success" | "pending" | "idle", "action"?: { "run": string, "inputs"?: object }, ${OBJECT_FIELDS}, "children"?: [...] }] }`,
+  map: `{ "nodes": [{ "label"?: string, "link"?: string, ${OBJECT_FIELDS} }], "relations": [{ "from"?: string, "to"?: string, "label"?: string, "link"?: string }] }`,
+  object:
+    '{ "object": "mapward://…", "group"?: string, "width"?: string | number, "maxHeight"?: string | number }',
 };
 
 /**

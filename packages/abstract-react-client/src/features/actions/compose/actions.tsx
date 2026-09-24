@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
 import type { ActionRef, MapAction, MapObject } from "@mapward/core";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { Floating } from "../../../lib/ui/floating.tsx";
 import { MenuStore } from "../model/menu-store.ts";
 import { useActions } from "../ports.tsx";
 import { ActionButton, ActionRunning, RowActionButton } from "../ui/action-button.tsx";
@@ -37,26 +38,28 @@ export const ObjectActionMenu = observer(function ObjectActionMenu(props: { obje
 
   return (
     <ActionMenuBox hold={menu.popup.hold}>
-      <ActionMenuButton onToggle={() => menu.popup.toggle()} />
+      <ActionMenuButton onToggle={(button) => menu.toggle(button)} />
       {menu.popup.open && (
-        <ActionMenuPanel>
-          <ActionSearch
-            query={menu.query}
-            onQuery={(query) => menu.setQuery(query)}
-            onClose={() => menu.popup.close()}
-            onFirst={() => menu.runFirst()}
-          />
-          <ActionList empty={menu.found.length === 0}>
-            {menu.found.map((action) => (
-              <ActionItem
-                key={action.address}
-                action={action}
-                running={actions.running(action.address)}
-                onSelect={(one) => menu.select(one)}
-              />
-            ))}
-          </ActionList>
-        </ActionMenuPanel>
+        <Floating at={menu.anchor.at} hold={menu.popup.holdLayer}>
+          <ActionMenuPanel>
+            <ActionSearch
+              query={menu.query}
+              onQuery={(query) => menu.setQuery(query)}
+              onClose={() => menu.popup.close()}
+              onFirst={() => menu.runFirst()}
+            />
+            <ActionList empty={menu.found.length === 0}>
+              {menu.found.map((action) => (
+                <ActionItem
+                  key={action.address}
+                  action={action}
+                  running={actions.running(action.address)}
+                  onSelect={(one) => menu.select(one)}
+                />
+              ))}
+            </ActionList>
+          </ActionMenuPanel>
+        </Floating>
       )}
     </ActionMenuBox>
   );

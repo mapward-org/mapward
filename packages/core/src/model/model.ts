@@ -136,11 +136,7 @@ export type MapObject = {
   prototypeName?: string;
   isGroup: boolean;
   props: Record<string, unknown>;
-  previewSize?: { w: number; h: number };
-  previewLayout?: Layout;
   detailsLayout?: Layout;
-  /** Стили карточки превью поверх умолчаний — решение 0003. */
-  previewStyle?: Record<string, string>;
   /** `_index.json`, из которых собран объект, от своего к дальнему прототипу. У группы пусто. */
   layers: ConfigLayer[];
   metrics: MapMetric[];
@@ -192,6 +188,23 @@ export function groupMetrics(object: MapObject, key: string | undefined): MapMet
     .filter((metric): metric is MapMetric => metric !== undefined);
 }
 
+/**
+ * Вкладка, которую показывает карточка объекта. Названа — только она: не нашлась — `missing`,
+ * и карточка так и говорит, а не подставляет чужие метрики под видом заказанных. Не названа —
+ * первая с `defaultPreview`; нет и её — у карточки одна шапка, `group` пуст.
+ */
+export function previewGroup(
+  object: MapObject,
+  key: string | undefined,
+): { group?: MetricGroup; missing?: string } {
+  if (key !== undefined) {
+    const group = object.metricGroups.find((g) => g.key === key);
+    return group ? { group } : { missing: key };
+  }
+  const group = object.metricGroups.find((g) => g.defaultPreview === true);
+  return group ? { group } : {};
+}
+
 /** Раскладка вкладки: своя, если группа её задала, иначе раскладка объекта. */
 export const groupLayout = (
   object: MapObject,
@@ -221,14 +234,9 @@ export function objectIndex(object: MapObject): ObjectIndex {
     name: object.name,
     ...(parent === undefined ? {} : { extends: parent }),
     ...(Object.keys(object.props).length === 0 ? {} : { props: object.props }),
-    ...(object.previewSize === undefined ? {} : { "preview-size": object.previewSize }),
-    ...(object.previewLayout === undefined
-      ? {}
-      : { "preview-metrics-layout": object.previewLayout }),
     ...(object.detailsLayout === undefined
       ? {}
       : { "details-metrics-layout": object.detailsLayout }),
-    ...(object.previewStyle === undefined ? {} : { "preview-style": object.previewStyle }),
     ...(object.prompt === undefined ? {} : { prompt: object.prompt }),
     ...(Object.keys(workflow).length === 0 ? {} : { "directives-workflow": workflow }),
     ...(object.metricGroups.length === 0 ? {} : { "metric-groups": groups }),

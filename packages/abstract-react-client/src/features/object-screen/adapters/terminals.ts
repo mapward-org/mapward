@@ -6,8 +6,12 @@ type Ref = { mapPath: string; basePath: string; name: string };
 export type Terminal = { id: string; name: string };
 
 /**
- * Терминалы объекта живут, пока их держит редактор: список — то, что открыто сейчас. После
+ * Терминалы объектов живут, пока их держит редактор: список — то, что открыто сейчас. После
  * открытия и закрытия список спрашивается заново — сам хост об этом не сообщает.
+ *
+ * Объект — параметр вызова, а не то, что зашито при сборке вида: у экрана он открытый, а у
+ * карточки на чужом экране — свой. Список спрашивается, только когда его читают: двадцать
+ * карточек на карте не должны означать двадцать запросов при открытии.
  */
 export class Terminals {
   private version = 0;
@@ -16,16 +20,14 @@ export class Terminals {
   constructor(
     private readonly bridge: BridgeClient<AppBridge>,
     private readonly ref: Ref,
-    private readonly address: () => string,
   ) {
     makeObservable<Terminals, "version">(this, { version: observable, refresh: action });
   }
 
-  get list(): Terminal[] {
-    const key = `${this.address()}#${this.version}`;
+  list(address: string): Terminal[] {
+    const key = `${address}#${this.version}`;
     let list = this.lists.get(key);
     if (!list) {
-      const address = this.address();
       list = once(() => this.bridge.listTerminals({ address }));
       this.lists.set(key, list);
     }
@@ -40,16 +42,16 @@ export class Terminals {
     void promise.then(() => this.refresh());
   }
 
-  open(fresh?: boolean): void {
-    this.after(this.bridge.openObjectTerminal({ ...this.ref, address: this.address(), fresh }));
+  open(address: string, fresh?: boolean): void {
+    this.after(this.bridge.openObjectTerminal({ ...this.ref, address, fresh }));
   }
 
   /**
    * Кнопка этапа: фраза уходит в живую сессию объекта, промпт агент берёт из MCP сам —
    * решение 0017. Сессию выбирает хост, клиент про неё ничего не знает.
    */
-  runStage(directive: string, stage: string): void {
-    this.after(this.bridge.runStage({ ...this.ref, address: this.address(), directive, stage }));
+  runStage(address: string, directive: string, stage: string): void {
+    this.after(this.bridge.runStage({ ...this.ref, address, directive, stage }));
   }
 
   /** Показать именно тот, по которому кликнули: терминалов у объекта может быть несколько. */

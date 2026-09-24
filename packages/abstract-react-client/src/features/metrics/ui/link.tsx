@@ -74,3 +74,8 @@ export function LinkListItem(props: {
     </li>
   );
 }
+
+/** Пункт списка карточкой объекта — во всю ширину: ширину карточки задаёт место, где она стоит. */
+export function LinkListCard(props: { children: ReactNode }) {
+  return <li className="mb-1.5">{props.children}</li>;
+}

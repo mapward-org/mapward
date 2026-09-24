@@ -6,9 +6,6 @@
     "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}",
     "architectureDoc": "ru/docs/architecture/vscode-extension.md"
   },
-  "preview-metrics-layout": {
-    "areas": [["code"]]
-  },
   "metric-groups": {
     "groups": [
       {
@@ -61,6 +58,19 @@
         "metrics": ["release-version", "release-vsix"],
         "details-metrics-layout": {
           "areas": [["release"], ["release-version"], ["release-vsix"]],
+          "style": {
+            "gap": "8px"
+          }
+        }
+      },
+      {
+        "key": "превью",
+        "label": "Карточка",
+        "description": "Что видно на карточке объекта там, где он встречается на чужом экране.",
+        "metrics": ["code"],
+        "defaultPreview": true,
+        "details-metrics-layout": {
+          "areas": [["code"]],
           "style": {
             "gap": "8px"
           }

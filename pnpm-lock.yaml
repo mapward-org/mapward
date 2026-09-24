@@ -214,6 +214,9 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -221,6 +224,9 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(typescript@7.0.2)(unrun@0.3.1)

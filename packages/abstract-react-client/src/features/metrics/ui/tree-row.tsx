@@ -82,3 +82,12 @@ export function TreeDescription(props: { depth: number; children: ReactNode }) {
     </div>
   );
 }
+
+/** Узел дерева карточкой объекта: отступ по глубине тот же, что у строки. */
+export function TreeCard(props: { depth: number; children: ReactNode }) {
+  return (
+    <div style={{ paddingLeft: `${props.depth * 10}px` }} className="mb-1.5">
+      {props.children}
+    </div>
+  );
+}

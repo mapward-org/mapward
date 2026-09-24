@@ -12,7 +12,10 @@ const ALLOWED: Record<string, string[]> = {
   // Текст инструмента, который едет вместе с ним: не зависит ни от кого, и зависеть не от чего.
   "@mapward/docs": [],
   "@mapward/abstract-server": ["@mapward/core", "@mapward/docs"],
-  "@mapward/abstract-react-client": ["@mapward/core"],
+  // Типы дисплея-компонента (решение 0037): публикуются для чужих проектов, поэтому не знают
+  // никого из своих; клиент берёт их, чтобы типы и то, что приходит в пропсах, не разъехались.
+  "@mapward/display": [],
+  "@mapward/abstract-react-client": ["@mapward/core", "@mapward/display"],
 };
 
 async function manifest(dir: string): Promise<{ name: string; deps: string[] }> {

@@ -1,5 +1,12 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
-import type { ActionRef, ChildrenMap, MapAction, MapMetric, MapObject } from "@mapward/core";
+import type {
+  ActionRef,
+  ChildrenMap,
+  MapAction,
+  MapMetric,
+  MapObject,
+  ObjectRef,
+} from "@mapward/core";
 import type { DisplayAction } from "@mapward/display";
 import type { TreeOpen } from "./pure-model/tree-open.ts";
 
@@ -38,6 +45,11 @@ export type MetricsPort = {
   actions: MetricsActions;
   /** Карту детей рисует её фича. */
   ChildrenMap: ComponentType<{ map: ChildrenMap; address: string }>;
+  /**
+   * Карточку объекта — пункт с `object` и дисплей `object` — рисует её фича. Внутри карточки
+   * снова сетка метрик: круг замыкается в точке входа, а не здесь.
+   */
+  Card: ComponentType<{ item: ObjectRef }>;
 };
 
 const MetricsContext = createContext<MetricsPort | undefined>(undefined);

@@ -31,6 +31,7 @@ export const ChildrenMapView = observer(function ChildrenMapView(props: {
       onOpenTab={port.openTab}
       onMove={(positions) => store.move(positions)}
       onViewport={(viewport) => store.pan(viewport)}
+      renderCard={(item) => <port.Card item={item} />}
     />
   );
 });

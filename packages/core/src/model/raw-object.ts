@@ -45,10 +45,7 @@ export type OwnIndex = {
   /** Куда ведёт `extends` объекта — его прототип. */
   extends?: string;
   props: Record<string, unknown>;
-  previewSize?: ObjectIndex["preview-size"];
-  previewLayout?: ObjectIndex["preview-metrics-layout"];
   detailsLayout?: ObjectIndex["details-metrics-layout"];
-  previewStyle?: ObjectIndex["preview-style"];
   layers: ConfigLayer[];
   prompt?: string;
   workflowPrompt?: string;
@@ -191,10 +188,7 @@ export function ownIndex(parts: {
     isGroup: index === undefined,
     extends: own.extends,
     props: own.props ?? {},
-    previewSize: own["preview-size"],
-    previewLayout: own["preview-metrics-layout"],
     detailsLayout: own["details-metrics-layout"],
-    previewStyle: own["preview-style"],
     layers,
     prompt: own.prompt,
     workflowPrompt: own["directives-workflow"]?.prompt,

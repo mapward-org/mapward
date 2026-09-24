@@ -5,6 +5,8 @@ import type {
   GitMark,
   LinkNode,
   MapRelation,
+  ObjectMark,
+  ObjectRef,
   StatusMark,
   TreeNode,
 } from "@mapward/core";
@@ -14,7 +16,23 @@ import { linkKind } from "@mapward/core";
  * Формы приходят из `core` — они общие с сервером (решение 0014). Здесь только то, что делает
  * с ними клиент: разбор пришедшего и цвета статусов.
  */
-export type { ActionRef, GitLetter, GitMark, LinkNode, MapRelation, StatusMark, TreeNode };
+export type {
+  ActionRef,
+  GitLetter,
+  GitMark,
+  LinkNode,
+  MapRelation,
+  ObjectRef,
+  StatusMark,
+  TreeNode,
+};
+
+/**
+ * Пункт, который рисуется карточкой объекта, а не строкой: у него стоит `object`. Одна проверка
+ * на все дисплеи — список, дерево и карта детей понимают пункт одинаково.
+ */
+export const isCard = <T extends ObjectMark>(mark: T): mark is T & ObjectRef =>
+  typeof mark.object === "string";
 
 /**
  * К формам из `core` клиент добавляет свой случай: пришло не то, и это надо показать. Формы
@@ -117,6 +135,10 @@ export function toDisplay(kind: string | undefined, data: unknown): DisplayData 
             relations: (record.relations ?? []) as MapRelation[],
           }
         : { kind: "unknown", reason: "ждём { nodes, relations }" };
+    case "object":
+      return typeof record.object === "string"
+        ? { kind: "object", item: record as ObjectRef }
+        : { kind: "unknown", reason: "ждём { object }" };
     // Форму компонента проверяет его схема на сервере (решение 0037): здесь данные идут как есть.
     case "component":
       return { kind: "component", data };

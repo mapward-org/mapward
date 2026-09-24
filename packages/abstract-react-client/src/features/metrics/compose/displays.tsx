@@ -5,19 +5,22 @@ import type {
   GitMark as Mark,
   LinkNode,
   MapRelation,
+  ObjectRef,
   StatusMark,
 } from "../pure-model/display.ts";
-import { placeholder } from "../pure-model/display.ts";
+import { isCard, placeholder } from "../pure-model/display.ts";
 import type { TreeOpen } from "../pure-model/tree-open.ts";
 import { Markdown, MarkdownLine } from "../../../lib/ui/markdown.tsx";
 import type { RenderRowAction } from "../ports.tsx";
 import { DisplayNote, PlainText, StatusLine, WrongShape } from "../ui/display-parts.tsx";
 import { GitMark } from "../ui/git-mark.tsx";
-import { LinkLine, LinkListFrame, LinkListItem, LinkText } from "../ui/link.tsx";
+import { LinkLine, LinkListCard, LinkListFrame, LinkListItem, LinkText } from "../ui/link.tsx";
 import { StatusDot } from "../ui/status-dot.tsx";
 import { FileTree } from "./file-tree.tsx";
 
 type OpenTab = ((link: string) => void) | undefined;
+/** Карточку объекта рисует её фича, а собирает `compose` вида (решение 0042). */
+type RenderObject = ((item: ObjectRef) => ReactNode) | undefined;
 
 /** Ссылка дисплея: точка статуса, ссылка, пометка git. */
 export const Link = observer(function Link(props: {
@@ -41,26 +44,32 @@ export const LinkList = observer(function LinkList(props: {
   onOpenTab?: OpenTab;
   /** Кнопка экшона строки — справа, отдельно от ссылки (решение 0038). */
   renderAction?: RenderRowAction | undefined;
+  /** Пункт с `object` — карточка объекта вместо строки. */
+  renderObject?: RenderObject;
 }) {
   return (
     <LinkListFrame>
-      {props.items.map((item, index) => (
-        <LinkListItem
-          key={item.label ?? index}
-          action={item.action && props.renderAction?.(item.action)}
-          description={
-            item.description && (
-              <MarkdownLine
-                text={item.description}
-                onOpen={props.onOpen}
-                onOpenTab={props.onOpenTab}
-              />
-            )
-          }
-        >
-          <Link node={item} onOpen={props.onOpen} onOpenTab={props.onOpenTab} />
-        </LinkListItem>
-      ))}
+      {props.items.map((item, index) =>
+        isCard(item) && props.renderObject ? (
+          <LinkListCard key={item.object}>{props.renderObject(item)}</LinkListCard>
+        ) : (
+          <LinkListItem
+            key={item.label ?? index}
+            action={item.action && props.renderAction?.(item.action)}
+            description={
+              item.description && (
+                <MarkdownLine
+                  text={item.description}
+                  onOpen={props.onOpen}
+                  onOpenTab={props.onOpenTab}
+                />
+              )
+            }
+          >
+            <Link node={item} onOpen={props.onOpen} onOpenTab={props.onOpenTab} />
+          </LinkListItem>
+        ),
+      )}
     </LinkListFrame>
   );
 });
@@ -87,6 +96,11 @@ export const Display = observer(function Display(props: {
   renderComponent: (data: unknown) => ReactNode;
   /** Кнопка экшона строки списка и узла дерева — решение 0038. */
   renderAction?: RenderRowAction | undefined;
+  /**
+   * Карточка объекта: пункт с `object` в списке и дереве и дисплей `object`. Нет её — пункт
+   * рисуется строкой, как раньше.
+   */
+  renderObject?: RenderObject;
   /** Раскрытие папок дерева: хранит сетка, дисплей только передаёт. */
   treeOpen?: TreeOpen | undefined;
 }) {
@@ -112,6 +126,7 @@ export const Display = observer(function Display(props: {
           onOpen={props.onOpen}
           onOpenTab={props.onOpenTab}
           renderAction={props.renderAction}
+          renderObject={props.renderObject}
         />
       ) : data.kind === "tree" ? (
         <FileTree
@@ -119,10 +134,13 @@ export const Display = observer(function Display(props: {
           onOpen={props.onOpen}
           onOpenTab={props.onOpenTab}
           renderAction={props.renderAction}
+          renderObject={props.renderObject}
           open={props.treeOpen}
         />
       ) : data.kind === "map" ? (
         props.renderMap({ nodes: data.nodes, relations: data.relations })
+      ) : data.kind === "object" ? (
+        props.renderObject?.(data.item)
       ) : data.kind === "component" ? (
         props.renderComponent(data.data)
       ) : (

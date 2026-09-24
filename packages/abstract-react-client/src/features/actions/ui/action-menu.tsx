@@ -20,12 +20,12 @@ export function ActionMenuBox(props: {
   );
 }
 
-export function ActionMenuButton(props: { onToggle: () => void }) {
+export function ActionMenuButton(props: { onToggle: (button: HTMLElement) => void }) {
   return (
     <button
       type="button"
       title="Экшоны"
-      onClick={props.onToggle}
+      onClick={(event) => props.onToggle(event.currentTarget)}
       className="rounded-sm px-1 opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
     >
       {ActionsIcon}
@@ -35,7 +35,7 @@ export function ActionMenuButton(props: { onToggle: () => void }) {
 
 export function ActionMenuPanel(props: { children: ReactNode }) {
   return (
-    <div className="absolute top-full right-0 z-50 flex max-h-[60vh] w-64 flex-col rounded-sm border border-[var(--mw-menu-border,#8884)] bg-[var(--mw-menu-background,var(--mw-editor-background))] py-1 shadow-lg">
+    <div className="flex max-h-[60vh] w-64 flex-col rounded-sm border border-[var(--mw-menu-border,#8884)] bg-[var(--mw-menu-background,var(--mw-editor-background))] py-1 shadow-lg">
       {props.children}
     </div>
   );

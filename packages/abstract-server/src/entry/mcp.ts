@@ -218,7 +218,7 @@ async function describe(
     // `parents`: раскрытый ребёнок лежит внутри родителя, и повторять у каждого пять этапов
     // с путями значит платить за одно и то же столько раз, сколько в ответе объектов.
     // Понадобились у ребёнка — он спрашивается своим вызовом, и там он верхний.
-    ...(top ? { layout: { preview: object.previewLayout, details: object.detailsLayout } } : {}),
+    ...(top ? { layout: { details: object.detailsLayout } } : {}),
     // Из каких `_index.json` собран объект. Ссылками: конфиг слоя читается `read_index`
     // по названному адресу, а вложенный он повторил бы самое тяжёлое в ответе (решение 0019).
     layers: object.layers,
@@ -235,6 +235,8 @@ async function describe(
             ...(group.label === undefined ? {} : { label: group.label }),
             ...(group.description === undefined ? {} : { description: group.description }),
             metrics: group.metrics,
+            // Превью объекта — это его вкладка: агент выбирает её тем же `group`.
+            ...(group.defaultPreview === true ? { defaultPreview: true } : {}),
           })),
         }),
     metrics: wanted.map((metric, at) => ({

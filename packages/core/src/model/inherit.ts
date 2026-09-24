@@ -79,10 +79,7 @@ function aloneIndex(own: OwnIndex): IndexPart {
     name: own.name,
     isGroup: own.isGroup,
     props: own.props,
-    previewSize: own.previewSize,
-    previewLayout: own.previewLayout,
     detailsLayout: own.detailsLayout,
-    previewStyle: own.previewStyle,
     layers: own.layers,
     prompt: own.prompt,
     workflowPrompt: own.workflowPrompt,
@@ -106,18 +103,12 @@ export function inheritIndex(own: OwnIndex, prototype: IndexPart | undefined): I
     {
       name: prototype.name,
       props: prototype.props,
-      "preview-size": prototype.previewSize,
-      "preview-metrics-layout": prototype.previewLayout,
       "details-metrics-layout": prototype.detailsLayout,
-      "preview-style": prototype.previewStyle,
     },
     {
       name: own.name,
       props: own.props,
-      "preview-size": own.previewSize,
-      "preview-metrics-layout": own.previewLayout,
       "details-metrics-layout": own.detailsLayout,
-      "preview-style": own.previewStyle,
     },
   );
 
@@ -125,10 +116,7 @@ export function inheritIndex(own: OwnIndex, prototype: IndexPart | undefined): I
     ...base,
     prototypeName: prototype.name,
     props: merged.props ?? {},
-    previewSize: merged["preview-size"],
-    previewLayout: merged["preview-metrics-layout"],
     detailsLayout: merged["details-metrics-layout"],
-    previewStyle: merged["preview-style"],
     // `_index.json` прототипа — следующий слой объекта, ровно как `extends` у метрики.
     layers: [...own.layers, ...fromPrototype(prototype.layers)],
     prompt: joinPrompts(prototype.prompt, own.prompt),

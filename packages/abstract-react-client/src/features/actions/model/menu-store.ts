@@ -1,6 +1,6 @@
 import { action, makeObservable, observable } from "mobx";
 import type { MapAction } from "@mapward/core";
-import { Popup } from "../../../lib/mobx/popup.ts";
+import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
 import { matchActions } from "../pure-model/actions.ts";
 
 /**
@@ -10,7 +10,9 @@ import { matchActions } from "../pure-model/actions.ts";
  */
 export class MenuStore {
   query = "";
-  readonly popup = new Popup(() => this.clear());
+  // Меню лежит порталом поверх всего — в шапке карточки его иначе обрезала бы её рамка.
+  readonly popup = new Popup(() => this.clear(), true);
+  readonly anchor = new Anchor();
 
   constructor(
     private readonly actions: () => MapAction[],
@@ -25,6 +27,12 @@ export class MenuStore {
 
   get found(): MapAction[] {
     return matchActions(this.actions(), this.query);
+  }
+
+  /** Кнопка меню: место меряется по ней в момент открытия. */
+  toggle(button: HTMLElement): void {
+    this.anchor.measure(button);
+    this.popup.toggle();
   }
 
   setQuery(query: string): void {

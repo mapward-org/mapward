@@ -46,7 +46,8 @@
             ["children"]
           ],
           "style": {
-            "gridTemplateRows": "auto auto auto minmax(320px, auto)",
+            "height": "100%",
+            "gridTemplateRows": "auto auto auto minmax(320px, 1fr)",
             "gap": "8px"
           }
         }

@@ -7,13 +7,6 @@
     "packageName": "@mapward/abstract-server",
     "architectureDoc": "ru/docs/architecture/abstract-server.md"
   },
-  "preview-size": {
-    "w": 2,
-    "h": 1
-  },
-  "preview-metrics-layout": {
-    "areas": [["code"]]
-  },
   "details-metrics-layout": {
     "min-width: 0px": {
       "areas": [
@@ -52,5 +45,22 @@
         "gap": "8px"
       }
     }
+  },
+  "metric-groups": {
+    "groups": [
+      {
+        "key": "превью",
+        "label": "Карточка",
+        "description": "Что видно на карточке объекта там, где он встречается на чужом экране.",
+        "metrics": ["code"],
+        "defaultPreview": true,
+        "details-metrics-layout": {
+          "areas": [["code"]],
+          "style": {
+            "gap": "8px"
+          }
+        }
+      }
+    ]
   }
 }

@@ -25,6 +25,11 @@ export const MetricGroup = T.Object({
   metrics: T.Array(T.String()),
   /** Своя раскладка вкладки; без неё берётся `details-metrics-layout` объекта. */
   "details-metrics-layout": T.Optional(Layout),
+  /**
+   * Эта вкладка — превью объекта: её показывает карточка, которой группу не назвали. Отдельного
+   * описания у превью нет — карточка берёт у вкладки метрики и раскладку.
+   */
+  defaultPreview: T.Optional(T.Boolean()),
 });
 
 export const MetricGroups = T.Object({
@@ -37,10 +42,7 @@ export const ObjectIndex = T.Object({
   name: T.Optional(T.String()),
   props: T.Optional(T.Record(T.String(), T.Unknown())),
   extends: T.Optional(T.String()),
-  "preview-size": T.Optional(T.Object({ w: T.Number(), h: T.Number() })),
-  "preview-metrics-layout": T.Optional(Layout),
   "details-metrics-layout": T.Optional(Layout),
-  "preview-style": T.Optional(T.Record(T.String(), T.String())),
   // Решение 0018: то, что карта говорит своему терминалу поверх сказанного инструментом.
   // Доезжает до промпта терминала и до промпта этапа: правило объекта не зависит от того,
   // запущена директива или нет.

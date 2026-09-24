@@ -8,6 +8,8 @@ import { action, makeObservable, observable, reaction, observableRef } from "mob
 export class Popup {
   open = false;
   private element: HTMLElement | null = null;
+  /** Меню, вынесенное порталом из-под кнопки: клик в нём — не «мимо». */
+  private layer: HTMLElement | null = null;
   private stop: (() => void) | undefined;
   private listening: (() => void) | undefined;
 
@@ -26,6 +28,16 @@ export class Popup {
   readonly hold = (element: HTMLElement | null) => {
     this.element = element;
   };
+
+  /** То же для меню, которое лежит порталом поверх всего: в DOM оно не внутри кнопки. */
+  readonly holdLayer = (element: HTMLElement | null) => {
+    this.layer = element;
+  };
+
+  private inside(target: EventTarget | null): boolean {
+    const node = target as Node | null;
+    return Boolean(node && (this.element?.contains(node) || this.layer?.contains(node)));
+  }
 
   show(): void {
     this.open = true;
@@ -56,18 +68,22 @@ export class Popup {
   }
 
   private listen(): void {
-    const away = (event: MouseEvent) => {
-      if (!this.element?.contains(event.target as Node)) this.close();
+    const away = (event: Event) => {
+      if (!this.inside(event.target)) this.close();
     };
     const close = () => this.close();
     document.addEventListener("mousedown", away);
+    // Меню `fixed` стоит там, где была кнопка: прокрутка вокруг или колесо над холстом увели
+    // бы кнопку из-под него. Прокрутка самого меню — не повод закрываться.
     if (this.fixed) {
-      window.addEventListener("scroll", close, true);
+      window.addEventListener("scroll", away, true);
+      window.addEventListener("wheel", away, true);
       window.addEventListener("resize", close);
     }
     this.listening = () => {
       document.removeEventListener("mousedown", away);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", away, true);
+      window.removeEventListener("wheel", away, true);
       window.removeEventListener("resize", close);
     };
   }

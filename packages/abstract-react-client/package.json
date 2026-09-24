@@ -30,10 +30,12 @@
     "mobx": "catalog:",
     "mobx-react-lite": "catalog:",
     "react": "catalog:",
+    "react-dom": "catalog:",
     "rxjs": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unrun": "catalog:"

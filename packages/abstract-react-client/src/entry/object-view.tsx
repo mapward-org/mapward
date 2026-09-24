@@ -6,8 +6,10 @@ import { bridgeFiles, MapView, reloadMap } from "../services/map/index.ts";
 import { MapState } from "../services/state/index.ts";
 import { useLocalStore } from "../lib/mobx/use-local-store.ts";
 import {
+  CardTerminalMenu,
   ObjectScreen,
   ProvideScreenSlots,
+  ProvideTerminals,
   ScreenStore,
   Terminals,
   type History,
@@ -29,9 +31,11 @@ import {
 import { ObjectRuns, ProvideRuns, RunsScreen } from "../features/runs/index.ts";
 import {
   DirectiveArchive,
+  DirectiveMenu,
   ObjectDirectives,
   ProvideDirectives,
 } from "../features/directives/index.ts";
+import { ObjectCard, ProvideObjectCard } from "../features/object-card/index.ts";
 import { MetaScreen, ProvideMeta } from "../features/meta/index.ts";
 import { ChildrenMapView, ProvideChildrenMap } from "../features/children-map/index.ts";
 
@@ -94,10 +98,7 @@ export const ObjectView = observer(function ObjectView(props: {
       ),
     [runs],
   );
-  const terminals = useLocalStore(
-    () => new Terminals(bridge, props.mapConfig, () => screen.object.address),
-    [screen],
-  );
+  const terminals = useLocalStore(() => new Terminals(bridge, props.mapConfig), [map]);
   const places = useLocalStore(() => new MapState(bridge, props.mapConfig.mapPath), [map]);
 
   return (
@@ -123,6 +124,7 @@ export const ObjectView = observer(function ObjectView(props: {
               Button: KitActionButton,
             },
             ChildrenMap: ChildrenMapView,
+            Card: ObjectCard,
           }}
         >
           <ProvideDirectives
@@ -130,7 +132,10 @@ export const ObjectView = observer(function ObjectView(props: {
               ask: host.can.ask,
               ...(host.can.openFile ? { open: (file) => host.open(file.path) } : {}),
               ...(host.can.terminals
-                ? { runStage: (file, stage) => terminals.runStage(file.name, stage) }
+                ? {
+                    runStage: (object, file, stage) =>
+                      terminals.runStage(object.address, file.name, stage),
+                  }
                 : {}),
             }}
           >
@@ -148,11 +153,28 @@ export const ObjectView = observer(function ObjectView(props: {
                   places,
                   open: (link) => screen.open(link),
                   ...(screen.tabs ? { openTab: (link: string) => screen.openObjectTab(link) } : {}),
+                  Card: ObjectCard,
                 }}
               >
-                <ProvideScreenSlots slots={Slots}>
-                  <ObjectScreen screen={screen} map={map} terminals={terminals} />
-                </ProvideScreenSlots>
+                <ProvideObjectCard
+                  port={{
+                    find: (address) => map.live.find(address),
+                    open: (link) => screen.open(link),
+                    ...(screen.tabs
+                      ? { openTab: (link: string) => screen.openObjectTab(link) }
+                      : {}),
+                    Grid: MetricGrid,
+                    Actions: ObjectActionMenu,
+                    Directives: DirectiveMenu,
+                    ...(host.can.terminals ? { Terminal: CardTerminalMenu } : {}),
+                  }}
+                >
+                  <ProvideTerminals terminals={terminals}>
+                    <ProvideScreenSlots slots={Slots}>
+                      <ObjectScreen screen={screen} map={map} terminals={terminals} />
+                    </ProvideScreenSlots>
+                  </ProvideTerminals>
+                </ProvideObjectCard>
               </ProvideChildrenMap>
             </ProvideMeta>
           </ProvideDirectives>

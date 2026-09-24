@@ -87,6 +87,10 @@ async function readDir(files: FileReader, base: string, spec: ReadDirSpec): Prom
   return walk(base, "");
 }
 
+/** Размер карточки — css-строка или число пикселей; остальное в конфиге не размер. */
+const size = (value: unknown): string | number | undefined =>
+  typeof value === "string" || typeof value === "number" ? value : undefined;
+
 const strings = (value: unknown): string[] | undefined =>
   Array.isArray(value) ? value.map(String) : undefined;
 
@@ -221,7 +225,13 @@ export class CollectMetric {
       case "object-children-map": {
         const exclude = strings(spec.exclude) ?? [];
         const include = strings(spec.include) ?? [];
-        return { value: childrenMap(owner, exclude, include) };
+        // Вкладка и размер карточек — у всех узлов сразу: размер задаёт место показа.
+        const card = {
+          ...(typeof spec.group === "string" ? { group: spec.group } : {}),
+          ...(size(spec.width) === undefined ? {} : { width: size(spec.width) }),
+          ...(size(spec.maxHeight) === undefined ? {} : { maxHeight: size(spec.maxHeight) }),
+        };
+        return { value: childrenMap(owner, exclude, include, card) };
       }
       default:
         throw new Error(`Коллектор ${String(spec.kind)} ещё не поддержан`);

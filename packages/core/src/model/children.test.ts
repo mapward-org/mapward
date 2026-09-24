@@ -53,3 +53,21 @@ test("include picks what goes on the map, exclude cuts a branch away", () => {
   // Пустой список значит «всё», а не «ничего».
   expect(childrenMap(map, [], []).nodes).toHaveLength(3);
 });
+
+test("a node is a card of its object, with the group and size of the map", () => {
+  const [plain] = childrenMap(map).nodes;
+  expect(plain).toEqual({
+    label: "core",
+    link: "mapward://packages/core",
+    object: "mapward://packages/core",
+  });
+
+  // Вкладка и размер — у всех узлов сразу: их задаёт место, где карточки нарисованы.
+  const [card] = childrenMap(map, [], [], {
+    group: "превью",
+    width: 320,
+    maxHeight: "200px",
+  }).nodes;
+  expect(card).toMatchObject({ object: "mapward://packages/core", group: "превью", width: 320 });
+  expect(card?.maxHeight).toBe("200px");
+});

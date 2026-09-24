@@ -374,20 +374,8 @@ export class LiveObject implements MapObject {
     return this.index?.props ?? {};
   }
 
-  get previewSize(): MapObject["previewSize"] {
-    return this.index?.previewSize;
-  }
-
-  get previewLayout(): MapObject["previewLayout"] {
-    return this.index?.previewLayout;
-  }
-
   get detailsLayout(): MapObject["detailsLayout"] {
     return this.index?.detailsLayout;
-  }
-
-  get previewStyle(): MapObject["previewStyle"] {
-    return this.index?.previewStyle;
   }
 
   get layers(): ConfigLayer[] {

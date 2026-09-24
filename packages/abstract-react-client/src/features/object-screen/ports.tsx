@@ -1,5 +1,6 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 import type { Layout, MapMetric, MapObject } from "@mapward/core";
+import type { Terminals } from "./adapters/terminals.ts";
 
 /**
  * Что экран объекта ставит по местам — решение 0042. Экран не знает, что это за фичи: он
@@ -38,4 +39,20 @@ export function useScreenSlots(): ScreenSlots {
   const slots = useContext(SlotsContext);
   if (!slots) throw new Error("ProvideScreenSlots is missing above the object screen");
   return slots;
+}
+
+/**
+ * Терминалы вида — одни на все объекты: объект называется в каждом вызове. Экрану их отдают
+ * пропсом, а карточке, которая стоит на чужом экране, — отсюда (решение 0042).
+ */
+const TerminalsContext = createContext<Terminals | undefined>(undefined);
+
+export function ProvideTerminals(props: { terminals: Terminals; children: ReactNode }) {
+  return <TerminalsContext value={props.terminals}>{props.children}</TerminalsContext>;
+}
+
+export function useTerminals(): Terminals {
+  const terminals = useContext(TerminalsContext);
+  if (!terminals) throw new Error("ProvideTerminals is missing above the terminal menu");
+  return terminals;
 }

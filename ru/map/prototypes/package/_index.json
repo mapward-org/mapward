@@ -4,13 +4,6 @@
   "props": {
     "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}"
   },
-  "preview-size": {
-    "w": 2,
-    "h": 1
-  },
-  "preview-metrics-layout": {
-    "areas": [["code", "tests"]]
-  },
   "details-metrics-layout": {
     "min-width: 0px": {
       "areas": [
@@ -50,5 +43,42 @@
         "gap": "8px"
       }
     }
+  },
+  "metric-groups": {
+    "groups": [
+      {
+        "key": "всё",
+        "label": "Всё",
+        "metrics": [
+          "code",
+          "docs",
+          "version",
+          "tests",
+          "lint",
+          "public-api",
+          "architecture",
+          "requirements-todo",
+          "architecture-drift",
+          "code-drift",
+          "decisions",
+          "requirements",
+          "howto",
+          "files"
+        ]
+      },
+      {
+        "key": "превью",
+        "label": "Карточка",
+        "description": "Что видно на карточке объекта там, где он встречается на чужом экране.",
+        "metrics": ["code", "tests"],
+        "defaultPreview": true,
+        "details-metrics-layout": {
+          "areas": [["code"], ["tests"]],
+          "style": {
+            "gap": "8px"
+          }
+        }
+      }
+    ]
   }
 }

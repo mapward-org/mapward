@@ -1,5 +1,5 @@
 import type { MapObject } from "./model.ts";
-import type { LinkNode, MapRelation } from "./display.ts";
+import type { LinkNode, MapRelation, ObjectRef } from "./display.ts";
 
 /** Карта детей — это данные дисплея `map`, поэтому и формы у неё оттуда же. */
 export type MapNode = LinkNode;
@@ -27,6 +27,11 @@ export function childrenMap(
   object: MapObject,
   exclude: string[] = [],
   include: string[] = [],
+  /**
+   * Как показать узлы карточками: вкладка и размер — у всех узлов сразу. Размер — свойство
+   * места, где карточка нарисована, поэтому живёт в конфиге коллектора, а не у объекта.
+   */
+  card: Omit<ObjectRef, "object"> = {},
 ): ChildrenMap {
   const nodes: MapNode[] = [];
   const relations: MapRelation[] = [];
@@ -46,7 +51,7 @@ export function childrenMap(
 
     const { from, to } = child.props as { from?: string; to?: string };
     if (from && to) relations.push({ label: child.name, link: child.address, from, to });
-    else nodes.push({ label: child.name, link: child.address });
+    else nodes.push({ label: child.name, link: child.address, object: child.address, ...card });
   };
 
   for (const child of object.children) visit(child);

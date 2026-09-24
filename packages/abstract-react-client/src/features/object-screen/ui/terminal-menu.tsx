@@ -1,7 +1,8 @@
 import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
-import { Popup } from "../../../lib/mobx/popup.ts";
+import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { Floating } from "../../../lib/ui/floating.tsx";
 
 /** Тот же бокс, что у соседей по шапке: `x 3…13`, `y 3…13` — решение 0028. */
 const TerminalIcon = (
@@ -20,7 +21,9 @@ export const TerminalMenu = observer(function TerminalMenu(props: {
   onOpen: () => void;
   children: (close: () => void) => ReactNode;
 }) {
-  const popup = useLocalStore(() => new Popup());
+  // Меню порталом поверх всего: в шапке карточки его иначе обрезала бы её рамка.
+  const popup = useLocalStore(() => new Popup(undefined, true));
+  const anchor = useLocalStore(() => new Anchor());
 
   return (
     // `flex`, а не просто `relative`: иначе кнопка лежит внутри обёртки и не тянется
@@ -30,16 +33,22 @@ export const TerminalMenu = observer(function TerminalMenu(props: {
         type="button"
         title="Терминалы"
         // Nothing open yet — one click starts the conversation instead of showing an empty list.
-        onClick={() => (props.empty ? props.onOpen() : popup.toggle())}
+        onClick={(event) => {
+          if (props.empty) return props.onOpen();
+          anchor.measure(event.currentTarget);
+          popup.toggle();
+        }}
         className="rounded-sm px-1 py-0.5 opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
       >
         {TerminalIcon}
       </button>
 
       {popup.open && (
-        <ul className="absolute right-0 z-50 min-w-56 rounded-sm border border-[var(--mw-menu-border,#8884)] bg-[var(--mw-menu-background,var(--mw-editor-background))] py-1 shadow-lg">
-          {props.children(() => popup.close())}
-        </ul>
+        <Floating at={anchor.at} hold={popup.holdLayer}>
+          <ul className="min-w-56 rounded-sm border border-[var(--mw-menu-border,#8884)] bg-[var(--mw-menu-background,var(--mw-editor-background))] py-1 shadow-lg">
+            {props.children(() => popup.close())}
+          </ul>
+        </Floating>
       )}
     </div>
   );

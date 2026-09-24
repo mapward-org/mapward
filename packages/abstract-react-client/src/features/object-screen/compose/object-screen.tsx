@@ -18,8 +18,8 @@ import {
   SoloBar,
   SoloBody,
 } from "../ui/screen-layout.tsx";
-import { FreshTerminal, TerminalItem, TerminalMenu } from "../ui/terminal-menu.tsx";
 import { ViewTabs } from "../ui/view-tabs.tsx";
+import { ObjectTerminalMenu } from "./terminal-menu.tsx";
 
 /** Что экрану нужно от карты, кроме объектов: готова ли она и как её перечитать. */
 type ScreenMapState = { ready: boolean; reloading: boolean; reload: () => void };
@@ -97,22 +97,7 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
             {/* Все экшоны объекта списком с поиском — решение 0038. Нет экшонов — нет кнопки. */}
             {screen.hasActions && <slots.ActionMenu object={screen.object} />}
             {screen.can.terminals && (
-              <TerminalMenu empty={terminals.list.length === 0} onOpen={() => terminals.open()}>
-                {(close) => (
-                  <>
-                    <FreshTerminal close={close} onFresh={() => terminals.open(true)} />
-                    {terminals.list.map((terminal) => (
-                      <TerminalItem
-                        key={terminal.id}
-                        terminal={terminal}
-                        close={close}
-                        onShow={(id) => terminals.show(id)}
-                        onClose={(id) => terminals.close(id)}
-                      />
-                    ))}
-                  </>
-                )}
-              </TerminalMenu>
+              <ObjectTerminalMenu object={screen.object} terminals={terminals} />
             )}
             {/* Шапка держит только то, что делают, а не то, что смотрят (решение 0024). */}
             {screen.tabs && (
