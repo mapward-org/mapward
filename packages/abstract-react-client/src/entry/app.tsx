@@ -113,14 +113,15 @@ export const MapwardApp = observer(function MapwardApp(props: {
             {target ? (
               <TabObject target={target} {...(onTarget ? { onTarget } : {})} />
             ) : (
-              // Кто ждёт ответа — поверх всех карт, а не внутри одной: список общий на окно,
-              // а карт в сайдбаре бывает несколько. В табе его нет (решение 0034).
+              // Лента — поверх всех карт, а не внутри одной: она общая на окно, а карт в
+              // сайдбаре бывает несколько. В табе её нет (решение 0034). Пункт экшона ведёт
+              // той же просьбой «перейди к объекту», что кнопка в файле директивы.
               <>
                 <Maps
                   renderMap={(map) => <SidebarObject map={map} focus={focus} />}
                   focus={focus}
                 />
-                <DirectiveTurns />
+                <DirectiveTurns focus={focus} />
               </>
             )}
           </ProvideViewStates>

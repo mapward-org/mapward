@@ -713,6 +713,7 @@ function recordingHistory() {
       return {
         step: (name) => run.steps.push(name),
         stepDone: (status) => run.steps.push(status),
+        output: () => {},
         end: (status) => {
           run.end = status;
         },

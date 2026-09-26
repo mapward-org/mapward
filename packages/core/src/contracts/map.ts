@@ -188,6 +188,15 @@ export const terminalBridge = {
   ),
   /** Показать уже открытый терминал: список даёт идентификатор, имя — только для глаз. */
   showTerminal: createBridgeMethod(T.Object({ id: T.String() }), T.Void()),
+  /**
+   * Показать терминал директивы — тот, что завела кнопка её этапа. Нет такого — ничего: этап
+   * могли запустить словами из чужого терминала, и какой он, хост не знает; новый не заводится,
+   * для этого есть кнопка этапа.
+   */
+  showDirectiveTerminal: createBridgeMethod(
+    T.Object({ address: T.String(), directive: T.String() }),
+    T.Void(),
+  ),
   listTerminals: createBridgeMethod(
     T.Object({ address: T.String() }),
     T.Array(T.Object({ id: T.String(), name: T.String() })),

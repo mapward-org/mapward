@@ -175,6 +175,12 @@ export function showTerminal(params: { id: string }): void {
   alive(params.id)?.terminal.show();
 }
 
+/** Терминал директивы, если он жив, — на передний план; иначе ничего, новый не заводится. */
+export function showDirectiveTerminal(params: { address: string; directive: string }): void {
+  const session = pickStageSession(params);
+  if (session) showTerminal(session);
+}
+
 export function listTerminals(params: { address: string }): { id: string; name: string }[] {
   return ofObject(params.address).map((session) => ({ id: session.id, name: session.name }));
 }

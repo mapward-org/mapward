@@ -558,6 +558,9 @@ export class MetricStore {
       stageLog = log || undefined;
       stageOutput = output;
     };
+    // Вывод идущей стадии — сразу в её шаг: лог растёт на экране прогонов, не дожидаясь конца.
+    const output =
+      record && ((chunk: string, stream: "out" | "err") => record.output(chunk, stream));
 
     // Истёкшее время отменяет прогон теми же средствами, что кнопка, но неудачей считается
     // только оно: отмене нечего записать, а здесь ответ обещали и не дали — решение 0016.
@@ -590,7 +593,7 @@ export class MetricStore {
 
       for (;;) {
         if (collect) {
-          const plan = { ...(only ? { only } : {}), step, problems };
+          const plan = { ...(only ? { only } : {}), step, problems, output };
           // oxlint-disable-next-line no-await-in-loop
           const collected = await this.limited(() => {
             live.stage = "collect";
@@ -642,7 +645,7 @@ export class MetricStore {
             stageLog = undefined;
             stageOutput = undefined;
             return this.transformer
-              .run(metric, owner, ref.mapPath, collected, stage.token, entry.result, report)
+              .run(metric, owner, ref.mapPath, collected, stage.token, entry.result, report, output)
               .finally(stopDeadline);
           });
         } catch (error) {

@@ -1,5 +1,11 @@
 import type { ActionPermissions, MapObject } from "@mapward/core";
-import type { AgentPort, Cancellation, ProcessEnv, ShellPort } from "../../../../ports/index.ts";
+import type {
+  AgentPort,
+  Cancellation,
+  OutputListener,
+  ProcessEnv,
+  ShellPort,
+} from "../../../../ports/index.ts";
 
 export type ScriptRun = {
   command: string;
@@ -8,6 +14,8 @@ export type ScriptRun = {
   /** Вход, если есть, уходит в stdin — экранировать нечего. */
   input?: string;
   cancel?: Cancellation;
+  /** Вывод по ходу — в лог идущего шага; итог от него не зависит. */
+  output?: OutputListener;
 };
 
 export type PromptRun = {
@@ -24,6 +32,7 @@ export type PromptRun = {
   env: ProcessEnv;
   cancel?: Cancellation;
   permissions?: ActionPermissions;
+  output?: OutputListener;
 };
 
 /**
@@ -38,10 +47,10 @@ export class Executor {
 
   /** Команда оболочки. */
   script(params: ScriptRun) {
-    const { command, cwd, env, cancel } = params;
+    const { command, cwd, env, cancel, output } = params;
     return params.input === undefined
-      ? this.shell.run(command, { cwd, env, cancel })
-      : this.shell.pipe(command, { cwd, env, input: params.input, cancel });
+      ? this.shell.run(command, { cwd, env, cancel, output })
+      : this.shell.pipe(command, { cwd, env, input: params.input, cancel, output });
   }
 
   /** Агент в headless-режиме. */
@@ -55,6 +64,7 @@ export class Executor {
       cwd: params.cwd,
       env: params.env,
       cancel: params.cancel,
+      output: params.output,
       ...(params.permissions === undefined ? {} : { permissions: params.permissions }),
     });
   }

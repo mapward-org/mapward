@@ -1,5 +1,5 @@
 import type { ActionPermissions, MapObject } from "@mapward/core";
-import type { Cancellation, ProcessEnv, ProcessResult } from "../../ports/index.ts";
+import type { Cancellation, OutputListener, ProcessEnv, ProcessResult } from "../../ports/index.ts";
 import type { MapRef } from "../../kernel/map-ref.ts";
 
 /**
@@ -19,6 +19,7 @@ export type RunsExecutor = {
     env: ProcessEnv;
     input?: string;
     cancel?: Cancellation;
+    output?: OutputListener;
   }): Promise<ProcessResult>;
   prompt(params: {
     owner?: MapObject;
@@ -28,7 +29,27 @@ export type RunsExecutor = {
     env: ProcessEnv;
     cancel?: Cancellation;
     permissions?: ActionPermissions;
+    output?: OutputListener;
   }): Promise<ProcessResult>;
+};
+
+/** Пункт ленты про прогон экшона: где он, чей и как зовётся. */
+export type RunsActivityTurn = {
+  mapPath: string;
+  address: string;
+  object: string;
+  run: string;
+  label: string;
+  at: string;
+};
+
+/**
+ * От ленты активности в кружке сайдбара (решение 0034): экшон запущен и кончился. Метрики сюда не
+ * пишут — они собираются сами, и лента утонула бы в них.
+ */
+export type RunsActivity = {
+  actionStarted(turn: RunsActivityTurn): void;
+  actionEnded(turn: RunsActivityTurn, failed: boolean): void;
 };
 
 /** От метрик: пересобрать метрику после успешного экшона. */

@@ -41,15 +41,24 @@ export function RunHeader(props: {
   );
 }
 
-/** Лог и вывод — моноширинно и с переносом: строки скрипта длинные, а сайдбар узкий. */
-export function RunText(props: { title: string; text: string; error?: boolean }) {
+/**
+ * Лог и вывод — моноширинно и с переносом: строки скрипта длинные, а сайдбар узкий. С `follow`
+ * — текст идущего шага: он растёт по ходу, окно у него своё и держится у конца (его ведёт стор).
+ */
+export function RunText(props: {
+  title: string;
+  text: string;
+  error?: boolean;
+  follow?: ((element: HTMLElement | null) => (() => void) | undefined) | undefined;
+}) {
   return (
     <div className="flex flex-col gap-0.5">
       <div className="text-[11px] uppercase opacity-60">{props.title}</div>
       <pre
+        ref={props.follow}
         className={`m-0 rounded-sm bg-[var(--mw-textBlockQuote-background,#8881)] p-1.5 font-mono text-[11px] break-words whitespace-pre-wrap ${
-          props.error ? "text-[var(--mw-errorForeground,#f85149)]" : ""
-        }`}
+          props.follow ? "max-h-[50vh] overflow-y-auto" : ""
+        } ${props.error ? "text-[var(--mw-errorForeground,#f85149)]" : ""}`}
       >
         {props.text}
       </pre>

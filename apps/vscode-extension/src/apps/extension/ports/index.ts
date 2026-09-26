@@ -2,11 +2,11 @@ import { exec, spawn, type ChildProcess } from "node:child_process";
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
-import { claudeArgs, shellArgs } from "@mapward/abstract-server";
-import type { ActionPermissions } from "@mapward/core";
+import { CLAUDE_STREAM_ARGS, claudeArgs, claudeStream, shellArgs } from "@mapward/abstract-server";
 import type {
   Cancellation,
   FileEntry,
+  OutputListener,
   ProcessEnv,
   ProcessResult,
   ServerPorts,
@@ -132,6 +132,7 @@ function runProcess(
     cancel?: Cancellation;
     shell: boolean;
     args?: string[];
+    output?: OutputListener;
   },
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
@@ -148,8 +149,17 @@ function runProcess(
 
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    // Кодировка на потоке, а не `toString()` куска: русская буква на границе кусков иначе бьётся.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+      options.output?.(chunk, "out");
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+      options.output?.(chunk, "err");
+    });
 
     child.on("error", (error) => reject(error));
     child.on("close", (code) =>
@@ -162,8 +172,8 @@ function runProcess(
   });
 }
 
-const shell = {
-  run(command: string, options: { cwd: string; env: ProcessEnv; cancel?: Cancellation }) {
+const shell: ServerPorts["shell"] = {
+  run(command, options) {
     return new Promise<ProcessResult>((resolve, reject) => {
       const child = exec(
         command,
@@ -171,38 +181,35 @@ const shell = {
         (error, stdout, stderr) =>
           error ? reject(error) : resolve({ stdout: String(stdout), stderr: String(stderr) }),
       );
+      // Итог по-прежнему отдаёт `exec` целиком, а по ходу вывод уходит слушателю.
+      child.stdout?.on("data", (chunk: Buffer | string) => options.output?.(String(chunk), "out"));
+      child.stderr?.on("data", (chunk: Buffer | string) => options.output?.(String(chunk), "err"));
       options.cancel?.onCancel(() => killTree(child));
     });
   },
 
-  pipe(
-    command: string,
-    options: { cwd: string; env: ProcessEnv; input: string; cancel?: Cancellation },
-  ) {
+  pipe(command, options) {
     return runProcess(command, { ...options, shell: true });
   },
 };
 
 /**
  * Агент в headless-режиме — решение 0004. Промпт уходит в stdin, поэтому правила экранирования
- * трёх оболочек перестают быть нашей заботой.
+ * трёх оболочек перестают быть нашей заботой. События он печатает потоком, и их переводит в
+ * строки `claudeStream`; итогом остаётся последний ответ.
  */
-const agent = {
-  run(params: {
-    prompt: string;
-    cwd: string;
-    env: ProcessEnv;
-    cancel?: Cancellation;
-    permissions?: ActionPermissions;
-  }) {
+const agent: ServerPorts["agent"] = {
+  run(params) {
+    const stream = claudeStream(params.output);
     return runProcess("claude", {
       cwd: params.cwd,
       env: params.env,
       input: params.prompt,
       cancel: params.cancel,
       shell: process.platform === "win32",
-      args: claudeArgs(params.permissions),
-    });
+      args: [...CLAUDE_STREAM_ARGS, ...claudeArgs(params.permissions)],
+      output: stream.listener,
+    }).then(stream.finish);
   },
 };
 

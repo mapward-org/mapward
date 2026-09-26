@@ -1,8 +1,10 @@
 import { expect, test } from "vitest";
 import type { Turn } from "@mapward/core";
-import { badge, turnLabel, waited } from "./turns.ts";
+import { badge, buttonState, stateLabel, turnLabel, waited } from "./turns.ts";
 
 const turn: Turn = {
+  kind: "directive",
+  state: "waiting",
   mapPath: "/map",
   address: "mapward://",
   object: "Mapward (ru)",
@@ -14,6 +16,33 @@ const turn: Turn = {
 
 test("подпись — объект, директива без даты и расширения, этап", () => {
   expect(turnLabel(turn)).toBe("Mapward (ru) · давай-добавим-нотификцию-по-этапам · План");
+});
+
+const action: Turn = {
+  kind: "action",
+  state: "running",
+  mapPath: "/map",
+  address: "mapward://",
+  object: "Mapward (ru)",
+  run: "r1",
+  label: "Релиз",
+  at: "2026-09-23T01:00:00.000Z",
+};
+
+test("подпись экшона — объект и экшон, со словом о том, что с ним", () => {
+  expect(turnLabel(action)).toBe("Mapward (ru) · Релиз");
+  expect(stateLabel(action)).toBe("идёт");
+  expect(stateLabel({ ...action, state: "failed" })).toBe("упал");
+  expect(stateLabel(turn)).toBeUndefined();
+});
+
+test("число — то, что ждёт человека; одно идущее — лоадер без числа", () => {
+  expect(buttonState([action])).toEqual({ count: 0, busy: true });
+  expect(buttonState([action, turn, { ...action, run: "r2", state: "failed" }])).toEqual({
+    count: 2,
+    busy: true,
+  });
+  expect(buttonState([turn])).toEqual({ count: 1, busy: false });
 });
 
 test("сколько ждёт — грубо, по крупнейшей единице", () => {

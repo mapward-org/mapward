@@ -1,9 +1,20 @@
 import { BehaviorSubject, type Observable } from "rxjs";
-import { stageFinished, turnTaken, type Turn, type TurnKey } from "../domain/turns.ts";
+import {
+  removed,
+  turnTaken,
+  upsert,
+  type ActionTurn,
+  type DirectiveTurn,
+  type Turn,
+  type TurnKey,
+} from "../domain/turns.ts";
+
+type Placed<T> = Omit<T, "kind" | "state">;
 
 /**
- * Список «ждут ответа» живёт в памяти сервера: он нужен, пока человек работает, и не должен
- * копиться между перезапусками (решение 0034). Один на сервер — общий для всех карт окна.
+ * Лента активности живёт в памяти сервера: она нужна, пока человек работает, и не должна
+ * копиться между перезапусками (решение 0034). Одна на сервер — общая для всех карт окна.
+ * Идущий прогон после перезапуска всё равно возвращается остановленным, так что терять нечего.
  *
  * Подписчик сразу получает текущий список, потом каждое изменение — как подписка на карту.
  */
@@ -14,10 +25,35 @@ export class TurnStore {
     return this.turns.asObservable();
   }
 
-  finished(turn: Turn): void {
-    this.set(stageFinished(this.turns.value, turn));
+  /** Этап взяли в работу: директива идёт, и прежний «ждёт ответа» у неё снимается. */
+  started(turn: Placed<DirectiveTurn>): void {
+    this.set(upsert(this.turns.value, { ...turn, kind: "directive", state: "running" }));
   }
 
+  /** Этап кончился — ход у человека. */
+  finished(turn: Placed<DirectiveTurn>): void {
+    this.set(upsert(this.turns.value, { ...turn, kind: "directive", state: "waiting" }));
+  }
+
+  /** Экшон запущен — откуда угодно: кнопкой, строкой дисплея, агентом, терминалом. */
+  actionStarted(turn: Placed<ActionTurn>): void {
+    this.set(upsert(this.turns.value, { ...turn, kind: "action", state: "running" }));
+  }
+
+  /**
+   * Экшон кончился. Успешный и остановленный уходят: первый смотреть незачем, второй остановил
+   * сам человек. Упавший остаётся, пока его не откроют, — иначе про падение фонового прогона
+   * не узнать.
+   */
+  actionEnded(turn: Placed<ActionTurn>, failed: boolean): void {
+    this.set(
+      failed
+        ? upsert(this.turns.value, { ...turn, kind: "action", state: "failed" })
+        : removed(this.turns.value, turn),
+    );
+  }
+
+  /** Человек открыл пункт. Идущее не убирается — оно уйдёт само, когда кончится. */
   taken(key: TurnKey): void {
     this.set(turnTaken(this.turns.value, key));
   }

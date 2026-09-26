@@ -1,3 +1,3 @@
-export { stageFinished, turnTaken } from "./domain/turns.ts";
-export type { Turn, TurnKey } from "./domain/turns.ts";
+export { removed, turnTaken, upsert } from "./domain/turns.ts";
+export type { ActionTurn, DirectiveTurn, Turn, TurnKey } from "./domain/turns.ts";
 export { TurnStore } from "./application/turn-store.ts";

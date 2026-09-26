@@ -39,14 +39,14 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
       this.focus.watch(),
     );
 
-    // Число «ждут ответа» на иконке карты в левой полосе: его видно и при закрытом сайдбаре
-    // (решение 0034). Поставить его можно только у созданного вида — пока карту в окне ни разу
-    // не открывали, числа нет. Вид закрылся — подписка уходит вместе с ним.
+    // Число на иконке карты в левой полосе — то, что ждёт человека: ответа или взгляда на
+    // упавший экшон; идущее его не прибавляет. Его видно и при закрытом сайдбаре (решение 0034).
+    // Поставить его можно только у созданного вида — пока карту в окне ни разу не открывали,
+    // числа нет. Вид закрылся — подписка уходит вместе с ним.
     const turns = this.server.watchTurns().subscribe((list) => {
+      const waiting = list.filter((turn) => turn.state !== "running").length;
       view.badge =
-        list.length === 0
-          ? undefined
-          : { value: list.length, tooltip: `Ждут ответа: ${list.length}` };
+        waiting === 0 ? undefined : { value: waiting, tooltip: `Ждут ответа: ${waiting}` };
     });
     view.onDidDispose(() => {
       turns.unsubscribe();

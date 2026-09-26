@@ -14,8 +14,10 @@ export type DirectivesMapSource = {
 /** Какая директива: имя файла у разных объектов совпадает, а адрес объекта — у разных карт. */
 export type DirectiveKey = { mapPath: string; address: string; directive: string };
 
-/** От списка «ждут ответа» (решение 0034): этап начался — ход взят, кончился — ход у человека. */
+type DirectiveTurn = DirectiveKey & { object: string; path: string; stage: string; at: string };
+
+/** От ленты активности (решение 0034): этап начался — директива идёт, кончился — ход у человека. */
 export type DirectiveTurns = {
-  taken(key: DirectiveKey): void;
-  finished(turn: DirectiveKey & { object: string; path: string; stage: string; at: string }): void;
+  started(turn: DirectiveTurn): void;
+  finished(turn: DirectiveTurn): void;
 };

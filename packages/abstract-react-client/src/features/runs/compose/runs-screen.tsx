@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { useViewStates } from "../../../services/state/ports.tsx";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { FollowBottom } from "../../../lib/mobx/follow-bottom.ts";
 import { RunsScreenStore } from "../model/runs-screen.ts";
 import type { RunsTab } from "../pure-model/runs.ts";
 import { useRuns } from "../ports.tsx";
@@ -36,6 +37,8 @@ export const RunsScreen = observer(function RunsScreen(props: {
     [runs, props.selected],
   );
   const run = screen.open;
+  // Лог идущего шага держится у конца, пока человек сам не отмотал вверх.
+  const follow = useLocalStore(() => new FollowBottom());
 
   return screen.total === 0 ? (
     <RunsEmpty />
@@ -81,9 +84,20 @@ export const RunsScreen = observer(function RunsScreen(props: {
                   now={screen.now}
                   dot={<RunDot status={step.status} />}
                 >
-                  {step.output && <RunText title="результат" text={step.output} />}
+                  {step.output && (
+                    <RunText
+                      title="результат"
+                      text={step.output}
+                      follow={step.status === "running" ? follow.hold : undefined}
+                    />
+                  )}
                   {step.log && (
-                    <RunText title="лог" text={step.log} error={step.status === "failure"} />
+                    <RunText
+                      title="лог"
+                      text={step.log}
+                      error={step.status === "failure"}
+                      follow={step.status === "running" ? follow.hold : undefined}
+                    />
                   )}
                 </RunStep>
               ))}

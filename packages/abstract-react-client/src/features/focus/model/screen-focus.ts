@@ -1,8 +1,13 @@
 import { reaction } from "mobx";
 
-type Inbox = { pendingFor(mapPath: string): string | undefined; take(): void };
+type Target = { address: string; run?: string };
+type Inbox = { pendingFor(mapPath: string): Target | undefined; take(): void };
 type Map = { has(address: string): boolean };
-type Screen = { object: { address: string }; go(address: string): void };
+type Screen = {
+  object: { address: string };
+  go(address: string): void;
+  openRuns(run?: string): void;
+};
 
 /**
  * Переход экрана карты по просьбе хоста — кнопка «к объекту» в файле директивы. Выполняется,
@@ -19,16 +24,18 @@ export class ScreenFocus {
     private readonly screen: Screen,
   ) {}
 
-  /** Адрес, к которому пора перейти: просьба есть и объект уже в карте. */
-  private ready(): string | undefined {
-    const address = this.inbox?.pendingFor(this.mapPath);
-    return address !== undefined && this.map.has(address) ? address : undefined;
+  /** Куда пора перейти: просьба есть и объект уже в карте. */
+  private ready(): Target | undefined {
+    const target = this.inbox?.pendingFor(this.mapPath);
+    return target !== undefined && this.map.has(target.address) ? target : undefined;
   }
 
-  private go(address: string | undefined): void {
-    if (address === undefined) return;
+  /** С прогоном — ещё и экран прогонов с ним: туда ведёт пункт экшона в ленте. */
+  private go(target: Target | undefined): void {
+    if (target === undefined) return;
     this.inbox?.take();
-    if (this.screen.object.address !== address) this.screen.go(address);
+    if (this.screen.object.address !== target.address) this.screen.go(target.address);
+    if (target.run !== undefined) this.screen.openRuns(target.run);
   }
 
   mount(): void {

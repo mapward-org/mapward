@@ -71,6 +71,7 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
   // Прогоны метрик и экшонов — одна история (решение 0038). Стор метрик сообщает о своих, а
   // хранилище прогонов после успешного экшона просит его пересобрать метрики: ссылка по кругу,
   // поэтому стор берётся через замыкание — к первому прогону он уже есть.
+  const turns = new TurnStore();
   const runs = new RunStore(
     files,
     executor,
@@ -79,6 +80,7 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     env,
     timers,
     clock,
+    turns,
   );
   const metrics = new MetricStore(
     map,
@@ -94,7 +96,6 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     runs,
   );
 
-  const turns = new TurnStore();
   const locator = new DirectiveLocator(map);
   const state = new DirectiveState(files, writer);
   const createDirective = new CreateDirective(writer);
@@ -227,12 +228,13 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     ) => finishDirective.run(params),
 
     /**
-     * Директивы, где ход у человека, — решение 0034. Живёт в памяти: перезапуск его стирает, и
-     * так и задумано — это стек текущей работы, а не архив.
+     * Лента в кружке сайдбара — решение 0034: идущие этапы и экшоны, директивы, где ход у
+     * человека, и упавшие экшоны. Живёт в памяти: перезапуск её стирает, и так и задумано — это
+     * стек текущей работы, а не архив.
      */
     watchTurns: () => turns.watch(),
 
-    /** Человек открыл пункт — ход взят, как если бы он запустил следующий этап. */
+    /** Человек открыл пункт — ход взят. Идущее по клику не убирается, оно уйдёт само. */
     dismissTurn: (params: TurnKey) => {
       turns.taken(params);
     },

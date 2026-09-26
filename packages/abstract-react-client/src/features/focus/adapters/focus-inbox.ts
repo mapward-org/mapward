@@ -1,11 +1,14 @@
 import { action, makeObservable, observableRef } from "mobx";
 import type { AppBridge, BridgeClient } from "@mapward/core";
 
-type FocusRequest = { mapPath: string; address: string };
+/** `run` — сразу экран прогонов с этим прогоном: так ведёт пункт экшона в ленте. */
+export type FocusRequest = { mapPath: string; address: string; run?: string };
+export type FocusTarget = Omit<FocusRequest, "mapPath">;
 
 /**
- * Просьба хоста перейти к объекту — кнопка «к объекту» в файле директивы. Сайдбар держит её,
- * пока не выполнит: карта может быть свёрнута, история не прочитана, объект ещё не загружен.
+ * Просьба перейти к объекту — кнопка «к объекту» в файле директивы или пункт экшона в ленте.
+ * Сайдбар держит её, пока не выполнит: карта может быть свёрнута, история не прочитана, объект
+ * ещё не загружен.
  *
  * Не `Resource`: тот одинаковое значение дальше не пускает, а второе нажатие на тот же объект,
  * после того как в сайдбаре ушли в сторону, — такая же просьба, как первая.
@@ -48,9 +51,13 @@ export class FocusInbox {
     this.last = request;
   }
 
-  /** Адрес, к которому просили перейти в этой карте, если просьба ещё не выполнена. */
-  pendingFor(mapPath: string): string | undefined {
-    return this.pending?.mapPath === mapPath ? this.pending.address : undefined;
+  /** Куда просили перейти в этой карте, если просьба ещё не выполнена. */
+  pendingFor(mapPath: string): FocusTarget | undefined {
+    const pending = this.pending;
+    if (pending?.mapPath !== mapPath) return undefined;
+    return pending.run === undefined
+      ? { address: pending.address }
+      : { address: pending.address, run: pending.run };
   }
 
   /** Просьба выполнена — её больше нет. */

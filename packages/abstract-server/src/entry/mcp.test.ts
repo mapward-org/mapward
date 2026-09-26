@@ -3,6 +3,7 @@ import type { FilesPort, ServerPorts } from "../ports/index.ts";
 import { createMapServer } from "./server.ts";
 import { bundleBuild, serveMcp, type McpBuild, type McpTransport } from "./mcp.ts";
 import type { MapRef } from "../kernel/map-ref.ts";
+import type { Turn } from "../features/directive-turns/index.ts";
 
 /** Карта в памяти: MCP проверяется без редактора и без диска — решение 0014. */
 function fakeFiles(tree: Record<string, string>): FilesPort {
@@ -682,10 +683,10 @@ test("only the stage told to do so marks the directive done", async () => {
 });
 
 /**
- * Кто ждёт ответа — решение 0034: конец этапа кладёт директиву в список, запуск следующего
- * убирает. Список живёт в сервере, поэтому видно его и без MCP.
+ * Лента — решение 0034: запуск этапа кладёт директиву идущей, конец — ждущей ответа, открытие
+ * пункта убирает. Лента живёт в сервере, поэтому видно её и без MCP.
  */
-test("a finished stage waits for the human until the next one starts", async () => {
+test("a stage runs, then waits for the human until the next one starts", async () => {
   const disk: Record<string, string> = { ...workflowTree };
   const server = createMapServer({
     ...ports,
@@ -697,16 +698,24 @@ test("a finished stage waits for the human until the next one starts", async () 
       },
     },
   });
-  const seen: { directive: string; stage: string; object: string }[][] = [];
+  const seen: Turn[][] = [];
   const subscription = server.watchTurns().subscribe((list) => seen.push(list));
 
   await server.finishDirective({ ...ref, ...directive, stage: "Обсудить" });
   expect(seen.at(-1)).toMatchObject([
-    { directive: directive.directive, stage: "Обсудить", object: "Карта" },
+    { directive: directive.directive, stage: "Обсудить", object: "Карта", state: "waiting" },
   ]);
 
   await server.runDirective({ ...ref, ...directive, stage: "Выполнить" });
-  expect(seen.at(-1)).toEqual([]);
+  expect(seen.at(-1)).toMatchObject([{ stage: "Выполнить", state: "running" }]);
+
+  // Идущее по клику не уходит: оно уйдёт само, когда кончится.
+  server.dismissTurn({
+    mapPath: ref.mapPath,
+    address: "mapward://",
+    directive: directive.directive,
+  });
+  expect(seen.at(-1)).toHaveLength(1);
 
   await server.finishDirective({ ...ref, ...directive, stage: "Выполнить" });
   server.dismissTurn({

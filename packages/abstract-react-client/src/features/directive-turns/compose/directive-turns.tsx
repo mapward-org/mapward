@@ -1,17 +1,23 @@
 import { observer } from "mobx-react-lite";
 import { useBridgeClient } from "../../../ports/bridge.tsx";
+import { useHost } from "../../../services/host/ports.tsx";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
-import { Turns } from "../adapters/turns.ts";
+import { Turns, type RunFocus } from "../adapters/turns.ts";
 import { TurnsPanel } from "../model/turns-panel.ts";
+import { turnKey } from "../pure-model/turns.ts";
 import { TurnItem, TurnsBadge, TurnsDock, TurnsList } from "../ui/turns-button.tsx";
 
 /**
- * Директивы, где ход у человека: кнопка с числом и список — решение 0034. Пустой список —
- * кнопки нет: иначе она висела бы поверх карты всегда.
+ * Лента в кружке сайдбара — решение 0034: что идёт и где ход у человека. Пустая — кнопки нет:
+ * иначе она висела бы поверх карты всегда.
+ *
+ * `focus` ведёт пункт экшона на экран прогонов его объекта — той же просьбой «перейди к
+ * объекту», что кнопка в файле директивы, поэтому объект в другой карте окна тоже находится.
  */
-export const DirectiveTurns = observer(function DirectiveTurns() {
+export const DirectiveTurns = observer(function DirectiveTurns(props: { focus?: RunFocus }) {
   const bridge = useBridgeClient();
-  const turns = useLocalStore(() => new Turns(bridge));
+  const host = useHost();
+  const turns = useLocalStore(() => new Turns(bridge, props.focus, () => host.can.terminals));
   const panel = useLocalStore(() => new TurnsPanel());
 
   return turns.list.length === 0 ? null : (
@@ -20,7 +26,7 @@ export const DirectiveTurns = observer(function DirectiveTurns() {
         <TurnsList>
           {turns.list.map((turn) => (
             <TurnItem
-              key={turn.path}
+              key={turnKey(turn)}
               turn={turn}
               now={panel.now}
               onTake={(one) => panel.take(one, turns)}
@@ -28,7 +34,11 @@ export const DirectiveTurns = observer(function DirectiveTurns() {
           ))}
         </TurnsList>
       )}
-      <TurnsBadge count={turns.list.length} onToggle={() => panel.popup.toggle()} />
+      <TurnsBadge
+        count={turns.button.count}
+        busy={turns.button.busy}
+        onToggle={() => panel.popup.toggle()}
+      />
     </TurnsDock>
   );
 });

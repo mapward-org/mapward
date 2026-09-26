@@ -57,16 +57,29 @@ export type FilesPort = FileReader & FileWriter & FileWatcher;
 
 export type ProcessResult = { stdout: string; stderr: string };
 
+/**
+ * Вывод по ходу: куски приходят по мере появления, `out` — то, что шаг отдаёт, `err` — ход и
+ * ошибки. Итог запуска от этого не меняется — весь вывод по-прежнему приходит в конце. Хост,
+ * который потока не умеет, слушателя просто не зовёт, и лог появляется в конце шага.
+ */
+export type OutputListener = (chunk: string, stream: "out" | "err") => void;
+
 export type ShellPort = {
   /** Команда оболочки: вывод отдаётся целиком, ошибка бросается. */
   run(
     command: string,
-    options: { cwd: string; env: ProcessEnv; cancel?: Cancellation },
+    options: { cwd: string; env: ProcessEnv; cancel?: Cancellation; output?: OutputListener },
   ): Promise<ProcessResult>;
   /** Команда со входом в stdin — так трансформу не нужно ничего экранировать. */
   pipe(
     command: string,
-    options: { cwd: string; env: ProcessEnv; input: string; cancel?: Cancellation },
+    options: {
+      cwd: string;
+      env: ProcessEnv;
+      input: string;
+      cancel?: Cancellation;
+      output?: OutputListener;
+    },
   ): Promise<ProcessResult>;
 };
 
@@ -75,6 +88,9 @@ export type ShellPort = {
  *
  * `permissions` — что ему можно (решение 0038): метрике не нужно ничего, она читает, а экшону
  * нужно писать. Во флаги агента их превращает приложение: какой агент, знает оно одно.
+ *
+ * `output` получает ход агента строками — «читает файл», «запускает команду», текст ответа, — а
+ * итогом, как и без него, приходит только последний ответ: значение метрики берётся оттуда.
  */
 export type AgentPort = {
   run(params: {
@@ -83,6 +99,7 @@ export type AgentPort = {
     env: ProcessEnv;
     cancel?: Cancellation;
     permissions?: ActionPermissions;
+    output?: OutputListener;
   }): Promise<ProcessResult>;
 };
 

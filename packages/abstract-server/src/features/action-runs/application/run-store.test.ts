@@ -242,3 +242,61 @@ test("a run recorded as running before a restart comes back stopped", async () =
 
   expect(list[0]?.status).toBe("stopped");
 });
+
+/**
+ * Лог идущего шага растёт по ходу: вывод копится и уходит подписчику пачкой, по таймеру, а не
+ * на каждой строке. Экшон при этом виден в ленте — запущен и упал.
+ */
+test("a running step's log grows before the step ends, and the feed sees the action", async () => {
+  const tree = baseTree();
+  const calls: Calls = { shell: [] };
+  let finish: (() => void) | undefined;
+  const ports = fakePorts(tree, calls, {
+    run: (params) => {
+      params.output?.("→ Read a.ts\n", "err");
+      params.output?.("→ Bash pnpm test\n", "err");
+      return new Promise((_resolve, reject) => {
+        finish = () => reject(new Error("агент упал"));
+      });
+    },
+  });
+  const flushes: (() => void)[] = [];
+  const timers = {
+    ...ports.timers,
+    after: (_ms: number, run: () => void) => (flushes.push(run), () => {}),
+  };
+  const feed: string[] = [];
+  const map = new MapModel(ports.files, ports.files, timers, ports.clock);
+  const runs = new RunStore(
+    ports.files,
+    new Executor(ports.shell, ports.agent),
+    map,
+    { run: () => Promise.resolve() },
+    ports.env,
+    timers,
+    ports.clock,
+    {
+      actionStarted: (turn) => feed.push(`идёт ${turn.label} ${turn.object}`),
+      actionEnded: (turn, failed) => feed.push(`${failed ? "упал" : "кончился"} ${turn.label}`),
+    },
+  );
+  const seen: Run[][] = [];
+  const subscription = runs.watch(MAP, "mapward://").subscribe((list) => seen.push(list));
+
+  const started = await runs.start(ref, "mapward://_actions/ask", { topic: "карту" });
+  expect(feed).toEqual(["идёт ask Карта"]);
+  // Две строки — одна пачка: таймер заведён один раз.
+  expect(flushes).toHaveLength(1);
+  const before = seen.length;
+  flushes[0]?.();
+  expect(seen.length).toBe(before + 1);
+  expect(seen.at(-1)?.[0]?.steps[0]).toMatchObject({
+    status: "running",
+    log: "→ Read a.ts\n→ Bash pnpm test\n",
+  });
+
+  finish?.();
+  await runs.wait(MAP, String(started.id));
+  expect(feed).toEqual(["идёт ask Карта", "упал ask"]);
+  subscription.unsubscribe();
+});

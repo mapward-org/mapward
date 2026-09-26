@@ -23,7 +23,7 @@ import { createCancellation, type Cancellation } from "../../../lib/cancellation
 import { join } from "../../../lib/path.ts";
 import { checkInputs, fillInputs, inputEnv } from "../domain/inputs.ts";
 import { orphaned, RUNS_DIR, runsFile, trim } from "../domain/history.ts";
-import type { RunsExecutor, RunsMapSource, RunsMetricRefresh } from "../ports.ts";
+import type { RunsActivity, RunsExecutor, RunsMapSource, RunsMetricRefresh } from "../ports.ts";
 
 /**
  * Запись прогона метрики: стор метрик сообщает, что стадия началась и кончилась, а хранит и
@@ -33,6 +33,8 @@ export type RunRecorder = {
   step(name: string): void;
   /** `output` — результат стадии; в шаг он ложится JSON-ом, обрезанный до предела. */
   stepDone(status: RunStatus, log?: string, output?: unknown): void;
+  /** Вывод идущей стадии по ходу: `out` дописывается в вывод шага, `err` — в его лог. */
+  output(chunk: string, stream: "out" | "err"): void;
   end(status: RunStatus, error?: string): void;
 };
 
@@ -52,6 +54,12 @@ const lastStep = (run: Run): RunStep | undefined => run.steps.at(-1);
 /** Предел вывода шага: история хранится целиком, а дерево файлов раздуло бы её (решение 0038). */
 const OUTPUT_LIMIT = 200_000;
 
+/**
+ * Как часто уходит растущий лог. Подписчик получает прогоны объекта целиком, и болтливый скрипт
+ * гонял бы их через мост на каждой строке — поэтому строки копятся и уходят пачкой.
+ */
+const OUTPUT_FLUSH_MS = 250;
+
 export function capped(text: string | undefined): string | undefined {
   if (text === undefined || text.length <= OUTPUT_LIMIT) return text;
   return `${text.slice(0, OUTPUT_LIMIT)}\n… отрезано ${text.length - OUTPUT_LIMIT} знаков`;
@@ -68,6 +76,8 @@ export class RunStore {
   private readonly maps = new Map<string, MapRuns>();
   private readonly changes = new Subject<string>();
   private counter = 0;
+  /** Карты, у которых вывод уже ждёт отправки пачкой. */
+  private readonly flushing = new Set<string>();
 
   constructor(
     private readonly files: FileReader & FileWriter,
@@ -78,6 +88,8 @@ export class RunStore {
     private readonly env: EnvPort,
     private readonly timers: TimersPort,
     private readonly clock: ClockPort,
+    /** Лента в кружке: идущие и упавшие экшоны видно по всей карте, откуда бы их ни запустили. */
+    private readonly activity?: RunsActivity,
   ) {}
 
   private stateOf(mapPath: string): MapRuns {
@@ -145,6 +157,22 @@ export class RunStore {
     return step;
   }
 
+  /**
+   * Кусок вывода идущего шага. Копится в памяти, на диск прогон по-прежнему пишется на
+   * границах шагов; подписчикам уходит пачкой, не чаще раза в {@link OUTPUT_FLUSH_MS}.
+   */
+  private stepOutput(mapPath: string, step: RunStep, chunk: string, stream: "out" | "err"): void {
+    if (step.status !== "running" || chunk === "") return;
+    if (stream === "out") step.output = capped((step.output ?? "") + chunk);
+    else step.log = capped((step.log ?? "") + chunk);
+    if (this.flushing.has(mapPath)) return;
+    this.flushing.add(mapPath);
+    this.timers.after(OUTPUT_FLUSH_MS, () => {
+      this.flushing.delete(mapPath);
+      this.changes.next(mapPath);
+    });
+  }
+
   private stepEnd(
     mapPath: string,
     step: RunStep,
@@ -173,8 +201,11 @@ export class RunStore {
     object: MapObject,
     values: Record<string, unknown>,
     cancel: Cancellation,
+    step: RunStep,
   ): Promise<{ output: string; log: string }> {
     const env = { ...objectEnv(object, ref.mapPath, this.env.vars()), ...inputEnv(values) };
+    const output = (chunk: string, stream: "out" | "err") =>
+      this.stepOutput(ref.mapPath, step, chunk, stream);
 
     switch (spec.kind) {
       case "script": {
@@ -185,6 +216,7 @@ export class RunStore {
           env,
           input: JSON.stringify(values),
           cancel,
+          output,
         });
         return { output: stdout, log: stderr };
       }
@@ -202,6 +234,7 @@ export class RunStore {
           cwd: ref.basePath,
           env,
           cancel,
+          output,
           ...(permissions === undefined ? {} : { permissions }),
         });
         return { output: stdout, log: stderr };
@@ -228,7 +261,7 @@ export class RunStore {
         try {
           // По порядку: следующий шаг идёт после того, как предыдущий сделал своё.
           // oxlint-disable-next-line no-await-in-loop
-          const result = await this.runner(ref, spec, object, values, token);
+          const result = await this.runner(ref, spec, object, values, token, step);
           this.stepEnd(ref.mapPath, step, "success", {
             log: result.log,
             output: capped(result.output),
@@ -307,9 +340,22 @@ export class RunStore {
             cancel();
           });
 
+    const place = {
+      mapPath: ref.mapPath,
+      address: object.address,
+      object: object.name,
+      run: run.id,
+      label: run.label,
+    };
+    this.activity?.actionStarted({ ...place, at: run.startedAt });
+
     const done = this.execute(ref, run, action, object, values, token, () => limit).finally(() => {
       stopTimer();
       this.stateOf(ref.mapPath).controls.delete(run.id);
+      this.activity?.actionEnded(
+        { ...place, at: run.finishedAt ?? this.clock.now() },
+        run.status === "failure",
+      );
     });
     this.stateOf(ref.mapPath).controls.set(run.id, { cancel, done });
     return { id: run.id };
@@ -367,6 +413,10 @@ export class RunStore {
     if (cancel) this.stateOf(mapPath).controls.set(run.id, { cancel, done });
     return {
       step: (name) => void this.stepStart(mapPath, run, name),
+      output: (chunk, stream) => {
+        const step = lastStep(run);
+        if (step) this.stepOutput(mapPath, step, chunk, stream);
+      },
       stepDone: (status, log, output) => {
         const step = lastStep(run);
         if (step?.status !== "running") return;

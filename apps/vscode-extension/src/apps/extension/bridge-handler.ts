@@ -11,6 +11,7 @@ import {
   closeTerminal,
   listTerminals,
   openTerminal,
+  showDirectiveTerminal,
   showTerminal,
 } from "@/features/terminals/index.extension.ts";
 import { runStage } from "./run-stage.ts";
@@ -128,6 +129,7 @@ export function serveBridge(
     runStage: (params) => runStage(server, params),
 
     showTerminal: (params) => showTerminal(params),
+    showDirectiveTerminal: (params) => showDirectiveTerminal(params),
     listTerminals: (params) => listTerminals(params),
     closeTerminal: (params) => closeTerminal(params),
   };

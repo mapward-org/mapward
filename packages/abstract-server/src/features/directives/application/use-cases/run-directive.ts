@@ -37,11 +37,15 @@ export class RunDirective {
       stage: stage.name,
       now: new Date(),
     });
-    // Этап начался — человек взял ход, директива больше не ждёт ответа (решение 0034).
-    this.turns.taken({
+    // Этап начался — человек взял ход: директива больше не ждёт ответа, она идёт (решение 0034).
+    this.turns.started({
       mapPath: params.mapPath,
       address: found.object.address,
+      object: found.object.name,
       directive: found.file.name,
+      path: found.file.path,
+      stage: stage.name,
+      at: new Date().toISOString(),
     });
 
     const prompt = stagePrompt({

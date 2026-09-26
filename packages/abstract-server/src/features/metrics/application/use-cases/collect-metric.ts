@@ -1,6 +1,12 @@
 import { childrenMap } from "@mapward/core";
 import type { MapMetric, MapObject } from "@mapward/core";
-import type { Cancellation, ClockPort, EnvPort, FileReader } from "../../../../ports/index.ts";
+import type {
+  Cancellation,
+  ClockPort,
+  EnvPort,
+  FileReader,
+  OutputListener,
+} from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
 import { objectEnv } from "../../../../kernel/object-env.ts";
 import { excluded, matchesAny } from "../../domain/glob.ts";
@@ -28,6 +34,8 @@ export type CollectPlan = {
   step?: StepRunner;
   /** Что не так с `watch` у шагов — в лог сбора: иначе вотчер молча не встаёт. */
   problems?: string[];
+  /** Вывод скриптов и агентов по ходу — в лог идущего шага прогона. */
+  output?: OutputListener;
 };
 
 /**
@@ -179,7 +187,8 @@ export class CollectMetric {
       const results = await Promise.all(
         specs.map((spec, index) => {
           if (kept.has(index)) return { value: kept.get(index), log: undefined };
-          const attempt = (token?: Cancellation) => this.collector(spec, cwd, owner, hint, token);
+          const attempt = (token?: Cancellation) =>
+            this.collector(spec, cwd, owner, hint, token, plan.output);
           return plan.step ? plan.step(index, attempt) : attempt(cancel);
         }),
       );
@@ -223,6 +232,7 @@ export class CollectMetric {
     /** Что сказать агенту о форме ответа: форма дисплея или схема компонента (решение 0037). */
     hint: string,
     cancel?: Cancellation,
+    output?: OutputListener,
   ): Promise<{ value: unknown; log?: string }> {
     const env = () => objectEnv(owner, cwd, this.env.vars());
 
@@ -237,6 +247,7 @@ export class CollectMetric {
           cwd,
           env: env(),
           cancel,
+          output,
         });
         const text = stdout.trim();
         try {
@@ -256,6 +267,7 @@ export class CollectMetric {
           cwd,
           env: env(),
           cancel,
+          output,
         });
         return { value: parseAnswer(stdout), log: answerLog(stderr, stdout) };
       }

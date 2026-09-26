@@ -1,6 +1,6 @@
 import type { Observable } from "rxjs";
 import type { MapMetric, MapObject, RunSource } from "@mapward/core";
-import type { Cancellation, ProcessEnv, ProcessResult } from "../../ports/index.ts";
+import type { Cancellation, OutputListener, ProcessEnv, ProcessResult } from "../../ports/index.ts";
 import type { MapRef } from "../../kernel/map-ref.ts";
 
 /**
@@ -34,6 +34,7 @@ export type MetricsExecutor = {
     env: ProcessEnv;
     input?: string;
     cancel?: Cancellation;
+    output?: OutputListener;
   }): Promise<ProcessResult>;
   prompt(params: {
     owner?: MapObject;
@@ -42,6 +43,7 @@ export type MetricsExecutor = {
     cwd: string;
     env: ProcessEnv;
     cancel?: Cancellation;
+    output?: OutputListener;
   }): Promise<ProcessResult>;
 };
 
@@ -49,6 +51,8 @@ export type MetricsExecutor = {
 export type MetricRunRecord = {
   step(name: string): void;
   stepDone(status: "success" | "failure" | "stopped", log?: string, output?: unknown): void;
+  /** Вывод идущей стадии по ходу — лог шага растёт на экране прогонов. */
+  output(chunk: string, stream: "out" | "err"): void;
   end(status: "success" | "failure" | "stopped", error?: string): void;
 };
 

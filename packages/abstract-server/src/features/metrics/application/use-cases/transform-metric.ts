@@ -1,5 +1,5 @@
 import type { MapMetric, MapObject } from "@mapward/core";
-import type { Cancellation, ClockPort, EnvPort } from "../../../../ports/index.ts";
+import type { Cancellation, ClockPort, EnvPort, OutputListener } from "../../../../ports/index.ts";
 import { objectEnv } from "../../../../kernel/object-env.ts";
 import { parseAnswer } from "../../domain/answer.ts";
 import type { MetricsDisplaySchema, MetricsExecutor } from "../../ports.ts";
@@ -32,6 +32,8 @@ export class TransformMetric {
     cancel?: Cancellation,
     previous?: Collected,
     report?: StageReport,
+    /** Вывод скриптов и агентов по ходу — в лог идущего шага прогона. */
+    output?: OutputListener,
   ): Promise<Collected> {
     const specs = metric.config.transforms ?? [];
     if (specs.length === 0 || !collected.ok) return collected;
@@ -44,7 +46,7 @@ export class TransformMetric {
       for (const spec of specs) {
         // In order, each one fed by the last: that is what makes them a pipeline.
         // oxlint-disable-next-line no-await-in-loop
-        const result = await this.step(spec, value, owner, cwd, hint, cancel);
+        const result = await this.step(spec, value, owner, cwd, hint, cancel, output);
         value = result.value;
         if (result.log) logs.push(result.log);
       }
@@ -80,6 +82,7 @@ export class TransformMetric {
     /** Что сказать агенту о форме ответа: форма дисплея или схема компонента (решение 0037). */
     hint: string,
     cancel?: Cancellation,
+    output?: OutputListener,
   ): Promise<{ value: unknown; log?: string }> {
     const env = objectEnv(owner, cwd, this.env.vars());
     const payload = JSON.stringify(input ?? null);
@@ -98,6 +101,7 @@ export class TransformMetric {
           env,
           input: payload,
           cancel,
+          output,
         });
         const text = stdout.trim();
         try {
@@ -111,7 +115,7 @@ export class TransformMetric {
         // for itself — decision 0004.
         const intro = spec.prompt ? `${String(spec.prompt)}\n\n` : "";
         const text = `${intro}${hint}\n\nДанные:\n${payload}`;
-        const { stdout, stderr } = await this.executor.prompt({ text, cwd, env, cancel });
+        const { stdout, stderr } = await this.executor.prompt({ text, cwd, env, cancel, output });
         return { value: parseAnswer(stdout), log: answerLog(stderr, stdout) };
       }
       default:
