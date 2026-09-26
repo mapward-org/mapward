@@ -44,12 +44,13 @@ export type RunsActivityTurn = {
 };
 
 /**
- * От ленты активности в кружке сайдбара (решение 0034): экшон запущен и кончился. Метрики сюда не
- * пишут — они собираются сами, и лента утонула бы в них.
+ * От ленты активности в кружке сайдбара (решение 0034): прогон запущен и кончился. Экшоны пишут
+ * всегда; метрика — только ручная и запущенная человеком или агентом: сами они собираются часто,
+ * и лента утонула бы в них.
  */
 export type RunsActivity = {
-  actionStarted(turn: RunsActivityTurn): void;
-  actionEnded(turn: RunsActivityTurn, failed: boolean): void;
+  actionStarted(turn: RunsActivityTurn, kind?: "action" | "metric"): void;
+  actionEnded(turn: RunsActivityTurn, failed: boolean, kind?: "action" | "metric"): void;
 };
 
 /** От метрик: пересобрать метрику после успешного экшона. */

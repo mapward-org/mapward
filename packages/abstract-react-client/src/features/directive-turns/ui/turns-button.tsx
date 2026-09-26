@@ -42,7 +42,11 @@ export function TurnItem(props: {
   return (
     <button
       type="button"
-      title={turn.kind === "directive" ? turn.path : `прогон ${turn.run}`}
+      title={
+        turn.kind === "directive"
+          ? turn.path
+          : `${turn.kind === "metric" ? "метрика" : "экшон"}, прогон ${turn.run}`
+      }
       onClick={() => props.onTake(turn)}
       className="flex w-full items-baseline gap-2 px-3 py-0.5 text-left text-[11px] hover:bg-[var(--mw-list-hoverBackground)]"
     >

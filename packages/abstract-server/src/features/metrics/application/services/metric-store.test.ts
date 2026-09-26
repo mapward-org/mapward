@@ -702,11 +702,12 @@ function stepWatchPorts(
 }
 
 function recordingHistory() {
-  const runs: { source: string; steps: string[]; end?: string }[] = [];
+  const runs: { source: string; feed: boolean; steps: string[]; end?: string }[] = [];
   const history: MetricHistory = {
     recordMetric: (_map, info) => {
-      const run: { source: string; steps: string[]; end?: string } = {
+      const run: { source: string; feed: boolean; steps: string[]; end?: string } = {
         source: info.source,
+        feed: info.feed !== undefined,
         steps: [],
       };
       runs.push(run);
@@ -767,6 +768,8 @@ test("вотчер коллектора пересобирает только с
   expect(counts.costly).toBe(1);
   expect(latest[address]?.data).toEqual({ cheap: { n: 2 }, costly: { n: 1 } });
   expect(runs.at(-1)?.source).toBe("watch");
+  // Сама пересобравшаяся метрика в ленту сайдбара не идёт.
+  expect(runs.some((run) => run.feed)).toBe(false);
 
   // Изменение мимо глобов вотчер не будит.
   watchers.get("/map/src")?.("/map/other/b.ts");
@@ -824,6 +827,8 @@ test("вотчер снимает идущий коллектор и начин�
   // Один прогон, и он не неудача.
   expect(runs).toHaveLength(1);
   expect(runs[0]?.end).toBe("success");
+  // Ручная, запущенная кнопкой, — в ленте, как экшон.
+  expect(runs[0]?.feed).toBe(true);
 
   subscription.unsubscribe();
 });

@@ -35,9 +35,12 @@ export class TurnStore {
     this.set(upsert(this.turns.value, { ...turn, kind: "directive", state: "waiting" }));
   }
 
-  /** Экшон запущен — откуда угодно: кнопкой, строкой дисплея, агентом, терминалом. */
-  actionStarted(turn: Placed<ActionTurn>): void {
-    this.set(upsert(this.turns.value, { ...turn, kind: "action", state: "running" }));
+  /**
+   * Прогон запущен. Экшон — откуда угодно: кнопкой, строкой дисплея, агентом, терминалом;
+   * ручная метрика — когда её запустил человек или агент, что сюда пускать, решают метрики.
+   */
+  actionStarted(turn: Placed<ActionTurn>, kind: ActionTurn["kind"] = "action"): void {
+    this.set(upsert(this.turns.value, { ...turn, kind, state: "running" }));
   }
 
   /**
@@ -45,10 +48,14 @@ export class TurnStore {
    * сам человек. Упавший остаётся, пока его не откроют, — иначе про падение фонового прогона
    * не узнать.
    */
-  actionEnded(turn: Placed<ActionTurn>, failed: boolean): void {
+  actionEnded(
+    turn: Placed<ActionTurn>,
+    failed: boolean,
+    kind: ActionTurn["kind"] = "action",
+  ): void {
     this.set(
       failed
-        ? upsert(this.turns.value, { ...turn, kind: "action", state: "failed" })
+        ? upsert(this.turns.value, { ...turn, kind, state: "failed" })
         : removed(this.turns.value, turn),
     );
   }

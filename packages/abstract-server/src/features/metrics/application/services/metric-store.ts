@@ -68,6 +68,9 @@ export type MetricSettings = {
 /** Дебаунс вотчера шага, когда его не задали ни шаг, ни карта. */
 const WATCH_DEBOUNCE_MS = 300;
 
+/** Кто запускает метрику сам, человек или агент: кнопка, строка дисплея, MCP, терминал. */
+const FEED_SOURCES: ReadonlySet<RunSource> = new Set(["ui", "display", "mcp", "cli"]);
+
 /**
  * Что форсить в прогоне — решения 0023 и 0043.
  *
@@ -538,6 +541,10 @@ export class MetricStore {
     // Кнопка — это «all»; открытие объекта и тики — сам стор. Зовущий может сказать точнее.
     // Пометку git, которую будит `.git`, прогоном не пишем: иначе каждая правка файла в
     // репозитории вытесняла бы из истории настоящие прогоны.
+    const source = options.source ?? (force === "all" ? "ui" : watched ? "watch" : "refresh");
+    // В ленту сайдбара — только ручная метрика, запущенная человеком или агентом. Сама она
+    // пересобирается по вотчеру и после экшона, и лента мигала бы ею на каждом сохранении.
+    const listed = (config.refresh ?? "manual") === "manual" && FEED_SOURCES.has(source);
     const record =
       force === "transform"
         ? undefined
@@ -547,8 +554,9 @@ export class MetricStore {
               target: metric.address,
               object: owner.address,
               label: config.label ?? metric.key,
-              source: options.source ?? (force === "all" ? "ui" : watched ? "watch" : "refresh"),
+              source,
               config,
+              ...(listed ? { feed: { objectName: owner.name } } : {}),
             },
             cancel,
           );

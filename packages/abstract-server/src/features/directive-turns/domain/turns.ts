@@ -28,11 +28,11 @@ export type DirectiveTurn = Place & {
 };
 
 /**
- * Прогон экшона: идёт, а упал — ждёт, пока его посмотрят. Успешный пропадает сам: смотреть в нём
- * не на что, а что он сделал, видно в метриках объекта.
+ * Прогон экшона или ручной метрики: идёт, а упал — ждёт, пока его посмотрят. Успешный пропадает
+ * сам: смотреть в нём не на что, а что он сделал, видно в метриках объекта.
  */
 export type ActionTurn = Place & {
-  kind: "action";
+  kind: "action" | "metric";
   state: "running" | "failed";
   /** Номер прогона: по клику открывается он на экране прогонов объекта. */
   run: string;
@@ -49,7 +49,7 @@ export type TurnKey = DirectiveKey | RunKey;
 
 const same = (entry: Turn, key: TurnKey): boolean => {
   if (entry.mapPath !== key.mapPath) return false;
-  if ("run" in key) return entry.kind === "action" && entry.run === key.run;
+  if ("run" in key) return entry.kind !== "directive" && entry.run === key.run;
   return (
     entry.kind === "directive" && entry.address === key.address && entry.directive === key.directive
   );

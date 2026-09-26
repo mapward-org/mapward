@@ -401,11 +401,30 @@ export class RunStore {
    */
   recordMetric(
     mapPath: string,
-    info: { target: string; object: string; label: string; source: RunSource; config: unknown },
+    {
+      feed,
+      ...info
+    }: {
+      target: string;
+      object: string;
+      label: string;
+      source: RunSource;
+      config: unknown;
+      /** Ручная метрика, запущенная человеком или агентом, видна в ленте, как экшон. */
+      feed?: { objectName: string };
+    },
     cancel?: () => void,
   ): RunRecorder {
     void this.load(mapPath, info.object);
     const run = this.begin(mapPath, { kind: "metric", ...info });
+    const place = feed && {
+      mapPath,
+      address: info.object,
+      object: feed.objectName,
+      run: run.id,
+      label: run.label,
+    };
+    if (place) this.activity?.actionStarted({ ...place, at: run.startedAt }, "metric");
     let finish: ((value: Run) => void) | undefined;
     const done = new Promise<Run>((resolve) => {
       finish = resolve;
@@ -428,6 +447,13 @@ export class RunStore {
       end: (status, error) => {
         this.stateOf(mapPath).controls.delete(run.id);
         void this.end(mapPath, run, status, error).then(() => finish?.(run));
+        if (place) {
+          this.activity?.actionEnded(
+            { ...place, at: run.finishedAt ?? this.clock.now() },
+            status === "failure",
+            "metric",
+          );
+        }
       },
     };
   }

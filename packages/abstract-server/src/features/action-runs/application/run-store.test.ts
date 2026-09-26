@@ -300,3 +300,29 @@ test("a running step's log grows before the step ends, and the feed sees the act
   expect(feed).toEqual(["идёт ask Карта", "упал ask"]);
   subscription.unsubscribe();
 });
+
+/** Ручная метрика, запущенная человеком, видна в ленте как экшон; без пометки — нет. */
+test("a metric run marked for the feed shows up there and leaves on success", () => {
+  const ports = fakePorts(baseTree(), { shell: [] });
+  const feed: string[] = [];
+  const runs = new RunStore(
+    ports.files,
+    new Executor(ports.shell, ports.agent),
+    new MapModel(ports.files, ports.files, ports.timers, ports.clock),
+    { run: () => Promise.resolve() },
+    ports.env,
+    ports.timers,
+    ports.clock,
+    {
+      actionStarted: (turn, kind) => feed.push(`${kind} идёт ${turn.object}`),
+      actionEnded: (_turn, failed, kind) => feed.push(`${kind} ${failed ? "упал" : "кончился"}`),
+    },
+  );
+  const info = { target: "mapward://_metrics/m", object: "mapward://", label: "м", config: {} };
+
+  const listed = runs.recordMetric(MAP, { ...info, source: "ui", feed: { objectName: "Карта" } });
+  listed.end("failure", "упало");
+  runs.recordMetric(MAP, { ...info, source: "watch" }).end("success");
+
+  expect(feed).toEqual(["metric идёт Карта", "metric упал"]);
+});

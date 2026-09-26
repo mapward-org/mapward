@@ -25,9 +25,12 @@ export const DirectiveTurn = T.Object({
 });
 export type DirectiveTurn = Static<typeof DirectiveTurn>;
 
-/** Прогон экшона в ленте: идёт, а упал — висит, пока его не откроют. Успешный уходит сам. */
+/**
+ * Прогон в ленте: экшон или ручная метрика, запущенная человеком или агентом. Идёт, а упал —
+ * висит, пока его не откроют. Успешный уходит сам.
+ */
 export const ActionTurn = T.Object({
-  kind: T.Literal("action"),
+  kind: T.Union([T.Literal("action"), T.Literal("metric")]),
   state: T.Union([T.Literal("running"), T.Literal("failed")]),
   ...place,
   /** Номер прогона — его выбирает экран прогонов объекта. */

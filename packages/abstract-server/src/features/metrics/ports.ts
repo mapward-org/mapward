@@ -60,7 +60,15 @@ export type MetricRunRecord = {
 export type MetricHistory = {
   recordMetric(
     mapPath: string,
-    info: { target: string; object: string; label: string; source: RunSource; config: unknown },
+    info: {
+      target: string;
+      object: string;
+      label: string;
+      source: RunSource;
+      config: unknown;
+      /** Показать прогон в ленте сайдбара — у ручной метрики, запущенной человеком или агентом. */
+      feed?: { objectName: string };
+    },
     cancel?: () => void,
   ): MetricRunRecord;
 };
