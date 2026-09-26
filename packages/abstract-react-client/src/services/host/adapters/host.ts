@@ -45,4 +45,9 @@ export class Host {
   openInTab(target: Ref & { address: string; group?: string; metric?: string }): void {
     void this.bridge.openInTab(target);
   }
+
+  /** Таб перешёл в другое место — хост переписывает имя вкладки: таб сам его не видит. */
+  showingInTab(target: Ref & { address: string; metric?: string }): void {
+    void this.bridge.showingInTab(target);
+  }
 }

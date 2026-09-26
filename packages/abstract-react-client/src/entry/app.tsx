@@ -4,13 +4,13 @@ import type { AppBridge } from "@mapward/core";
 import { ProviderBridgeClient } from "../ports/bridge.tsx";
 import { ProviderIcons, type RenderIcon } from "../ports/icons.tsx";
 import { Host } from "../services/host/adapters/host.ts";
-import { ProvideHost } from "../services/host/ports.tsx";
+import { ProvideHost, useHost } from "../services/host/ports.tsx";
 import { ViewStates } from "../services/state/index.ts";
 import { ProvideViewStates, useViewStates } from "../services/state/ports.tsx";
 import { useLocalStore } from "../lib/mobx/use-local-store.ts";
 import { Loading } from "../lib/ui/loading.tsx";
 import { Maps } from "../features/maps/index.ts";
-import { SavedHistory, type History } from "../features/object-screen/index.ts";
+import { SavedHistory, TabHistory, type History } from "../features/object-screen/index.ts";
 import { DirectiveTurns } from "../features/directive-turns/index.ts";
 import { ObjectView } from "./object-view.tsx";
 
@@ -54,6 +54,35 @@ const SidebarObject = observer(function SidebarObject(props: { map: MapRef }) {
 });
 
 /**
+ * Объект в табе: карта, место и история приезжают от хоста, а не из сайдбара. Каждый переход
+ * таб сохраняет у себя и сообщает хосту — тот переписывает имя вкладки (решения 0026 и 0036).
+ */
+const TabObject = observer(function TabObject(props: {
+  target: TabTarget;
+  onTarget?: (target: TabTarget) => void;
+}) {
+  const host = useHost();
+  const { target } = props;
+  const tab = useLocalStore(
+    () => new TabHistory(target, host, props.onTarget),
+    [target, host, props.onTarget],
+  );
+
+  return (
+    <ObjectView
+      mapConfig={{ mapPath: target.mapPath, basePath: target.basePath, name: target.name }}
+      start={{
+        address: target.address,
+        ...(target.group === undefined ? {} : { group: target.group }),
+        ...(target.metric === undefined ? {} : { metric: target.metric }),
+      }}
+      history={target.history}
+      onHistory={(history) => tab.save(history)}
+    />
+  );
+});
+
+/**
  * Сборка клиента: карты аккордеоном, внутри объект. Мост приходит снаружи — приложение решает,
  * каким транспортом он ходит (решение 0014), а клиент знает только контракт из `core`. Хост и
  * состояние вида — одни на клиент: их заводит здесь точка входа (решение 0042).
@@ -78,20 +107,7 @@ export const MapwardApp = observer(function MapwardApp(props: {
         <ProvideHost host={host}>
           <ProvideViewStates states={views}>
             {target ? (
-              <ObjectView
-                mapConfig={{
-                  mapPath: target.mapPath,
-                  basePath: target.basePath,
-                  name: target.name,
-                }}
-                start={{
-                  address: target.address,
-                  ...(target.group === undefined ? {} : { group: target.group }),
-                  ...(target.metric === undefined ? {} : { metric: target.metric }),
-                }}
-                history={target.history}
-                onHistory={(history) => onTarget?.({ ...target, history })}
-              />
+              <TabObject target={target} {...(onTarget ? { onTarget } : {})} />
             ) : (
               // Кто ждёт ответа — поверх всех карт, а не внутри одной: список общий на окно,
               // а карт в сайдбаре бывает несколько. В табе его нет (решение 0034).

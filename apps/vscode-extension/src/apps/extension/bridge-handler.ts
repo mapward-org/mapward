@@ -19,6 +19,7 @@ import { runStage } from "./run-stage.ts";
  *
  * Открытие таба приходит параметром, а не импортом: панели заводит тот, кто ими владеет, и из
  * таба открывается такой же таб — без этого мост и панели ссылались бы друг на друга (0026).
+ * Так же приходит и `showing`: имя вкладки знает только панель, а у сайдбара её нет вовсе.
  */
 export function serveBridge(
   server: MapServer,
@@ -32,6 +33,13 @@ export function serveBridge(
     group?: string;
     metric?: string;
   }) => Promise<void>,
+  showing: (place: {
+    mapPath: string;
+    basePath: string;
+    name: string;
+    address: string;
+    metric?: string;
+  }) => Promise<void> = () => Promise.resolve(),
 ): () => void {
   const handlers: BridgeHandlers<AppBridge> = {
     ...mapsHandlers(),
@@ -48,6 +56,7 @@ export function serveBridge(
 
     /** Тот же объект во всю ширину редактора — решение 0026. */
     openInTab: (params) => openTab(params),
+    showingInTab: (params) => showing(params),
 
     /** Кто ждёт ответа — список держит сервер, мост его только передаёт (решение 0034). */
     watchTurns: () => server.watchTurns(),

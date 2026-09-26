@@ -14,14 +14,14 @@ import { webviewHtml } from "./webview-html.ts";
  */
 const VIEW_TYPE = "mapward.object";
 
-/** Открытые табы по тому, на чём они открыты: повторное открытие того же поднимает панель. */
-const panels = new Map<string, vscode.WebviewPanel>();
+/** Где таб: объект и, у таба метрики, её ключ. Вкладка объекта на имя не влияет. */
+type Place = Pick<TabTarget, "mapPath" | "basePath" | "name" | "address" | "metric">;
 
-const keyOf = (target: TabTarget): string =>
-  [target.mapPath, target.address, target.group ?? "", target.metric ?? ""].join("|");
-
-/** Заголовок читается из карты: в нём имя объекта, а у таба метрики — ещё и её подпись. */
-async function titleOf(server: MapServer, target: TabTarget): Promise<string> {
+/**
+ * Заголовок читается из карты: в нём имя объекта, а у таба метрики — ещё и её подпись. Считается
+ * при открытии и при каждом переходе в табе: имя показывает то, что на экране.
+ */
+async function titleOf(server: MapServer, target: Place): Promise<string> {
   const map = await server.getMap(target);
   const object = findObject(map, target.address) ?? map;
   if (target.metric === undefined) return object.name;
@@ -42,15 +42,26 @@ function attach(
   };
   panel.webview.html = webviewHtml(panel.webview, context.extensionUri, target);
 
+  // Переходы бывают быстрее чтения карты: имя ставит только последний из них.
+  let latest = 0;
+  let disposed = false;
+  const showing = async (place: Place): Promise<void> => {
+    const turn = ++latest;
+    const title = await titleOf(server, place);
+    if (turn === latest && !disposed) panel.title = title;
+  };
+
   // Из таба открывается такой же таб: ctrl + клик работает везде одинаково.
-  const stop = serveBridge(server, panel.webview, context.workspaceState, (next) =>
-    openObjectTab(context, server, next),
+  const stop = serveBridge(
+    server,
+    panel.webview,
+    context.workspaceState,
+    (next) => openObjectTab(context, server, next),
+    showing,
   );
-  const key = keyOf(target);
-  panels.set(key, panel);
   panel.onDidDispose(() => {
+    disposed = true;
     stop();
-    if (panels.get(key) === panel) panels.delete(key);
   });
 }
 
@@ -59,14 +70,8 @@ export async function openObjectTab(
   server: MapServer,
   target: TabTarget,
 ): Promise<void> {
-  // Тот же объект в той же вкладке — это тот же таб: иначе ctrl + клик по одному и тому же
-  // копит одинаковые панели, а состояние метрик у них общее, и отличить их нечем.
-  const existing = panels.get(keyOf(target));
-  if (existing) {
-    existing.reveal();
-    return;
-  }
-
+  // Каждое открытие — новый таб, даже на уже открытом объекте: таб уходит переходами куда
+  // угодно, и «тот же таб» определить не по чему (решение 0026).
   const panel = vscode.window.createWebviewPanel(
     VIEW_TYPE,
     await titleOf(server, target),
