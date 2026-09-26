@@ -12,10 +12,13 @@ import type { LocatedDirective } from "../pure-model/locate.ts";
 export type DirectiveButtons = {
   locate: (uri: vscode.Uri) => Promise<LocatedDirective | undefined>;
   run: (target: { uri: vscode.Uri; located: LocatedDirective; stage: string }) => Promise<void>;
+  /** Показать объект директивы — вкладкой, если он в ней открыт, иначе сайдбаром. */
+  focus: (target: { uri: vscode.Uri; located: LocatedDirective }) => Promise<void>;
 };
 
 const RUN = "mapward.directive.runStage";
 const PICK = "mapward.directive.pickStage";
+const FOCUS = "mapward.directive.focusObject";
 
 export function registerDirectiveButtons(buttons: DirectiveButtons): vscode.Disposable {
   /**
@@ -38,6 +41,17 @@ export function registerDirectiveButtons(buttons: DirectiveButtons): vscode.Disp
     }
   };
 
+  const focus = async (uri?: vscode.Uri) => {
+    const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+    if (!target) return;
+    const located = await buttons.locate(target);
+    if (!located) {
+      void vscode.window.showInformationMessage("mapward: этот файл не директива ни одной карты");
+      return;
+    }
+    await buttons.focus({ uri: target, located });
+  };
+
   // Строка ссылок стоит под последней строкой файла: тред дописывается снизу, и кнопка
   // оказывается прямо под ответом, который только что написан.
   const lenses: vscode.CodeLensProvider = {
@@ -45,14 +59,22 @@ export function registerDirectiveButtons(buttons: DirectiveButtons): vscode.Disp
       const located = await buttons.locate(document.uri);
       if (!located) return [];
       const last = document.lineAt(document.lineCount - 1).range;
-      return located.stages.map(
-        (stage) =>
-          new vscode.CodeLens(last, {
-            title: `▶ ${stage.name}`,
-            command: RUN,
-            arguments: [document.uri, stage.name],
-          }),
-      );
+      // «К объекту» первой: этапы идут по порядку, и вставка между ними его ломала бы.
+      return [
+        new vscode.CodeLens(last, {
+          title: "◎ к объекту",
+          command: FOCUS,
+          arguments: [document.uri],
+        }),
+        ...located.stages.map(
+          (stage) =>
+            new vscode.CodeLens(last, {
+              title: `▶ ${stage.name}`,
+              command: RUN,
+              arguments: [document.uri, stage.name],
+            }),
+        ),
+      ];
     },
   };
 
@@ -62,6 +84,7 @@ export function registerDirectiveButtons(buttons: DirectiveButtons): vscode.Disp
       lenses,
     ),
     vscode.commands.registerCommand(RUN, (uri: vscode.Uri, stage: string) => run(uri, stage)),
+    vscode.commands.registerCommand(FOCUS, (uri?: vscode.Uri) => focus(uri)),
 
     // В заголовке вкладки нельзя поставить переменное число кнопок, поэтому там одна, и этапы
     // выбираются списком.

@@ -64,10 +64,21 @@
         "command": "mapward.directive.runStage",
         "title": "Запустить этап",
         "category": "Mapward"
+      },
+      {
+        "command": "mapward.directive.focusObject",
+        "title": "Показать объект директивы",
+        "category": "Mapward",
+        "icon": "$(target)"
       }
     ],
     "menus": {
       "editor/title": [
+        {
+          "command": "mapward.directive.focusObject",
+          "when": "resourceLangId == markdown && resourcePath =~ /[\\\\/]_directives[\\\\/][^\\\\/]+\\.md$/",
+          "group": "navigation"
+        },
         {
           "command": "mapward.directive.pickStage",
           "when": "resourceLangId == markdown && resourcePath =~ /[\\\\/]_directives[\\\\/][^\\\\/]+\\.md$/",

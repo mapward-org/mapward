@@ -12,6 +12,7 @@ import { Loading } from "../lib/ui/loading.tsx";
 import { Maps } from "../features/maps/index.ts";
 import { SavedHistory, TabHistory, type History } from "../features/object-screen/index.ts";
 import { DirectiveTurns } from "../features/directive-turns/index.ts";
+import { FocusInbox } from "../features/focus/index.ts";
 import { ObjectView } from "./object-view.tsx";
 
 /**
@@ -35,7 +36,7 @@ type MapRef = { mapPath: string; basePath: string; name: string };
  * Объект карты в сайдбаре. История — в состоянии вида, по карте своя (решение 0036); пока
  * хранилище не ответило, объекта нет: переход раньше ответа затёрла бы пришедшая история.
  */
-const SidebarObject = observer(function SidebarObject(props: { map: MapRef }) {
+const SidebarObject = observer(function SidebarObject(props: { map: MapRef; focus: FocusInbox }) {
   const views = useViewStates();
   const saved = useLocalStore(
     () => new SavedHistory(views, props.map.mapPath),
@@ -47,6 +48,7 @@ const SidebarObject = observer(function SidebarObject(props: { map: MapRef }) {
       mapConfig={props.map}
       history={saved.history}
       onHistory={(history) => saved.save(history)}
+      focus={props.focus}
     />
   ) : (
     <Loading text="Читаем карту…" />
@@ -100,6 +102,8 @@ export const MapwardApp = observer(function MapwardApp(props: {
   const host = useLocalStore(() => new Host(props.client), [props.client]);
   const views = useLocalStore(() => new ViewStates(props.client), [props.client]);
   const { target, onTarget } = props;
+  // Просьбы «перейди к объекту» слушает только сайдбар: таб хост поднимает сам.
+  const focus = useLocalStore(() => new FocusInbox(props.client), [props.client]);
 
   return (
     <ProviderBridgeClient client={props.client}>
@@ -112,7 +116,10 @@ export const MapwardApp = observer(function MapwardApp(props: {
               // Кто ждёт ответа — поверх всех карт, а не внутри одной: список общий на окно,
               // а карт в сайдбаре бывает несколько. В табе его нет (решение 0034).
               <>
-                <Maps renderMap={(map) => <SidebarObject map={map} />} />
+                <Maps
+                  renderMap={(map) => <SidebarObject map={map} focus={focus} />}
+                  focus={focus}
+                />
                 <DirectiveTurns />
               </>
             )}

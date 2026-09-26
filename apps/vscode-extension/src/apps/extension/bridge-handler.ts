@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { NEVER, type Observable } from "rxjs";
 import { appBridge, findObject, type BridgeHandlers } from "@mapward/core";
 import type { AppBridge } from "@mapward/core";
 import { objectPrompt } from "@mapward/abstract-server";
@@ -19,7 +20,8 @@ import { runStage } from "./run-stage.ts";
  *
  * Открытие таба приходит параметром, а не импортом: панели заводит тот, кто ими владеет, и из
  * таба открывается такой же таб — без этого мост и панели ссылались бы друг на друга (0026).
- * Так же приходит и `showing`: имя вкладки знает только панель, а у сайдбара её нет вовсе.
+ * Так же приходит и `showing`: имя вкладки знает только панель, а у сайдбара её нет вовсе. И
+ * `focus` — просьбы «перейди к объекту» слушает только сайдбар: таб хост поднимает сам.
  */
 export function serveBridge(
   server: MapServer,
@@ -40,6 +42,7 @@ export function serveBridge(
     address: string;
     metric?: string;
   }) => Promise<void> = () => Promise.resolve(),
+  focus: () => Observable<{ mapPath: string; address: string }> = () => NEVER,
 ): () => void {
   const handlers: BridgeHandlers<AppBridge> = {
     ...mapsHandlers(),
@@ -57,6 +60,7 @@ export function serveBridge(
     /** Тот же объект во всю ширину редактора — решение 0026. */
     openInTab: (params) => openTab(params),
     showingInTab: (params) => showing(params),
+    watchFocus: () => focus(),
 
     /** Кто ждёт ответа — список держит сервер, мост его только передаёт (решение 0034). */
     watchTurns: () => server.watchTurns(),

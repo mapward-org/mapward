@@ -38,6 +38,7 @@ import {
 import { ObjectCard, ProvideObjectCard } from "../features/object-card/index.ts";
 import { MetaScreen, ProvideMeta } from "../features/meta/index.ts";
 import { ChildrenMapView, ProvideChildrenMap } from "../features/children-map/index.ts";
+import { ScreenFocus } from "../features/focus/index.ts";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
@@ -64,6 +65,8 @@ export const ObjectView = observer(function ObjectView(props: {
   /** Где вид хранит историю — решение 0036; без неё история начинается со `start`. */
   history?: History | undefined;
   onHistory?: ((history: History) => void) | undefined;
+  /** Просьбы хоста перейти к объекту — кнопка «к объекту» в файле директивы; только в сайдбаре. */
+  focus?: { pendingFor(mapPath: string): string | undefined; take(): void } | undefined;
 }) {
   const bridge = useBridgeClient();
   const host = useHost();
@@ -99,6 +102,10 @@ export const ObjectView = observer(function ObjectView(props: {
     [runs],
   );
   const terminals = useLocalStore(() => new Terminals(bridge, props.mapConfig), [map]);
+  useLocalStore(
+    () => new ScreenFocus(props.focus, props.mapConfig.mapPath, map, screen),
+    [props.focus, screen],
+  );
   const places = useLocalStore(() => new MapState(bridge, props.mapConfig.mapPath), [map]);
 
   return (

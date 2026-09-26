@@ -4,6 +4,7 @@ import type { MapServer } from "@mapward/abstract-server";
 import type { TabTarget } from "@mapward/abstract-react-client";
 import { serveBridge } from "./bridge-handler.ts";
 import { webviewHtml } from "./webview-html.ts";
+import type { ShownTabs } from "@/features/object-focus/index.extension.ts";
 
 /**
  * Объект отдельным табом — решение 0026.
@@ -30,10 +31,23 @@ async function titleOf(server: MapServer, target: Place): Promise<string> {
   return `${object.name}: ${metric?.config.label ?? target.metric}`;
 }
 
+/** Что вкладки показывают сейчас — по нему кнопка «к объекту» находит вкладку. */
+export type Tabs = ShownTabs<vscode.WebviewPanel>;
+
+/**
+ * На каком объекте таб стоит сейчас. У вернувшегося после перезагрузки это не адрес, на котором
+ * его открыли, а текущий шаг сохранённой истории: шаг — строка экрана, адрес в ней до `?`.
+ */
+const shownAddress = (target: TabTarget): string => {
+  const entry = target.history?.entries[target.history.index];
+  return entry?.split("?")[0] ?? target.address;
+};
+
 function attach(
   panel: vscode.WebviewPanel,
   context: vscode.ExtensionContext,
   server: MapServer,
+  tabs: Tabs,
   target: TabTarget,
 ): void {
   panel.webview.options = {
@@ -45,7 +59,15 @@ function attach(
   // Переходы бывают быстрее чтения карты: имя ставит только последний из них.
   let latest = 0;
   let disposed = false;
+  // В список таб попадает сразу, не дожидаясь вебвью: вкладка на заднем плане после
+  // перезагрузки может молчать, пока на неё не переключатся.
+  tabs.show(panel, { mapPath: target.mapPath, address: shownAddress(target) });
+  if (panel.active) tabs.activate(panel);
+  panel.onDidChangeViewState(() => {
+    if (panel.active) tabs.activate(panel);
+  });
   const showing = async (place: Place): Promise<void> => {
+    if (!disposed) tabs.show(panel, place);
     const turn = ++latest;
     const title = await titleOf(server, place);
     if (turn === latest && !disposed) panel.title = title;
@@ -56,11 +78,12 @@ function attach(
     server,
     panel.webview,
     context.workspaceState,
-    (next) => openObjectTab(context, server, next),
+    (next) => openObjectTab(context, server, tabs, next),
     showing,
   );
   panel.onDidDispose(() => {
     disposed = true;
+    tabs.close(panel);
     stop();
   });
 }
@@ -68,6 +91,7 @@ function attach(
 export async function openObjectTab(
   context: vscode.ExtensionContext,
   server: MapServer,
+  tabs: Tabs,
   target: TabTarget,
 ): Promise<void> {
   // Каждое открытие — новый таб, даже на уже открытом объекте: таб уходит переходами куда
@@ -80,7 +104,7 @@ export async function openObjectTab(
     // не закрыли: уход на соседний таб — это не закрытие вида.
     { retainContextWhenHidden: true },
   );
-  attach(panel, context, server, target);
+  attach(panel, context, server, tabs, target);
 }
 
 /**
@@ -94,6 +118,7 @@ export async function openObjectTab(
 export function registerObjectTabs(
   context: vscode.ExtensionContext,
   server: MapServer,
+  tabs: Tabs,
 ): vscode.Disposable {
   return vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, {
     deserializeWebviewPanel: (panel, state: unknown) => {
@@ -102,7 +127,7 @@ export function registerObjectTabs(
         panel.dispose();
         return Promise.resolve();
       }
-      attach(panel, context, server, target);
+      attach(panel, context, server, tabs, target);
       return Promise.resolve();
     },
   });

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { MapServer } from "@mapward/abstract-server";
+import type { FocusRequests } from "@/features/object-focus/index.extension.ts";
 import { serveBridge } from "./bridge-handler.ts";
 import { webviewHtml } from "./webview-html.ts";
 
@@ -23,6 +24,8 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
       group?: string;
       metric?: string;
     }) => Promise<void>,
+    /** Куда перейти по кнопке «к объекту» — решает хост, сайдбар только слушает. */
+    private readonly focus: FocusRequests,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -32,7 +35,9 @@ export class MapViewProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = webviewHtml(view.webview, this.extensionUri);
 
-    const stop = serveBridge(this.server, view.webview, this.memento, this.openTab);
+    const stop = serveBridge(this.server, view.webview, this.memento, this.openTab, undefined, () =>
+      this.focus.watch(),
+    );
 
     // Число «ждут ответа» на иконке карты в левой полосе: его видно и при закрытом сайдбаре
     // (решение 0034). Поставить его можно только у созданного вида — пока карту в окне ни разу

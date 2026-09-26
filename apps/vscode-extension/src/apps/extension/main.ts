@@ -14,6 +14,7 @@ import {
   locateDirective,
   registerDirectiveButtons,
 } from "@/features/directive-buttons/index.extension.ts";
+import { FocusRequests, ShownTabs, focusTarget } from "@/features/object-focus/index.extension.ts";
 
 /**
  * Сборка: порты редактора, настройки карты и один сервер на окно. Стор метрик внутри него,
@@ -110,6 +111,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Кнопки этапов в файле директивы — решение 0032. Карта читается на каждый вопрос заново:
   // сервер держит её в кэше, а директивы и этапы меняются, пока файл открыт.
   const maps = state.kind === "maps" ? state.maps : [];
+  // Кнопка «к объекту»: вкладка, которая объект показывает, или сайдбар. Список вкладок ведут
+  // сами вкладки, просьбу сайдбару слушает он сам, когда поднимется.
+  const tabs = new ShownTabs<vscode.WebviewPanel>();
+  const focusRequests = new FocusRequests();
   const find = async (uri: vscode.Uri) => {
     for (const map of maps) {
       // oxlint-disable-next-line no-await-in-loop
@@ -133,6 +138,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           stage,
         });
       },
+      focus: async ({ uri }) => {
+        const found = await find(uri);
+        if (!found) return;
+        const wanted = { mapPath: found.map.mapPath, address: found.located.object.address };
+        const target = focusTarget(tabs.list(), wanted);
+        if (target.kind === "tab") {
+          target.tab.reveal(target.tab.viewColumn);
+          return;
+        }
+        focusRequests.request(wanted);
+        // Команда `<вид>.focus` у редактора своя для каждого вида: открывает сайдбар и создаёт
+        // вид, если его ещё не было, — тогда просьба дождётся его подписки.
+        await vscode.commands.executeCommand(`${MapViewProvider.viewId}.focus`);
+      },
     }),
   );
 
@@ -140,14 +159,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(registerVirtualDocs());
 
   // Табы объектов: открывает их мост, возвращает после перезапуска окна редактор — решение 0026.
-  const openTab = (target: Parameters<typeof openObjectTab>[2]) =>
-    openObjectTab(context, server, target);
-  context.subscriptions.push(registerObjectTabs(context, server));
+  const openTab = (target: Parameters<typeof openObjectTab>[3]) =>
+    openObjectTab(context, server, tabs, target);
+  context.subscriptions.push(registerObjectTabs(context, server, tabs));
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       MapViewProvider.viewId,
-      new MapViewProvider(context.extensionUri, context.workspaceState, server, openTab),
+      new MapViewProvider(
+        context.extensionUri,
+        context.workspaceState,
+        server,
+        openTab,
+        focusRequests,
+      ),
       // The map keeps where you are; rebuilding it on every sidebar switch would lose that.
       { webviewOptions: { retainContextWhenHidden: true } },
     ),

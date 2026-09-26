@@ -5,7 +5,7 @@ import { useBridgeClient } from "../../../ports/bridge.tsx";
 import { useViewStates } from "../../../services/state/ports.tsx";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { MapsList } from "../adapters/maps-list.ts";
-import { MapsView } from "../model/maps-view.ts";
+import { MapsView, type RevealSource } from "../model/maps-view.ts";
 import { Accordion, AccordionSection, Searching } from "../ui/accordion.tsx";
 import { Empty } from "../ui/empty.tsx";
 
@@ -13,11 +13,15 @@ import { Empty } from "../ui/empty.tsx";
  * The feature knows how many maps there are and nothing about what a map looks like — that
  * arrives through `renderMap`.
  */
-export const Maps = observer(function Maps(props: { renderMap: (map: ResolvedMap) => ReactNode }) {
+export const Maps = observer(function Maps(props: {
+  renderMap: (map: ResolvedMap) => ReactNode;
+  /** Просьбы перейти к объекту: свёрнутая секция их карты раскрывается. */
+  focus?: RevealSource | undefined;
+}) {
   const bridge = useBridgeClient();
   const views = useViewStates();
   const maps = useLocalStore(
-    () => new MapsView(new MapsList(bridge), views.slot<string[]>("maps:closed", [])),
+    () => new MapsView(new MapsList(bridge), views.slot<string[]>("maps:closed", []), props.focus),
   );
   const { screen } = maps;
 

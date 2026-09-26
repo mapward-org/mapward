@@ -1,4 +1,4 @@
-import { action, makeObservable, observable } from "mobx";
+import { action, makeObservable, observable, reaction } from "mobx";
 import type { MapsState, ResolvedMap } from "@mapward/core";
 
 /** Что с картами и чем это чинится — готовым для вида. */
@@ -21,6 +21,12 @@ export type MapsSource = {
 type Slot<T> = { value: T; ready: boolean; set(value: T): void };
 
 /**
+ * Последняя просьба перейти к объекту. Каждая — новый объект, поэтому второе нажатие на ту же
+ * карту раскроет её снова, если её успели свернуть.
+ */
+export type RevealSource = { last: { mapPath: string } | undefined };
+
+/**
  * Карты сайдбара: одна — сразу её объект, несколько — аккордеоном. Свёрнутые
  * карты — путями, списком, в состоянии вида: вернётся карта, вернётся и её свёрнутость.
  *
@@ -31,11 +37,14 @@ export class MapsView {
   /** Секции, которые уже открывали: их не размонтируют, даже когда свернут. */
   private readonly seen = observable.set<string>();
 
+  private stop: (() => void) | undefined;
+
   constructor(
     private readonly source: MapsSource,
     private readonly closed: Slot<string[]>,
+    private readonly reveal?: RevealSource | undefined,
   ) {
-    makeObservable(this, { toggle: action });
+    makeObservable(this, { toggle: action, open: action });
   }
 
   get screen(): MapsScreen {
@@ -88,5 +97,28 @@ export class MapsView {
     // Раскрытая хоть раз секция остаётся смонтированной: свернуть — не значит забыть.
     this.seen.add(key);
     this.closed.set(wasClosed ? closed.filter((k) => k !== key) : [...closed, key]);
+  }
+
+  mount(): void {
+    const reveal = this.reveal;
+    if (!reveal) return;
+    this.stop = reaction(
+      () => reveal.last,
+      (request) => {
+        if (request) this.open(request.mapPath);
+      },
+    );
+  }
+
+  unmount(): void {
+    this.stop?.();
+    this.stop = undefined;
+  }
+
+  /** Раскрыть секцию, если свёрнута, — к объекту в ней просят перейти. */
+  open(key: string): void {
+    this.seen.add(key);
+    const closed = this.closed.value;
+    if (closed.includes(key)) this.closed.set(closed.filter((k) => k !== key));
   }
 }
