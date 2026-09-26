@@ -1,3 +1,4 @@
+import type { Observable } from "rxjs";
 import type { MapMetric, MapObject, RunSource } from "@mapward/core";
 import type { Cancellation, ProcessEnv, ProcessResult } from "../../ports/index.ts";
 import type { MapRef } from "../../kernel/map-ref.ts";
@@ -7,9 +8,14 @@ import type { MapRef } from "../../kernel/map-ref.ts";
  * соответствует, а стыкует сборка сервера. Метрики видят ровно то, что им нужно.
  */
 
-/** От карты: объект с его метриками. */
+/** От карты: объект с его метриками и дальше каждое изменение карты. */
 export type MetricsMapSource = {
   current(ref: MapRef): Promise<MapObject>;
+  /**
+   * Живая карта — решение 0041. По ней вотчеры шагов следуют за конфигом (решение 0043); без
+   * неё они ставятся по карте на момент открытия объекта.
+   */
+  watch?(ref: MapRef): Observable<MapObject>;
 };
 
 type Display = MapMetric["config"]["display"];

@@ -16,6 +16,9 @@ export const RawConfig = T.Object({
   // решение 0016. Стадии разведены, потому что сбор дорогой, а трансформ поверх него дешёвый.
   collectorsStaleTime: T.Optional(T.Number()),
   transformsStaleTime: T.Optional(T.Number()),
+  // Сколько мс тишины ждёт вотчер шага без своего `debounce` — решение 0043. Умолчание на
+  // карту, как у свежести: шаг перебивает его своим.
+  watchDebounce: T.Optional(T.Number()),
   // Постоянный порт MCP-сервера в редакторе: с ним терминалы карты переживают перезагрузку
   // окна — решение 0032. Проверяется при чтении настроек: кривой порт не повод терять карты.
   mcpPort: T.Optional(T.Number()),
@@ -26,6 +29,7 @@ export type Settings = {
   metricsConcurrency?: number;
   collectorsStaleTime?: number;
   transformsStaleTime?: number;
+  watchDebounce?: number;
   mcpPort?: number;
 };
 
@@ -60,11 +64,13 @@ export function parseSettings(text: string): Settings {
   try {
     const parsed: unknown = JSON.parse(text);
     if (!Check(RawConfig, parsed)) return {};
-    const { metricsConcurrency, collectorsStaleTime, transformsStaleTime, mcpPort } = parsed;
+    const { metricsConcurrency, collectorsStaleTime, transformsStaleTime, watchDebounce, mcpPort } =
+      parsed;
     return {
       ...(metricsConcurrency === undefined ? {} : { metricsConcurrency }),
       ...(collectorsStaleTime === undefined ? {} : { collectorsStaleTime }),
       ...(transformsStaleTime === undefined ? {} : { transformsStaleTime }),
+      ...(watchDebounce === undefined ? {} : { watchDebounce }),
       ...(mcpPort !== undefined && isPort(mcpPort) ? { mcpPort } : {}),
     };
   } catch {

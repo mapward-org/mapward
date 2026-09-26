@@ -46,6 +46,11 @@ async function createServer(): Promise<{ server: MapServer; mcpPort?: number }> 
   const concurrency = strictest((from) => from.metricsConcurrency);
   const collectors = strictest((from) => from.collectorsStaleTime);
   const transforms = strictest((from) => from.transformsStaleTime);
+  // У дебаунса осторожнее большее: реже будит шаги (решение 0043).
+  const debounces = settings
+    .map((from) => from.watchDebounce)
+    .filter((value): value is number => typeof value === "number" && value >= 0);
+  const watchDebounce = debounces.length > 0 ? Math.max(...debounces) : undefined;
 
   // Порт осторожным не бывает: сервер один, и двух портов у него нет. Разные порты в разных
   // конфигах — ошибка настройки, берётся первый (решение 0032).
@@ -60,6 +65,7 @@ async function createServer(): Promise<{ server: MapServer; mcpPort?: number }> 
     ...(concurrency === undefined ? {} : { metricsConcurrency: concurrency }),
     ...(collectors === undefined ? {} : { collectorsStaleTime: collectors }),
     ...(transforms === undefined ? {} : { transformsStaleTime: transforms }),
+    ...(watchDebounce === undefined ? {} : { watchDebounce }),
   });
   return { server, ...(mcpPorts[0] === undefined ? {} : { mcpPort: mcpPorts[0] }) };
 }

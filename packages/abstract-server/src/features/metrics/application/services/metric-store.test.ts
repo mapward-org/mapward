@@ -1,3 +1,4 @@
+import { Subject, type Observable } from "rxjs";
 import { expect, test } from "vitest";
 import type { MapObject } from "@mapward/core";
 import type { FilesPort, ServerPorts } from "../../../../ports/index.ts";
@@ -31,6 +32,7 @@ function createMetricStore(
   read: (ref: MapRef) => Promise<MapObject>,
   settings: MetricSettings = {},
   history?: MetricHistory,
+  live?: (ref: MapRef) => Observable<MapObject>,
 ) {
   const { files, shell, agent, env, timers, clock } = ports;
   const executor = new Executor(shell, agent);
@@ -38,7 +40,7 @@ function createMetricStore(
   const cache = new MetricCache(files, files);
   const builtins = new Builtins(new GitStatus(shell, files, env, timers, clock));
   return new MetricStore(
-    { current: read },
+    { current: read, ...(live ? { watch: live } : {}) },
     cache,
     new CollectMetric(files, cache, schema, executor, env, clock),
     new TransformMetric(builtins, cache, schema, executor, env, clock),
@@ -46,6 +48,7 @@ function createMetricStore(
     schema,
     timers,
     clock,
+    files,
     settings,
     history,
   );
@@ -656,4 +659,236 @@ test("вкладка открывается сразу: первый снимо�
   expect(last?.data).toEqual({ text: "собрано раньше" });
   expect(last?.loading).toBeUndefined();
   subscription.unsubscribe();
+});
+
+/**
+ * Порты для вотчера шага — решение 0043: вотчер порта запоминается по папке, и тест сам зовёт
+ * его, когда «файл поменялся». Таймеры идут микротасками, поэтому дебаунс — одна пауза.
+ */
+function stepWatchPorts(
+  files: Record<string, string>,
+  script: (command: string, cancel?: { onCancel(run: () => void): void }) => Promise<string>,
+) {
+  const base = fakePorts(files);
+  const watchers = new Map<string, (path: string) => void>();
+  const ports: ServerPorts = {
+    ...base,
+    files: {
+      ...base.files,
+      watch: (root, onChange) => {
+        watchers.set(root, onChange);
+        return () => watchers.delete(root);
+      },
+    },
+    shell: {
+      run: async (command, options) => ({
+        stdout: await script(command, options.cancel),
+        stderr: "",
+      }),
+      pipe: async (command, options) => ({
+        stdout: await script(command, options.cancel),
+        stderr: "",
+      }),
+    },
+    timers: {
+      ...base.timers,
+      after: (_ms, run) => {
+        void Promise.resolve().then(run);
+        return () => undefined;
+      },
+    },
+  };
+  return { ports, watchers };
+}
+
+function recordingHistory() {
+  const runs: { source: string; steps: string[]; end?: string }[] = [];
+  const history: MetricHistory = {
+    recordMetric: (_map, info) => {
+      const run: { source: string; steps: string[]; end?: string } = {
+        source: info.source,
+        steps: [],
+      };
+      runs.push(run);
+      return {
+        step: (name) => run.steps.push(name),
+        stepDone: (status) => run.steps.push(status),
+        end: (status) => {
+          run.end = status;
+        },
+      };
+    },
+  };
+  return { runs, history };
+}
+
+const pairTree = (refresh: string) => ({
+  "/map/_index.json": JSON.stringify({ name: "Карта" }),
+  "/map/_metrics/pair/config.json": JSON.stringify({
+    label: "Пара",
+    refresh,
+    collectors: [
+      { kind: "script", name: "cheap", run: "echo cheap", watch: { include: ["src/**"] } },
+      { kind: "script", name: "costly", run: "echo costly" },
+    ],
+    display: { kind: "text" },
+  }),
+});
+
+test("вотчер коллектора пересобирает только свой коллектор, сосед отдаёт прошлое", async () => {
+  const counts: Record<string, number> = {};
+  const { ports, watchers } = stepWatchPorts(pairTree("on-display"), (command) => {
+    const name = command.replace("echo ", "");
+    counts[name] = (counts[name] ?? 0) + 1;
+    return Promise.resolve(JSON.stringify({ n: counts[name] }));
+  });
+  const { runs, history } = recordingHistory();
+  const store = createMetricStore(
+    ports,
+    () => readMap(ports.files, ref.mapPath, ref.basePath, ref.name),
+    // Часы здесь настоящие: дебаунс в триста мс микротасками не дождаться.
+    { watchDebounce: 0 },
+    history,
+  );
+
+  let latest: Record<string, { data?: unknown; busy?: boolean }> = {};
+  const subscription = store.watch(ref, "mapward://").subscribe((snapshot) => {
+    latest = snapshot;
+  });
+
+  const address = "mapward://_metrics/pair";
+  await spin(() => latest[address]?.data !== undefined && latest[address]?.busy === false);
+  await spin(() => watchers.has("/map/src"));
+
+  watchers.get("/map/src")?.("/map/src/a.ts");
+  await spin(() => counts.cheap === 2 && latest[address]?.busy === false);
+
+  expect(counts.costly).toBe(1);
+  expect(latest[address]?.data).toEqual({ cheap: { n: 2 }, costly: { n: 1 } });
+  expect(runs.at(-1)?.source).toBe("watch");
+
+  // Изменение мимо глобов вотчер не будит.
+  watchers.get("/map/src")?.("/map/other/b.ts");
+  await spin(() => true);
+  expect(counts.cheap).toBe(2);
+
+  subscription.unsubscribe();
+  expect(watchers.has("/map/src")).toBe(false);
+});
+
+test("вотчер снимает идущий коллектор и начинает его заново внутри того же прогона", async () => {
+  const counts: Record<string, number> = {};
+  let hold: (() => void) | undefined;
+  let cancelled = 0;
+  const { ports, watchers } = stepWatchPorts(pairTree("manual"), (command, cancel) => {
+    const name = command.replace("echo ", "");
+    counts[name] = (counts[name] ?? 0) + 1;
+    const n = counts[name];
+    // Первая попытка дешёвого висит, пока её не снимут или не отпустят.
+    if (name === "cheap" && n === 1) {
+      return new Promise((resolve, reject) => {
+        hold = () => resolve(JSON.stringify({ n }));
+        cancel?.onCancel(() => {
+          cancelled += 1;
+          reject(new Error("снят"));
+        });
+      });
+    }
+    return Promise.resolve(JSON.stringify({ n }));
+  });
+  const { runs, history } = recordingHistory();
+  const store = createMetricStore(
+    ports,
+    () => readMap(ports.files, ref.mapPath, ref.basePath, ref.name),
+    // Часы здесь настоящие: дебаунс в триста мс микротасками не дождаться.
+    { watchDebounce: 0 },
+    history,
+  );
+
+  // `manual` ждёт кнопки, но вотчер у написанного `watch` ставится всё равно.
+  const subscription = store.watch(ref, "mapward://").subscribe(() => undefined);
+  await spin(() => watchers.has("/map/src"));
+  expect(counts.cheap).toBeUndefined();
+
+  const running = store.run(ref, "mapward://_metrics/pair");
+  await spin(() => hold !== undefined);
+
+  watchers.get("/map/src")?.("/map/src/a.ts");
+  const value = await running;
+
+  expect(cancelled).toBe(1);
+  expect(counts).toEqual({ cheap: 2, costly: 1 });
+  expect(value.data).toEqual({ cheap: { n: 2 }, costly: { n: 1 } });
+  expect(value.ok).toBe(true);
+  // Один прогон, и он не неудача.
+  expect(runs).toHaveLength(1);
+  expect(runs[0]?.end).toBe("success");
+
+  subscription.unsubscribe();
+});
+
+test("вотчер трансформа гонит только трансформы, сбор не трогается", async () => {
+  const counts: Record<string, number> = {};
+  const { ports, watchers } = stepWatchPorts(
+    {
+      "/map/_index.json": JSON.stringify({ name: "Карта" }),
+      "/map/_metrics/shaped/config.json": JSON.stringify({
+        label: "Форма",
+        refresh: "on-display",
+        collectors: [{ kind: "script", run: "echo collect" }],
+        transforms: [{ kind: "script", run: "echo shape", watch: { include: ["rules/*.md"] } }],
+        display: { kind: "text" },
+      }),
+    },
+    (command) => {
+      const name = command.replace("echo ", "");
+      counts[name] = (counts[name] ?? 0) + 1;
+      return Promise.resolve(JSON.stringify({ n: counts[name] }));
+    },
+  );
+  const store = createMetricStore(
+    ports,
+    () => readMap(ports.files, ref.mapPath, ref.basePath, ref.name),
+    { watchDebounce: 0 },
+  );
+
+  let latest: Record<string, { data?: unknown; busy?: boolean }> = {};
+  const subscription = store.watch(ref, "mapward://").subscribe((snapshot) => {
+    latest = snapshot;
+  });
+  const address = "mapward://_metrics/shaped";
+  await spin(() => latest[address]?.data !== undefined && latest[address]?.busy === false);
+  await spin(() => watchers.has("/map/rules"));
+
+  watchers.get("/map/rules")?.("/map/rules/one.md");
+  await spin(() => counts.shape === 2 && latest[address]?.busy === false);
+
+  expect(counts.collect).toBe(1);
+  expect(latest[address]?.data).toEqual({ n: 2 });
+  subscription.unsubscribe();
+});
+
+test("правка watch в живой карте переставляет вотчер, не дожидаясь нового открытия", async () => {
+  const files = pairTree("manual");
+  const { ports, watchers } = stepWatchPorts(files, () => Promise.resolve("{}"));
+  const changes = new Subject<MapObject>();
+  const read = () => readMap(ports.files, ref.mapPath, ref.basePath, ref.name);
+  const store = createMetricStore(ports, read, { watchDebounce: 0 }, undefined, () => changes);
+
+  const subscription = store.watch(ref, "mapward://").subscribe(() => undefined);
+  await spin(() => watchers.has("/map/src"));
+
+  files["/map/_metrics/pair/config.json"] = JSON.stringify({
+    label: "Пара",
+    collectors: [
+      { kind: "script", name: "cheap", run: "echo cheap", watch: { include: ["lib/**"] } },
+    ],
+    display: { kind: "text" },
+  });
+  changes.next(await read());
+
+  await spin(() => watchers.has("/map/lib"));
+  expect(watchers.has("/map/src")).toBe(false);
+  subscription.unsubscribe();
+  expect(watchers.has("/map/lib")).toBe(false);
 });

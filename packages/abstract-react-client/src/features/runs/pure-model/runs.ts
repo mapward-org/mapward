@@ -28,6 +28,7 @@ export const sourceLabel: Record<RunSource, string> = {
   cli: "терминал",
   refresh: "сама",
   action: "после экшона",
+  watch: "вотчер",
 };
 
 /**
@@ -46,7 +47,7 @@ export const RUNS_TABS: { key: RunsTab; label: string }[] = [
 
 export function tabOf(run: Run): Exclude<RunsTab, "all"> {
   if (run.kind === "action") return "actions";
-  return run.source === "refresh" ? "auto" : "metrics";
+  return run.source === "refresh" || run.source === "watch" ? "auto" : "metrics";
 }
 
 export const inTab = (runs: Run[], tab: RunsTab): Run[] =>

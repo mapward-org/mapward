@@ -12,6 +12,25 @@ import type { Collected, MetricCache } from "../services/metric-cache.ts";
 export type StageReport = (log: string, output?: unknown) => void;
 
 /**
+ * Прогон одного шага, который стор умеет снять и начать заново — решение 0043. Стадия отдаёт
+ * ему попытку с токеном, а он решает, сколько раз её звать: вотчер снимает свой шаг, не трогая
+ * соседей.
+ */
+export type StepRunner = <T>(
+  index: number,
+  attempt: (cancel?: Cancellation) => Promise<T>,
+) => Promise<T>;
+
+/** Как собирать: кого заново и через что. Без плана собираются все, как всегда. */
+export type CollectPlan = {
+  /** Кого собрать заново; части остальных берутся из прошлого сбора. */
+  only?: number[];
+  step?: StepRunner;
+  /** Что не так с `watch` у шагов — в лог сбора: иначе вотчер молча не встаёт. */
+  problems?: string[];
+};
+
+/**
  * Ответ агента как есть — в лог стадии: он разбирается в данные, и без этого на экране прогонов
  * не видно, что агент сказал на самом деле (решение 0038).
  */
@@ -87,6 +106,30 @@ async function readDir(files: FileReader, base: string, spec: ReadDirSpec): Prom
   return walk(base, "");
 }
 
+/**
+ * Части коллекторов, которые не пересобираются: при одном коллекторе это весь прошлый
+ * результат, при нескольких — его поле под `name`. Прошлого нет или он неудачный — брать
+ * нечего, и собираются все (решение 0043).
+ */
+function keptParts(
+  specs: Record<string, unknown>[],
+  only: number[] | undefined,
+  before: Collected | undefined,
+): Map<number, unknown> {
+  const kept = new Map<number, unknown>();
+  if (!only || !before?.ok) return kept;
+  const data = before.data;
+  if (specs.length > 1 && (typeof data !== "object" || data === null)) return kept;
+  for (const [index, spec] of specs.entries()) {
+    if (only.includes(index)) continue;
+    kept.set(
+      index,
+      specs.length === 1 ? data : (data as Record<string, unknown>)[String(spec.name ?? index)],
+    );
+  }
+  return kept;
+}
+
 /** Размер карточки — css-строка или число пикселей; остальное в конфиге не размер. */
 const size = (value: unknown): string | number | undefined =>
   typeof value === "string" || typeof value === "number" ? value : undefined;
@@ -120,6 +163,7 @@ export class CollectMetric {
     cancel?: Cancellation,
     previous?: Collected,
     report?: StageReport,
+    plan: CollectPlan = {},
   ): Promise<Collected> {
     const specs = metric.config.collectors ?? [];
     // Прошлое значение — сперва то, что уже показано, потом кэш на диске. У метрики без
@@ -131,11 +175,15 @@ export class CollectMetric {
 
     try {
       const hint = await this.schema.hint(metric.config.display);
+      const kept = keptParts(specs, plan.only, before);
       const results = await Promise.all(
-        specs.map((spec) => this.collector(spec, cwd, owner, hint, cancel)),
+        specs.map((spec, index) => {
+          if (kept.has(index)) return { value: kept.get(index), log: undefined };
+          const attempt = (token?: Cancellation) => this.collector(spec, cwd, owner, hint, token);
+          return plan.step ? plan.step(index, attempt) : attempt(cancel);
+        }),
       );
-      const log = results
-        .map((result) => result.log)
+      const log = [...results.map((result) => result.log), ...(plan.problems ?? [])]
         .filter(Boolean)
         .join("\n");
 

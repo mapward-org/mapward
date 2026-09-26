@@ -89,6 +89,7 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     schema,
     timers,
     clock,
+    files,
     settings,
     runs,
   );

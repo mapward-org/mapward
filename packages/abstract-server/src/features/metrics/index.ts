@@ -10,4 +10,5 @@ export { MetricCache, type Collected } from "./application/services/metric-cache
 export { Builtins } from "./application/services/builtins.ts";
 export { GitStatus } from "./application/services/git-status.ts";
 export { CollectMetric } from "./application/use-cases/collect-metric.ts";
+export { matchesGlob } from "./domain/glob.ts";
 export { TransformMetric } from "./application/use-cases/transform-metric.ts";

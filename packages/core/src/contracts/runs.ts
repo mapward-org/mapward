@@ -15,6 +15,8 @@ export const RunSource = T.Union([
   T.Literal("refresh"),
   /** Метрика пересобрана после успешного экшона — она из `refreshes`. */
   T.Literal("action"),
+  /** Метрику перезапустил вотчер шага: под его `watch` поменялся файл (решение 0043). */
+  T.Literal("watch"),
 ]);
 
 export const RunStatus = T.Union([

@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { watch } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { claudeArgs, shellArgs } from "@mapward/abstract-server";
+import { claudeArgs, matchesGlob, shellArgs } from "@mapward/abstract-server";
 import type {
   Cancellation,
   FileEntry,
@@ -64,7 +64,10 @@ const files = {
     await rm(path, { force: true });
   },
 
-  /** За чем следить, вправе сказать зовущий — решение 0023: имена сверяются с `include`. */
+  /**
+   * За чем следить, вправе сказать зовущий — решение 0023: имена сверяются с `include`. Глоб там
+   * тоже бывает — это вотчер шага метрики (решение 0043), и он сверяется от `root`.
+   */
   watch(
     root: string,
     onChange: (path: string) => void,
@@ -74,8 +77,10 @@ const files = {
     const watcher = watch(root, { recursive: true }, (_event, name) => {
       if (!name) return;
       const path = String(name).replaceAll("\\", "/");
-      // Имена вроде `index` и `HEAD` сверяются целиком: глоб здесь не нужен, а нужен отбор.
-      if (include && !include.some((wanted) => path === wanted || path.endsWith(`/${wanted}`))) {
+      // Имена вроде `index` и `HEAD` сверяются целиком, глобы — глобом.
+      const hit = (wanted: string) =>
+        path === wanted || path.endsWith(`/${wanted}`) || matchesGlob(path, wanted);
+      if (include && !include.some(hit)) {
         return;
       }
       onChange(`${root}/${path}`);

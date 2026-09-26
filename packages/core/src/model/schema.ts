@@ -60,6 +60,23 @@ export const ObjectIndex = T.Object({
   "metric-groups": T.Optional(MetricGroups),
 });
 
+/**
+ * Вотчер шага — решение 0043: поле `watch` у любого коллектора и трансформа. Изменение под ним
+ * перезапускает этот шаг. `true` — сокращение для шага, который свои пути знает сам (`read-dir`).
+ *
+ * В схему шага оно не вписано: шаги лежат записями, и кривой `watch` не должен выкидывать
+ * метрику целиком — он проверяется отдельно, а ошибка идёт в логи метрики.
+ */
+export const StepWatch = T.Union([
+  T.Boolean(),
+  T.Object({
+    include: T.Optional(T.Array(T.String())),
+    exclude: T.Optional(T.Array(T.String())),
+    /** Мс тишины после последнего изменения; без него — умолчание карты. */
+    debounce: T.Optional(T.Number()),
+  }),
+]);
+
 /** Metric `config.json` as decision 0004 describes it. */
 export const MetricConfig = T.Object({
   label: T.Optional(T.String()),
@@ -142,6 +159,7 @@ export type MetricGroup = Static<typeof MetricGroup>;
 export type MetricGroups = Static<typeof MetricGroups>;
 export type ObjectIndex = Static<typeof ObjectIndex>;
 export type MetricConfig = Static<typeof MetricConfig>;
+export type StepWatch = Static<typeof StepWatch>;
 
 /** A layout may be one variant or a dictionary keyed by container query — see decision 0003. */
 export function layoutVariants(

@@ -47,7 +47,9 @@ src/
 отмена по уходу — решение [0013](../decisions/0013-metrics-store.md). Первый снимок подписки
 уходит сразу, не поднятое с диска приходит пометкой `loading`. Стадии — юзкейсы `CollectMetric`
 и `TransformMetric`, кэш и логи — `MetricCache`, встроенные шаги и git-статус — `Builtins` и
-`GitStatus` (решение [0023](../decisions/0023-builtin-transforms-and-git.md)).
+`GitStatus` (решение [0023](../decisions/0023-builtin-transforms-and-git.md)). Вотчеры шагов
+с полем `watch` ставит сам стор по живому конфигу метрики, разбор поля — `domain/step-watch.ts`
+(решение [0043](../decisions/0043-step-watch.md)).
 
 **`directives`** — директивы: создание и удаление, текст этапа, фраза для кнопки, запуск и конец
 этапа — по юзкейсу на действие. Объект и директиву в модели ищет `DirectiveLocator`: промах —
