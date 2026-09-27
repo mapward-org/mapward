@@ -4,7 +4,7 @@ import type {
   DisplayData,
   GitMark as Mark,
   LinkNode,
-  MapRelation,
+  ObjectsMap,
   ObjectRef,
   StatusMark,
 } from "../pure-model/display.ts";
@@ -89,9 +89,9 @@ export const Display = observer(function Display(props: {
   /** Ссылка на объект открывается ещё и табом — решение 0026. Хост не умеет табы — нет её. */
   onOpenTab?: OpenTab;
   /**
-   * Карту детей рисует её фича, а собирает `compose`: чужие модули фича не тянет — решение 0042.
+   * Вьюху карты рисует её фича, а собирает `compose`: чужие модули фича не тянет — решение 0042.
    */
-  renderMap: (map: { nodes: LinkNode[]; relations: MapRelation[] }) => ReactNode;
+  renderMap: (map: ObjectsMap) => ReactNode;
   /** Свой компонент метрики — решение 0037: собирает его сервер, выполняет `compose`. */
   renderComponent: (data: unknown) => ReactNode;
   /** Кнопка экшона строки списка и узла дерева — решение 0038. */
@@ -138,7 +138,7 @@ export const Display = observer(function Display(props: {
           open={props.treeOpen}
         />
       ) : data.kind === "map" ? (
-        props.renderMap({ nodes: data.nodes, relations: data.relations })
+        props.renderMap(data)
       ) : data.kind === "object" ? (
         props.renderObject?.(data.item)
       ) : data.kind === "component" ? (

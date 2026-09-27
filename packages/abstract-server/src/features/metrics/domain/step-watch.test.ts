@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { rootOf, touches, watchPlan } from "./step-watch.ts";
 
 describe("watch of a step", () => {
+  it("a view watches the map without being told, and watch: false turns it off", () => {
+    const { targets, problems } = watchPlan({ collectors: [{ kind: "objects-map" }] }, "/map");
+    expect(problems).toEqual([]);
+    const [target] = targets;
+    expect(target?.include).toEqual(["/map/**/_index.json", "/map/**/map-state.json"]);
+    expect(target && touches(target, "/map/systems/shop/_index.json")).toBe(true);
+    expect(target && touches(target, "/map/_metrics/canvas/map-state.json")).toBe(true);
+    expect(target && touches(target, "/map/_directives/x.md")).toBe(false);
+
+    const off = watchPlan({ collectors: [{ kind: "objects-map", watch: false }] }, "/map");
+    expect(off.targets).toEqual([]);
+  });
+
   it("read-dir watches what it reads when told just true", () => {
     const { targets, problems } = watchPlan(
       {

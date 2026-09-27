@@ -1,6 +1,6 @@
 import { exec, spawn, type ChildProcess } from "node:child_process";
 import { readFile, realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import * as vscode from "vscode";
 import { CLAUDE_STREAM_ARGS, claudeArgs, claudeStream, shellArgs } from "@mapward/abstract-server";
 import type {
@@ -73,6 +73,13 @@ const files = {
     } catch {
       // нечего удалять
     }
+  },
+
+  /** Перенос папки объекта — правка карты (решение 0044). Занятую цель не затирает. */
+  async move(from: string, to: string): Promise<void> {
+    // `createDirectory` создаёт и промежуточные папки: корзина правки заводится по пути.
+    await vscode.workspace.fs.createDirectory(uri(dirname(to)));
+    await vscode.workspace.fs.rename(uri(from), uri(to), { overwrite: false });
   },
 
   /**

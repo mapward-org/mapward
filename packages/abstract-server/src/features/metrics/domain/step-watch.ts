@@ -71,7 +71,10 @@ function targetOf(
   spec: Record<string, unknown>,
   cwd: string,
 ): WatchTarget | string | undefined {
-  const raw = spec.watch;
+  // Вьюха следит за картой сама, без поля (решение 0044): её значение — это `_index.json`
+  // объектов и её `map-state.json`, и протухает оно от любой правки карты.
+  const view = spec.kind === "objects-map";
+  const raw = spec.watch ?? (view ? true : undefined);
   if (raw === undefined || raw === false) return undefined;
 
   const where = `${stage === "collect" ? "коллектор" : "трансформ"} ${String(spec.name ?? index)}`;
@@ -83,7 +86,13 @@ function targetOf(
   // `read-dir` свои пути знает сам: без `include` следим за тем, что он читает.
   const readDir = spec.kind === "read-dir";
   const base = readDir && typeof spec.basePath === "string" ? full(cwd, spec.basePath) : cwd;
-  const include = own.include ?? (readDir ? (strings(spec.include) ?? ["**"]) : undefined);
+  const include =
+    own.include ??
+    (readDir
+      ? (strings(spec.include) ?? ["**"])
+      : view
+        ? ["**/_index.json", "**/map-state.json"]
+        : undefined);
   const exclude = own.exclude ?? (readDir && !own.include ? (strings(spec.exclude) ?? []) : []);
 
   if (!include || include.length === 0) {

@@ -76,7 +76,15 @@ export class DiskFiles implements FileSource {
    * вотчера им незачем, а тот, кто записал, следом читает карту и должен видеть своё.
    */
   touch(paths: string[]): Promise<void> {
-    for (const path of paths) this.pending.add(pathKey(path));
+    for (const path of paths) {
+      const key = pathKey(path);
+      this.pending.add(key);
+      // Перенесённая или удалённая папка (решение 0044): её файлы, которые кто-то читает,
+      // перечитываются тоже — иначе модель держала бы их содержимое по старому пути.
+      for (const leaf of this.leaves.values()) {
+        if (leaf.key.startsWith(`${key}/`)) this.pending.add(leaf.key);
+      }
+    }
     return this.flush();
   }
 

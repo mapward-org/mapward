@@ -2,10 +2,7 @@
   "label": "Дети",
   "refresh": "on-display",
   "collectors": [
-    {
-      "kind": "object-children-map",
-      "exclude": ["prototypes/*", "shared-metrics/*"]
-    }
+    { "kind": "objects-map", "show": ["apps/*", "packages/*"] }
   ],
   "transforms": [
     { "kind": "script", "run": "node \"${{ mapward:// }}/_metrics/children-list/list.mjs\"" }

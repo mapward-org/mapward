@@ -4,8 +4,8 @@ import type {
   GitLetter,
   GitMark,
   LinkNode,
-  MapRelation,
   ObjectMark,
+  ObjectsMap,
   ObjectRef,
   StatusMark,
   TreeNode,
@@ -21,7 +21,7 @@ export type {
   GitLetter,
   GitMark,
   LinkNode,
-  MapRelation,
+  ObjectsMap,
   ObjectRef,
   StatusMark,
   TreeNode,
@@ -33,6 +33,19 @@ export type {
  */
 export const isCard = <T extends ObjectMark>(mark: T): mark is T & ObjectRef =>
   typeof mark.object === "string";
+
+/**
+ * Вьюха `objects-map` (решение 0044) собирается коллектором целиком, поэтому проверяется главное:
+ * адрес вьюхи, куда слать правки, и списки. Недостающие списки фигур и палитры — пустые: старое
+ * значение из кэша не должно ронять холст.
+ */
+function isObjectsMap(record: Record<string, unknown>): record is ObjectsMap {
+  if (typeof record.view !== "string" || !Array.isArray(record.nodes)) return false;
+  record.relations ??= [];
+  record.shapes ??= [];
+  record.palette ??= { objects: [], relations: [] };
+  return Array.isArray(record.relations);
+}
 
 /**
  * К формам из `core` клиент добавляет свой случай: пришло не то, и это надо показать. Формы
@@ -128,13 +141,9 @@ export function toDisplay(kind: string | undefined, data: unknown): DisplayData 
         ? { kind: "tree", children: record.children as TreeNode[] }
         : { kind: "unknown", reason: "ждём { children }" };
     case "map":
-      return Array.isArray(record.nodes)
-        ? {
-            kind: "map",
-            nodes: record.nodes as LinkNode[],
-            relations: (record.relations ?? []) as MapRelation[],
-          }
-        : { kind: "unknown", reason: "ждём { nodes, relations }" };
+      return isObjectsMap(record)
+        ? { kind: "map", ...record }
+        : { kind: "unknown", reason: "ждём вьюху objects-map: { view, nodes, relations }" };
     case "object":
       return typeof record.object === "string"
         ? { kind: "object", item: record as ObjectRef }

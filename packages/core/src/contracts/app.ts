@@ -2,6 +2,7 @@ import { createBridge } from "./bridge.ts";
 import { configBridge } from "./config.ts";
 import { directiveBridge, mapBridge, terminalBridge } from "./map.ts";
 import { stateBridge } from "./state.ts";
+import { editBridge } from "./edit.ts";
 import { turnsBridge } from "./turns.ts";
 import { runsBridge } from "./runs.ts";
 
@@ -12,6 +13,7 @@ export const appBridge = createBridge({
   ...directiveBridge,
   ...terminalBridge,
   ...stateBridge,
+  ...editBridge,
   ...turnsBridge,
   ...runsBridge,
 });

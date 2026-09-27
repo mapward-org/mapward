@@ -1,3 +1,5 @@
+import type { ObjectsMap } from "./objects-map.ts";
+
 /**
  * Формы данных дисплеев — решения 0004 и 0010.
  *
@@ -82,7 +84,8 @@ export type TreeNode = StatusMark &
     children?: TreeNode[];
   };
 
-export type MapRelation = { label?: string; link?: string; from?: string; to?: string };
+/** Карта — вьюха `objects-map` (решение 0044): узлы, стрелки, фигуры, палитра. */
+export type { ObjectsMap as MapShape } from "./objects-map.ts";
 
 /** Что дисплей получает после трансформов; `unknown` — это уже ответ клиента, не форма данных. */
 export type DisplayShape =
@@ -96,7 +99,7 @@ export type DisplayShape =
   | { kind: "status"; ok: boolean; summary?: string }
   | { kind: "list"; items: LinkNode[] }
   | { kind: "tree"; children: TreeNode[] }
-  | { kind: "map"; nodes: LinkNode[]; relations: MapRelation[] }
+  | ({ kind: "map" } & ObjectsMap)
   /** Одиночный объект карточкой — ставится в клетку сетки по ключу, как любая метрика. */
   | { kind: "object"; item: ObjectRef }
   /**
@@ -119,7 +122,7 @@ export const SHAPES: Record<string, string> = {
   status: '{ "ok": boolean, "summary"?: string }',
   list: `{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string, "action"?: { "run": string, "inputs"?: object }, ${OBJECT_FIELDS} }] }`,
   tree: `{ "children": [{ "label"?: string, "description"?: string, "link"?: string, "isDir"?: boolean, "status"?: "fail" | "success" | "pending" | "idle", "action"?: { "run": string, "inputs"?: object }, ${OBJECT_FIELDS}, "children"?: [...] }] }`,
-  map: `{ "nodes": [{ "label"?: string, "link"?: string, ${OBJECT_FIELDS} }], "relations": [{ "from"?: string, "to"?: string, "label"?: string, "link"?: string }] }`,
+  map: '{ "view": string, "nodes": [{ "id": "mapward://…", "kind": "object" | "ref", "label": string, "link": string, "object": string, "parent"?: string, "shape": "rect" | "round" | "ellipse" | "diamond" | "note", "color"?: string, "view": "simple" | "preview", "expandable": boolean, "expanded": boolean, "position"?: { "x": number, "y": number } }], "relations": [{ "id": string, "from": string, "to": string, "label"?: string, "link"?: string, "count": number, "relations": [{ "label": string, "link": string }] }], "shapes": [...], "palette": { "objects": [...], "relations": [...] }, "canPlaceObjects": boolean, "canPlaceRelations": boolean } — собирает коллектор objects-map, руками не пишется',
   object:
     '{ "object": "mapward://…", "group"?: string, "width"?: string | number, "maxHeight"?: string | number }',
 };

@@ -87,6 +87,14 @@ export class MapModel {
     };
   }
 
+  /**
+   * Перечитать пути, которые сервер тронул мимо `writer`, — перенос и удаление папок правкой
+   * карты (решение 0044). Папка перечитывается вместе со всем, что под ней читается.
+   */
+  async refresh(paths: string[]): Promise<void> {
+    await Promise.all(paths.map((path) => this.touched(path)));
+  }
+
   private async touched(path: string): Promise<void> {
     const hits = [...this.disks.values()].filter((disk) => disk.holds(path));
     await Promise.all(hits.map((disk) => disk.touch([path])));

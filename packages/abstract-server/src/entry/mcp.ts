@@ -1,5 +1,6 @@
-import { findActionOwner, findMetric, findObject, groupMetrics, trail } from "@mapward/core";
-import type { MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
+import { Check } from "typebox/value";
+import { findActionOwner, findMetric, findObject, groupMetrics, MapOp, trail } from "@mapward/core";
+import type { EditResult, MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
@@ -518,6 +519,49 @@ const TOOLS = [
     },
   },
   {
+    name: "edit_map",
+    description:
+      "Править карту теми же операциями, что человек на холсте (решение 0044): создать объект, провести связь, перенести объект в группу, " +
+      "переименовать, удалить, добавить и убрать ссылку во вьюхе, сдвинуть узлы, свернуть группу, поставить фигуру. " +
+      "Операции применяются по очереди одной пачкой, каждая — по модели, где уже есть сделанное предыдущими; отказ любой откатывает всю пачку. " +
+      "Перенос сам переписывает адреса в связях, прототипах, конфигах и состоянии вьюх — руками их не правь. " +
+      "Вьюха — адрес метрики с коллектором objects-map, как в read_object. В ответе id пачки — по нему undo_edit; стек отмены держи сам.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ops: { type: "array", items: MapOp, description: "операции пачки, по порядку" },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["ops"],
+    },
+  },
+  {
+    name: "undo_edit",
+    description:
+      "Отменить пачку edit_map по её id. Файлы, которые с тех пор поменяли мимо неё, не затираются: отказ с их перечнем. " +
+      "Пачки живут в памяти сервера — после перезапуска откатывают git.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "id пачки из ответа edit_map" },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "redo_edit",
+    description: "Повторить пачку, отменённую undo_edit, — с той же проверкой файлов.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "id пачки" },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "read_run",
     description:
       "Прогон экшона по номеру из run_action: статус, шаги, их логи и вывод. Идущий прогон отдаётся как есть, не дожидаясь конца.",
@@ -861,6 +905,30 @@ export function serveMcp(
       const id = String(started.id);
       if (args.wait === false) return text({ id, status: "running" });
       return text(await server.waitRun({ mapPath: ref.mapPath, id }));
+    }
+
+    if (name === "edit_map" || name === "undo_edit" || name === "redo_edit") {
+      const done = (result: EditResult) => {
+        if (!result.ok) throw new Error(result.error);
+        return text(result);
+      };
+      if (name === "edit_map") {
+        const ops = Array.isArray(args.ops) ? args.ops : [];
+        const wrong = ops.findIndex((op) => !Check(MapOp, op));
+        if (wrong !== -1) {
+          throw new Error(
+            `Операция ${wrong + 1} не того вида: ${JSON.stringify(ops[wrong])}. Виды — в схеме ops.`,
+          );
+        }
+        if (ops.length === 0) throw new Error("Пустая пачка: ops не назвал ни одной операции");
+        return done(await server.editMap({ ...ref, ops: ops as MapOp[] }));
+      }
+      const id = String(args.id ?? "");
+      return done(
+        name === "undo_edit"
+          ? await server.undoEdit({ ...ref, id })
+          : await server.redoEdit({ ...ref, id }),
+      );
     }
 
     if (name === "read_run") {

@@ -3,8 +3,15 @@
   "refresh": "on-display",
   "collectors": [
     {
-      "kind": "object-children-map",
-      "exclude": ["prototypes/*", "shared-metrics/*"]
+      "kind": "objects-map",
+      "show": ["apps/*", "packages/*"],
+      "palette": {
+        "objects": ["mapward://prototypes/package", "mapward://prototypes/system"],
+        "relations": []
+      },
+      "placeObjects": "mapward://packages",
+      "placeRelations": "mapward://relations",
+      "style": { "all": { "view": "preview" } }
     }
   ],
   "display": { "kind": "map" }

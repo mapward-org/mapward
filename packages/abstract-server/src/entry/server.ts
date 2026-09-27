@@ -1,8 +1,9 @@
 import type { Observable } from "rxjs";
-import type { MapMetric, MapObject, RunSource } from "@mapward/core";
+import type { MapMetric, MapObject, MapOp, RunSource } from "@mapward/core";
 import type { ServerPorts } from "../ports/index.ts";
 import type { MapRef } from "../kernel/map-ref.ts";
-import { MapModel, ReadMapState, WriteMapState } from "../features/map/index.ts";
+import { MapModel } from "../features/map/index.ts";
+import { ApplySteps, EditHistory, EditMap, ToggleEdit } from "../features/objects-map/index.ts";
 import { Executor } from "../features/execution/index.ts";
 import { BuildDisplay, DisplayBuilds, DisplaySchema } from "../features/displays/index.ts";
 import {
@@ -109,8 +110,18 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     state,
     turns,
   );
-  const readMapState = new ReadMapState(files);
-  const writeMapState = new WriteMapState(writer);
+  // Правка карты с холста и агентом — решение 0044. Пишет мимо `writer`: перенос папок он не
+  // умеет, поэтому тронутое перечитывается разом, когда шаги сделаны.
+  const history = new EditHistory();
+  const applySteps = new ApplySteps(
+    files,
+    files,
+    files.move ? { move: files.move.bind(files) } : undefined,
+    map,
+  );
+  const editMap = new EditMap(map, files, applySteps, history);
+  const undoEdit = new ToggleEdit(applySteps, history, "done");
+  const redoEdit = new ToggleEdit(applySteps, history, "undone");
 
   return {
     capabilities: () => ports.capabilities,
@@ -239,7 +250,16 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
       turns.taken(params);
     },
 
-    getMapState: (params: { mapPath: string }) => readMapState.run(params),
-    setMapState: (params: { mapPath: string; value: unknown }) => writeMapState.run(params),
+    /**
+     * Правка карты пачкой операций — решение 0044: холст по мосту, агент через MCP, одни и те же
+     * операции. Номер пачки из ответа — то, по чему её отменяют.
+     */
+    editMap: (params: MapRef & { ops: MapOp[] }) => editMap.run(params, params.ops),
+
+    /** Отмена пачки: файлы, поменянные мимо неё, не затираются — отказ с их перечнем. */
+    undoEdit: (params: MapRef & { id: string }) => undoEdit.run(params, params.id),
+
+    /** Повтор отменённой пачки, с той же проверкой. */
+    redoEdit: (params: MapRef & { id: string }) => redoEdit.run(params, params.id),
   };
 }

@@ -601,7 +601,13 @@ export class MetricStore {
 
       for (;;) {
         if (collect) {
-          const plan = { ...(only ? { only } : {}), step, problems, output };
+          const plan = {
+            ...(only ? { only } : {}),
+            step,
+            problems,
+            output,
+            root: () => this.map.current(ref),
+          };
           // oxlint-disable-next-line no-await-in-loop
           const collected = await this.limited(() => {
             live.stage = "collect";

@@ -3,7 +3,6 @@ import { LiveFiles } from "@mapward/core";
 import { useBridgeClient } from "../ports/bridge.tsx";
 import { useHost } from "../services/host/ports.tsx";
 import { bridgeFiles, MapView, reloadMap } from "../services/map/index.ts";
-import { MapState } from "../services/state/index.ts";
 import { useLocalStore } from "../lib/mobx/use-local-store.ts";
 import {
   CardTerminalMenu,
@@ -37,7 +36,7 @@ import {
 } from "../features/directives/index.ts";
 import { ObjectCard, ProvideObjectCard } from "../features/object-card/index.ts";
 import { MetaScreen, ProvideMeta } from "../features/meta/index.ts";
-import { ChildrenMapView, ProvideChildrenMap } from "../features/children-map/index.ts";
+import { ObjectsMapView, ProvideObjectsMap } from "../features/objects-map/index.ts";
 import { ScreenFocus, type FocusTarget } from "../features/focus/index.ts";
 
 type Ref = { mapPath: string; basePath: string; name: string };
@@ -55,9 +54,9 @@ const Slots: ScreenSlots = {
 
 /**
  * Вид объекта — сборка фич экрана (решение 0042). Здесь заводятся сторы, которые живут столько
- * же, сколько вид: живая карта, экран с историей, прогоны открытого объекта, экшоны, терминалы,
- * положение узлов, — и каждой фиче подкладывается её порт. Фичи друг друга не знают: что
- * метрикам нужно от экшонов и прогонов, стыкуется здесь.
+ * же, сколько вид: живая карта, экран с историей, прогоны открытого объекта, экшоны, терминалы, —
+ * и каждой фиче подкладывается её порт. Фичи друг друга не знают: что метрикам нужно от экшонов
+ * и прогонов, а вьюхе карты — от моста правки, стыкуется здесь.
  */
 export const ObjectView = observer(function ObjectView(props: {
   mapConfig: Ref;
@@ -106,7 +105,6 @@ export const ObjectView = observer(function ObjectView(props: {
     () => new ScreenFocus(props.focus, props.mapConfig.mapPath, map, screen),
     [props.focus, screen],
   );
-  const places = useLocalStore(() => new MapState(bridge, props.mapConfig.mapPath), [map]);
 
   return (
     <ProvideRuns runs={runs}>
@@ -130,7 +128,7 @@ export const ObjectView = observer(function ObjectView(props: {
               Row: RowActionButtonFor,
               Button: KitActionButton,
             },
-            ChildrenMap: ChildrenMapView,
+            ObjectsMap: ObjectsMapView,
             Card: ObjectCard,
           }}
         >
@@ -155,9 +153,12 @@ export const ObjectView = observer(function ObjectView(props: {
                 Directives: DirectiveArchive,
               }}
             >
-              <ProvideChildrenMap
+              <ProvideObjectsMap
                 port={{
-                  places,
+                  // Правка карты — у сервера (решение 0044): вьюха зовёт операции по мосту.
+                  edit: (ops) => bridge.editMap({ ...props.mapConfig, ops }),
+                  undo: (id) => bridge.undoEdit({ ...props.mapConfig, id }),
+                  redo: (id) => bridge.redoEdit({ ...props.mapConfig, id }),
                   open: (link) => screen.open(link),
                   ...(screen.tabs ? { openTab: (link: string) => screen.openObjectTab(link) } : {}),
                   Card: ObjectCard,
@@ -182,7 +183,7 @@ export const ObjectView = observer(function ObjectView(props: {
                     </ProvideScreenSlots>
                   </ProvideTerminals>
                 </ProvideObjectCard>
-              </ProvideChildrenMap>
+              </ProvideObjectsMap>
             </ProvideMeta>
           </ProvideDirectives>
         </ProvideMetrics>

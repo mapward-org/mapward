@@ -1,4 +1,4 @@
-import { childrenMap } from "@mapward/core";
+import { objectsMap, objectsMapConfig, parseViewState, VIEW_STATE } from "@mapward/core";
 import type { MapMetric, MapObject } from "@mapward/core";
 import type {
   Cancellation,
@@ -36,6 +36,11 @@ export type CollectPlan = {
   problems?: string[];
   /** Вывод скриптов и агентов по ходу — в лог идущего шага прогона. */
   output?: OutputListener;
+  /**
+   * Карта целиком: вьюха `objects-map` показывает объекты откуда угодно, а не детей своего
+   * объекта (решение 0044). Без неё — только поддерево объекта метрики.
+   */
+  root?: () => Promise<MapObject>;
 };
 
 /**
@@ -138,10 +143,6 @@ function keptParts(
   return kept;
 }
 
-/** Размер карточки — css-строка или число пикселей; остальное в конфиге не размер. */
-const size = (value: unknown): string | number | undefined =>
-  typeof value === "string" || typeof value === "number" ? value : undefined;
-
 const strings = (value: unknown): string[] | undefined =>
   Array.isArray(value) ? value.map(String) : undefined;
 
@@ -188,7 +189,7 @@ export class CollectMetric {
         specs.map((spec, index) => {
           if (kept.has(index)) return { value: kept.get(index), log: undefined };
           const attempt = (token?: Cancellation) =>
-            this.collector(spec, cwd, owner, hint, token, plan.output);
+            this.collector(spec, cwd, owner, hint, token, plan.output, metric, plan.root);
           return plan.step ? plan.step(index, attempt) : attempt(cancel);
         }),
       );
@@ -233,6 +234,8 @@ export class CollectMetric {
     hint: string,
     cancel?: Cancellation,
     output?: OutputListener,
+    metric?: MapMetric,
+    root?: () => Promise<MapObject>,
   ): Promise<{ value: unknown; log?: string }> {
     const env = () => objectEnv(owner, cwd, this.env.vars());
 
@@ -282,16 +285,15 @@ export class CollectMetric {
           },
         };
       }
-      case "object-children-map": {
-        const exclude = strings(spec.exclude) ?? [];
-        const include = strings(spec.include) ?? [];
-        // Вкладка и размер карточек — у всех узлов сразу: размер задаёт место показа.
-        const card = {
-          ...(typeof spec.group === "string" ? { group: spec.group } : {}),
-          ...(size(spec.width) === undefined ? {} : { width: size(spec.width) }),
-          ...(size(spec.maxHeight) === undefined ? {} : { maxHeight: size(spec.maxHeight) }),
-        };
-        return { value: childrenMap(owner, exclude, include, card) };
+      case "objects-map": {
+        // Вьюха — решение 0044: состав из конфига, картинка из `map-state.json` рядом с ним.
+        // Состояние лежит в папке объекта, а не прототипа: у наследника вьюха своя.
+        const map = root ? await root() : owner;
+        const address = metric?.address ?? owner.address;
+        const state = metric
+          ? parseViewState(await this.files.read(join(metric.cachePath, VIEW_STATE)))
+          : {};
+        return { value: objectsMap(map, address, objectsMapConfig(spec), state) };
       }
       default:
         throw new Error(`Коллектор ${String(spec.kind)} ещё не поддержан`);

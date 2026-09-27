@@ -72,8 +72,9 @@ export function serveBridge(
     stopRun: (params) => server.stopRun(params),
     watchRuns: (params) => server.watchRuns(params),
 
-    getMapState: (params) => server.getMapState(params),
-    setMapState: (params) => server.setMapState(params),
+    editMap: (params) => server.editMap(params),
+    undoEdit: (params) => server.undoEdit(params),
+    redoEdit: (params) => server.redoEdit(params),
 
     // Хранилище редактора: у каждого человека своё, в репозиторий не попадает.
     getViewState: (params) => memento.get(params.key),

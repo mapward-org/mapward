@@ -52,8 +52,15 @@ export type FileWatcher = {
   ): () => void;
 };
 
-/** Все три разом — так файлы отдаёт приложение; классам сборка раздаёт их по отдельности. */
-export type FilesPort = FileReader & FileWriter & FileWatcher;
+/**
+ * Перенос файла или папки целиком — правке карты (решение 0044): объект переезжает со всем, чего
+ * модель не знает, — доками, кэшами, директивами. Родительская папка цели создаётся, цель
+ * занята — ошибка. Хост, который переносить не умеет, правку с переносом не примет.
+ */
+export type FileMover = { move(from: string, to: string): Promise<void> };
+
+/** Все разом — так файлы отдаёт приложение; классам сборка раздаёт их по отдельности. */
+export type FilesPort = FileReader & FileWriter & FileWatcher & Partial<FileMover>;
 
 export type ProcessResult = { stdout: string; stderr: string };
 

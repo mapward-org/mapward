@@ -27,9 +27,9 @@ const ROOT = "packages/abstract-react-client/src";
 
 /**
  * Где хукам React место. Хук локального стора сам держит стор в React — иначе его негде держать,
- * а граф карты детей живёт в `@xyflow/react`, у которого своё состояние в React.
+ * а холст вьюхи карты живёт в `@xyflow/react`, у которого своё состояние в React.
  */
-const EXEMPT = new Set(["lib/mobx/use-local-store.ts", "features/children-map/ui/flow.tsx"]);
+const EXEMPT = new Set(["lib/mobx/use-local-store.ts", "features/objects-map/ui/flow.tsx"]);
 
 const REACT_STATE = new Set([
   "useState",

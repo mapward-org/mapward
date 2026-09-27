@@ -1,10 +1,10 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 import type {
   ActionRef,
-  ChildrenMap,
   MapAction,
   MapMetric,
   MapObject,
+  ObjectsMap,
   ObjectRef,
 } from "@mapward/core";
 import type { DisplayAction } from "@mapward/display";
@@ -43,8 +43,8 @@ export type MetricsPort = {
   /** Красная точка метрики ведёт на её последний прогон (решение 0038). */
   openRuns(metric: MapMetric): void;
   actions: MetricsActions;
-  /** Карту детей рисует её фича. */
-  ChildrenMap: ComponentType<{ map: ChildrenMap; address: string }>;
+  /** Вьюху карты (`objects-map`) рисует её фича — решение 0044. */
+  ObjectsMap: ComponentType<{ map: ObjectsMap; address: string }>;
   /**
    * Карточку объекта — пункт с `object` и дисплей `object` — рисует её фича. Внутри карточки
    * снова сетка метрик: круг замыкается в точке входа, а не здесь.

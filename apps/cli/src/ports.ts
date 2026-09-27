@@ -1,5 +1,5 @@
 import { exec, spawn, type ChildProcess } from "node:child_process";
-import { readdir, readFile, mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, mkdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { watch } from "node:fs";
 import { dirname, join } from "node:path";
@@ -69,6 +69,17 @@ const files = {
 
   async remove(path: string): Promise<void> {
     await rm(path, { force: true });
+  },
+
+  /** Перенос папки объекта — правка карты (решение 0044). Занятую цель не затирает. */
+  async move(from: string, to: string): Promise<void> {
+    const taken = await stat(to).then(
+      () => true,
+      () => false,
+    );
+    if (taken) throw new Error(`${to} уже есть`);
+    await mkdir(dirname(to), { recursive: true });
+    await rename(from, to);
   },
 
   /**
