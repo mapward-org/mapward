@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { MapFile } from "@mapward/core";
 import {
   activeDirectives,
+  directiveHint,
   directiveHintClass,
   directiveLabel,
+  isRunning,
   matchDirectives,
   newestFirst,
   statusColor,
+  statusHint,
 } from "./directives.ts";
 
 const file = (name: string, status?: MapFile["status"]): MapFile =>
@@ -50,6 +53,41 @@ describe("directiveHintClass", () => {
 
   it("без прогона цвет берётся по статусу", () => {
     expect(directiveHintClass(file("2026-09-21-0031-выполнена.md", "done"))).toBe(statusColor.done);
+  });
+
+  it("закрытая с прогоном — зелёная", () => {
+    const one = run(file("2026-09-21-0031-выполнена.md", "done"), "Тестирование", true);
+    expect(directiveHintClass(one)).toBe(statusColor.done);
+  });
+
+  it("изменившаяся после закрытия — жёлтая, даже на идущем этапе", () => {
+    const one = run(file("2026-09-21-0031-поправили.md", "changed"), "Брейншторм");
+    expect(directiveHintClass(one)).toBe(statusColor.changed);
+  });
+});
+
+describe("directiveHint", () => {
+  it("закрытая — «выполнена», а не последний этап", () => {
+    const one = run(file("2026-09-21-0031-выполнена.md", "done"), "Тестирование", true);
+    expect(directiveHint(one)).toBe(statusHint.done);
+  });
+
+  it("идущий этап — именем, без многоточия", () => {
+    const one = run(file("2026-09-21-0031-идёт.md", "new"), "Реализация");
+    expect(directiveHint(one)).toBe("реализация");
+  });
+
+  it("без прогона — статус", () => {
+    expect(directiveHint(file("2026-09-21-0031-новая.md"))).toBe(statusHint.new);
+  });
+});
+
+describe("isRunning", () => {
+  it("незакрытый прогон идёт, закрытый — нет", () => {
+    const one = file("2026-09-21-0031-идёт.md", "new");
+    expect(isRunning(run(one, "План"))).toBe(true);
+    expect(isRunning(run(one, "План", true))).toBe(false);
+    expect(isRunning(one)).toBe(false);
   });
 });
 

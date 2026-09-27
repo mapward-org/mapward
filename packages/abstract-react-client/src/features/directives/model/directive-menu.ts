@@ -5,6 +5,7 @@ import {
   directiveHint,
   directiveHintClass,
   directiveLabel,
+  isRunning,
 } from "../../../kernel/directives.ts";
 import { matches } from "../../../kernel/search.ts";
 import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
@@ -13,7 +14,13 @@ import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
  * Пункт меню — одна незакрытая директива. Этапов в меню нет: их запускают из файла директивы,
  * за ним в меню и идут (решение 0045).
  */
-export type DirectiveItem = { file: MapFile; label: string; hint: string; hintClass: string };
+export type DirectiveItem = {
+  file: MapFile;
+  label: string;
+  hint: string;
+  hintClass: string;
+  busy: boolean;
+};
 
 /**
  * Что меню умеет, решает хост: нет действия — нет и его кнопки (решение 0014). Форма — порта
@@ -63,6 +70,7 @@ export class DirectiveMenuStore {
       label: directiveLabel(file),
       hint: directiveHint(file),
       hintClass: directiveHintClass(file),
+      busy: isRunning(file),
     }));
   }
 

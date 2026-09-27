@@ -1,7 +1,12 @@
 import type { MapFile, MapStage } from "@mapward/core";
 import { ListRow } from "../../../lib/ui/list-row.tsx";
 import { RunIcon } from "../../../lib/ui/icons.tsx";
-import { directiveHint, directiveHintClass, directiveLabel } from "../../../kernel/directives.ts";
+import {
+  directiveHint,
+  directiveHintClass,
+  directiveLabel,
+  isRunning,
+} from "../../../kernel/directives.ts";
 
 /**
  * Директива строкой: имя без шума, где она сейчас, этапы в меню на кнопке с плеем.
@@ -29,6 +34,7 @@ export function DirectiveRow(props: {
       title={file.name}
       hint={directiveHint(file)}
       hintClass={directiveHintClass(file)}
+      busy={isRunning(file)}
       {...(onOpen === undefined ? {} : { onSelect: () => onOpen(file) })}
       // Крестик — только у своей директивы: унаследованная лежит в папке прототипа,
       // и убирают её там.
@@ -42,12 +48,10 @@ export function DirectiveRow(props: {
               label: RunIcon,
               title: "Запустить этап",
               actions: props.stages.map((stage) => ({
-                // Многоточие значит «идёт сейчас», поэтому смотрим не на последний прогон,
+                // Лоадер значит «идёт сейчас», поэтому смотрим не на последний прогон,
                 // а на незакрытый: закончившийся этап помечать нечем.
-                label:
-                  file.run?.stage === stage.name && file.run.finishedAt === undefined
-                    ? `${stage.name}…`
-                    : stage.name,
+                label: stage.name,
+                busy: isRunning(file) && file.run?.stage === stage.name,
                 onSelect: () => runStage(file, stage.name),
               })),
             },

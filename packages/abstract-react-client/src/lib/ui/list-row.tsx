@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Popup } from "../mobx/popup.ts";
 import { useLocalStore } from "../mobx/use-local-store.ts";
 import { RowMenu, type MenuAction } from "./row-menu.tsx";
+import { Spinner } from "./spinner.tsx";
 
 const RemoveIcon = (
   <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -27,6 +28,8 @@ export const ListRow = observer(function ListRow(props: {
   title?: string;
   hint?: string;
   hintClass?: string;
+  /** Идёт сейчас: лоадер перед подсказкой. */
+  busy?: boolean;
   onSelect?: () => void;
   /** Подпись кнопки одна на весь список: глаз читает её один раз, а не в каждой строке. */
   menu?: { label: ReactNode; title?: string; actions: MenuAction[] };
@@ -55,7 +58,10 @@ export const ListRow = observer(function ListRow(props: {
       >
         <span className="truncate">{props.label}</span>
         {props.hint && (
-          <span className={`ml-auto shrink-0 text-[11px] ${props.hintClass ?? "opacity-60"}`}>
+          <span
+            className={`ml-auto flex shrink-0 items-center gap-1 text-[11px] ${props.hintClass ?? "opacity-60"}`}
+          >
+            {props.busy && <Spinner />}
             {props.hint}
           </span>
         )}

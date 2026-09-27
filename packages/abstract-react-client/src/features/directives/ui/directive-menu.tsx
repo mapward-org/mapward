@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { DirectivesIcon, NewDirectiveIcon } from "../../../lib/ui/icons.tsx";
+import { Spinner } from "../../../lib/ui/spinner.tsx";
 
 /**
  * Директивы объекта кнопкой с поиском — в шапке экрана и карточки. Выглядит как меню экшонов
@@ -100,6 +101,8 @@ export function DirectiveItem(props: {
   title: string;
   hint: string;
   hintClass: string;
+  /** Этап идёт сейчас: лоадер перед подсказкой. */
+  busy: boolean;
   onOpen?: (() => void) | undefined;
 }) {
   return (
@@ -119,7 +122,12 @@ export function DirectiveItem(props: {
             {props.label}
           </span>
         )}
-        <span className={`ml-auto shrink-0 text-[10px] ${props.hintClass}`}>{props.hint}</span>
+        <span
+          className={`ml-auto flex shrink-0 items-center gap-1 self-center text-[10px] ${props.hintClass}`}
+        >
+          {props.busy && <Spinner />}
+          {props.hint}
+        </span>
       </div>
     </li>
   );

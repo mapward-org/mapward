@@ -102,6 +102,7 @@ export const DirectiveMenu = observer(function DirectiveMenu(props: { object: Ma
                   title={item.file.name}
                   hint={item.hint}
                   hintClass={item.hintClass}
+                  busy={item.busy}
                   onOpen={menu.canOpen ? () => menu.open(item) : undefined}
                 />
               ))}

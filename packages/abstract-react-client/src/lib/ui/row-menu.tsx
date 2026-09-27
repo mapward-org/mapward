@@ -2,8 +2,10 @@ import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
 import { Anchor } from "../mobx/popup.ts";
 import { useLocalStore } from "../mobx/use-local-store.ts";
+import { Spinner } from "./spinner.tsx";
 
-export type MenuAction = { key?: string; label: string; onSelect: () => void };
+/** `busy` — пункт идёт сейчас: лоадер рядом с подписью. */
+export type MenuAction = { key?: string; label: string; busy?: boolean; onSelect: () => void };
 
 /**
  * Меню строки: кнопка с подписью и пункты под ней, вертикальным списком — решение 0028.
@@ -53,9 +55,10 @@ export const RowMenu = observer(function RowMenu(props: {
                 props.onOpen(false);
                 action.onSelect();
               }}
-              className="w-full truncate px-3 py-0.5 text-left text-[11px] opacity-80 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
+              className="flex w-full items-center gap-1.5 px-3 py-0.5 text-left text-[11px] opacity-80 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
             >
-              {action.label}
+              <span className="truncate">{action.label}</span>
+              {action.busy && <Spinner />}
             </button>
           ))}
         </span>

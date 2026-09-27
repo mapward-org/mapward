@@ -16,28 +16,32 @@ export const statusColor = {
 
 export const fileStatus = (file: MapFile) => file.status ?? "new";
 
+/** Синий — первый круг работы: прогон был, а закрыта директива ещё не была. */
+const workColor = "text-[var(--mw-charts-blue,#4a9)]";
+
 /**
- * Какой этап на директиве шёл последним: отметку ставит сам прогон, а не интерфейс
- * (решение 0017).
+ * Идёт ли на директиве этап сейчас: отметку ставит сам прогон, а не интерфейс (решение 0017).
+ * Идущий этап рисуется лоадером рядом с подписью (решение 0047).
  */
-export const runHint = (file: MapFile): string | undefined =>
-  file.run === undefined
-    ? undefined
-    : file.run.finishedAt === undefined
-      ? `${file.run.stage}…`
-      : file.run.stage.toLowerCase();
-
-/** Подсказка строки: где директива сейчас, а если нигде — какая она. */
-export const directiveHint = (file: MapFile): string =>
-  runHint(file) ?? statusHint[fileStatus(file)];
+export const isRunning = (file: MapFile): boolean =>
+  file.run !== undefined && file.run.finishedAt === undefined;
 
 /**
- * Цвет подсказки: серое — только «новая», то есть директива, которую ещё не запускали.
- * Как только у неё появился прогон, в строке стоит этап, и он синий — это уже работа,
- * а не пустое место (решение 0028).
+ * Подсказка строки (решение 0047): закрытая — «выполнена», имя последнего этапа после
+ * закрытия ничего не говорит; иначе этап, на котором директива сейчас, а без прогонов —
+ * какая она.
+ */
+export const directiveHint = (file: MapFile): string =>
+  fileStatus(file) === "done" || file.run === undefined
+    ? statusHint[fileStatus(file)]
+    : file.run.stage.toLowerCase();
+
+/**
+ * Цвет подсказки (решение 0047): статус держит свой цвет и с прогоном — закрытая зелёная,
+ * изменившаяся после закрытия жёлтая. Серое — только не запускавшаяся, синее — первый круг.
  */
 export const directiveHintClass = (file: MapFile): string =>
-  runHint(file) === undefined ? statusColor[fileStatus(file)] : "text-[var(--mw-charts-blue,#4a9)]";
+  fileStatus(file) === "new" && file.run !== undefined ? workColor : statusColor[fileStatus(file)];
 
 /** От новых к старым: имя начинается с даты, поэтому порядок с диска достаточно перевернуть. */
 export const newestFirst = (files: MapFile[]): MapFile[] => files.toReversed();
