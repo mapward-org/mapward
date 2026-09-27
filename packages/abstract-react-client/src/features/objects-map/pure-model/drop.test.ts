@@ -5,22 +5,20 @@ const shop: Rect = { id: "mapward://systems/shop", x: 0, y: 0, width: 400, heigh
 const bank: Rect = { id: "mapward://systems/bank", x: 380, y: 0, width: 300, height: 300 };
 const cart: Rect = { id: "mapward://systems/shop/cart", x: 20, y: 40, width: 150, height: 100 };
 
-test("the own border is sticky: a neighbour's edge over it does not steal the node", () => {
-  // Центр в полосе, где рамки Магазина и Банка перекрываются.
+test("no sticky border: where frames overlap, the smaller one under the centre takes the node", () => {
+  // Центр в полосе, где рамки Магазина и Банка перекрываются; Банк меньше.
   const target = dropTarget({
     node: "mapward://systems/shop/orders",
     center: { x: 390, y: 150 },
-    parent: shop.id,
     groups: [shop, bank],
   });
-  expect(target).toBe(shop.id);
+  expect(target).toBe(bank.id);
 });
 
 test("once the centre leaves the own group, the node falls into the group under it", () => {
   const target = dropTarget({
     node: "mapward://systems/shop/orders",
     center: { x: 500, y: 150 },
-    parent: shop.id,
     groups: [shop, bank],
   });
   expect(target).toBe(bank.id);
@@ -30,7 +28,6 @@ test("inside the own group a deeper group takes the node", () => {
   const target = dropTarget({
     node: "mapward://systems/shop/orders",
     center: { x: 60, y: 80 },
-    parent: shop.id,
     groups: [shop, bank, cart],
   });
   expect(target).toBe(cart.id);
@@ -40,7 +37,6 @@ test("a node never falls into itself or its residents", () => {
   const target = dropTarget({
     node: "mapward://systems/shop",
     center: { x: 60, y: 80 },
-    parent: undefined,
     groups: [shop, cart],
   });
   expect(target).toBeUndefined();
@@ -51,7 +47,6 @@ test("outside every group the node lands on the canvas", () => {
     dropTarget({
       node: "mapward://x",
       center: { x: 900, y: 900 },
-      parent: shop.id,
       groups: [shop],
     }),
   ).toBeUndefined();

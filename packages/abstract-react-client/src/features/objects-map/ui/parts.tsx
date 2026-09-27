@@ -17,18 +17,32 @@ const hover = "hover:bg-[var(--mw-list-hover-background,#8882)]";
 const active = "bg-[var(--mw-list-active-background,#3794ff44)]";
 const ring = "outline outline-2 outline-offset-1 outline-[var(--mw-focus-border,#3794ff)]";
 
-/** Рамка вьюхи: холст и всё, что лежит поверх него. */
+/**
+ * Рамка вьюхи: холст и всё, что лежит поверх него. Она же контейнер по размеру: рейка сжимается,
+ * когда холст маленький, по его высоте, а не по окну.
+ */
 export function MapFrame(props: { children: ReactNode }) {
-  return <div className="relative h-full min-h-40 w-full">{props.children}</div>;
+  return (
+    <div className="relative h-full min-h-40 w-full" style={{ containerType: "size" }}>
+      {props.children}
+    </div>
+  );
 }
 
 // ── Рейка инструментов ────────────────────────────────────────────────────────────────────
 
-/** Вертикальная рейка слева, 44px: инструменты, прототипы, связи, отмена внизу. */
+/** Холст низкий или узкий — кнопки рейки мельче: 24px вместо 28. */
+const small =
+  "[@container(max-height:420px)]:h-6 [@container(max-height:420px)]:w-6 [@container(max-width:480px)]:h-6 [@container(max-width:480px)]:w-6";
+
+/**
+ * Вертикальная рейка у левого края, по высоте содержимого и посередине холста, как в Miro:
+ * инструменты, прототипы, связи, отмена. Без прокрутки: она обрезала бы список «+» сбоку.
+ */
 export function RailFrame(props: { children: ReactNode }) {
   return (
     <div
-      className="absolute top-2 bottom-2 left-2 z-10 flex w-11 flex-col items-center gap-1 rounded-lg border py-1"
+      className="absolute top-1/2 left-1 z-10 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-lg border p-0.5"
       style={surface}
     >
       {props.children}
@@ -36,15 +50,26 @@ export function RailFrame(props: { children: ReactNode }) {
   );
 }
 
+/** Свёрнутая рейка — одна кнопка у левого края: карту смотрят, а не правят. */
+export function RailFolded(props: { onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      title="Показать инструменты"
+      onClick={props.onOpen}
+      className={`absolute top-1/2 left-1 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg border text-[13px] ${hover} ${small}`}
+      style={surface}
+    >
+      ›
+    </button>
+  );
+}
+
 export function RailSep() {
-  return <div className="my-0.5 h-px w-7 bg-[var(--mw-panel-border,#8884)]" />;
+  return <div className="my-0.5 h-px w-5 shrink-0 bg-[var(--mw-panel-border,#8884)]" />;
 }
 
-export function RailSpacer() {
-  return <div className="flex-1" />;
-}
-
-/** Кнопка рейки 32×32: иконка, подсказка, подсветка выбранного. */
+/** Кнопка рейки 28×28 (24 на маленьком холсте): иконка, подсказка, подсветка выбранного. */
 export function RailButton(props: {
   icon: string;
   title: string;
@@ -58,36 +83,51 @@ export function RailButton(props: {
       title={props.title}
       disabled={props.disabled}
       onClick={props.onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-md text-[14px] disabled:opacity-30 ${props.on ? active : hover}`}
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[13px] disabled:opacity-30 ${props.on ? active : hover} ${small}`}
     >
       {props.icon}
     </button>
   );
 }
 
-/** Чип прототипа: кружок его цвета, у связи — стрелка его цвета; имя — в подсказке. */
+/** Узор линии в образце стрелки на рейке — тот же, что у стрелки на холсте. */
+const DASHES = { solid: undefined, dashed: "4 2.5", dotted: "1 2.5" } as const;
+
+/**
+ * Чип прототипа: кружок его цвета; у связи — образец её стрелки, цветом и узором линии, чтобы
+ * «вызывает» и «порождает» различались на рейке так же, как на холсте. Имя — в подсказке.
+ */
 export function RailChip(props: {
   color?: string | undefined;
   label: string;
   title: string;
   arrow?: boolean;
+  line?: "solid" | "dashed" | "dotted" | undefined;
   on: boolean;
   onClick: () => void;
 }) {
+  const stroke = props.color ?? "var(--mw-foreground)";
   return (
     <button
       type="button"
       title={props.title}
       onClick={props.onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-md ${props.on ? active : hover}`}
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${props.on ? active : hover} ${small}`}
     >
       {props.arrow ? (
-        <span
-          className="text-[15px] font-bold"
-          style={{ color: props.color ?? "var(--mw-foreground)" }}
-        >
-          →
-        </span>
+        <svg width="18" height="10" viewBox="0 0 18 10" aria-hidden="true">
+          <line
+            x1="1"
+            y1="5"
+            x2="12"
+            y2="5"
+            stroke={stroke}
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeDasharray={DASHES[props.line ?? "solid"]}
+          />
+          <path d="M11 1.5 L17 5 L11 8.5 Z" fill={stroke} />
+        </svg>
       ) : (
         <span
           className="h-3.5 w-3.5 rounded-full border border-[var(--mw-panel-border,#8884)]"
@@ -102,7 +142,7 @@ export function RailChip(props: {
 export function RailMoreList(props: { children: ReactNode }) {
   return (
     <div
-      className="absolute left-12 z-20 flex max-h-72 w-48 flex-col overflow-auto rounded-lg border p-1 text-[12px]"
+      className="absolute left-10 z-20 flex max-h-72 w-48 flex-col overflow-auto rounded-lg border p-1 text-[12px]"
       style={surface}
     >
       {props.children}
@@ -225,11 +265,14 @@ export function TextMark(props: { color?: string | undefined; size?: number | un
 
 // ── Выпадашки ─────────────────────────────────────────────────────────────────────────────
 
-/** Выпадашка под кнопкой панели. Клики внутри не доходят до холста. */
-export function MenuFrame(props: { children: ReactNode; wide?: boolean }) {
+/**
+ * Выпадашка под кнопкой панели — всегда одной ширины, 208px, что бы в ней ни лежало: цвет,
+ * размер или путь. Клики внутри не доходят до холста.
+ */
+export function MenuFrame(props: { children: ReactNode }) {
   return (
     <div
-      className={`nodrag nopan absolute top-9 left-0 z-30 flex flex-col gap-1.5 rounded-lg border p-2 text-[11px] ${props.wide ? "w-56" : "w-auto"}`}
+      className="nodrag nopan absolute top-9 left-0 z-30 flex w-52 flex-col gap-2 rounded-lg border p-2 text-[11px]"
       style={surface}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -257,9 +300,15 @@ const SWATCHES = [
   "#333333",
 ];
 
-/** Образец 20px; выбранный — в кольце фокуса. */
+/**
+ * Ряд образцов — шесть колонок по 24px, разнесённых по ширине выпадашки: сетка, недавние и
+ * «без цвета / свой» стоят друг под другом ровно.
+ */
+const row = "grid grid-cols-[repeat(6,24px)] justify-between gap-y-1.5";
+
+/** Образец 24px; выбранный — в кольце фокуса, размер от этого не меняется. */
 function swatch(color: string | undefined, value: string | undefined) {
-  return `h-5 w-5 rounded-md border border-[var(--mw-panel-border,#8884)] ${
+  return `box-border h-6 w-6 rounded-md border border-[var(--mw-panel-border,#8884)] ${
     (value ?? "") === (color ?? "") ? ring : ""
   }`;
 }
@@ -270,7 +319,7 @@ export function ColorGrid(props: {
   onPick: (color: string | undefined) => void;
 }) {
   return (
-    <div className="grid grid-cols-6 gap-1">
+    <div className={row}>
       {SWATCHES.map((color) => (
         <button
           type="button"
@@ -285,7 +334,7 @@ export function ColorGrid(props: {
   );
 }
 
-/** Недавние цвета — отдельным рядом; пусто — ряда нет. */
+/** Недавние цвета — отдельным рядом той же сетки; пусто — ряда нет. */
 export function RecentColors(props: {
   value?: string | undefined;
   recent: string[];
@@ -293,8 +342,8 @@ export function RecentColors(props: {
 }) {
   if (props.recent.length === 0) return null;
   return (
-    <div className="flex gap-1" title="Недавние">
-      {props.recent.map((color) => (
+    <div className={row} title="Недавние">
+      {props.recent.slice(0, 6).map((color) => (
         <button
           type="button"
           key={color}
@@ -308,35 +357,45 @@ export function RecentColors(props: {
   );
 }
 
-/** «Без цвета» и «свой…» — палитрой редактора. */
+/** «Без цвета» и «свой» — образцами той же сетки; свой цвет выбирается палитрой редактора. */
 export function ColorExtras(props: {
   value?: string | undefined;
   onPick: (color: string | undefined) => void;
 }) {
+  const own = /^#[0-9a-f]{6}$/i.test(props.value ?? "") ? props.value : undefined;
+  const custom = own !== undefined && !SWATCHES.includes(own);
   return (
-    <div className="flex items-center gap-2">
+    <div className={row}>
       <button
         type="button"
         title="Без цвета"
-        className={`${swatch(undefined, props.value)} px-1`}
+        className={swatch(undefined, props.value)}
+        style={{
+          background: "linear-gradient(135deg, transparent 45%, #f14c4c 45% 55%, transparent 55%)",
+        }}
         onClick={() => props.onPick(undefined)}
+      />
+      <label
+        title="Свой цвет"
+        className={`relative box-border h-6 w-6 cursor-pointer rounded-md border border-[var(--mw-panel-border,#8884)] ${custom ? ring : ""}`}
+        style={{
+          background: custom
+            ? own
+            : "conic-gradient(#ef476f, #ffd166, #06d6a0, #219ebc, #cdb4db, #ef476f)",
+        }}
       >
-        ⌀
-      </button>
-      <label className="flex cursor-pointer items-center gap-1" title="Свой цвет">
         <input
           type="color"
-          className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
-          value={/^#[0-9a-f]{6}$/i.test(props.value ?? "") ? props.value : "#888888"}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          value={own ?? "#888888"}
           onChange={(event) => props.onPick(event.currentTarget.value)}
         />
-        свой…
       </label>
     </div>
   );
 }
 
-/** Ряд пресетов размера или толщины. */
+/** Ряд пресетов размера или толщины — кнопки поровну во всю ширину. */
 export function Presets(props: {
   value?: number | undefined;
   presets: number[];
@@ -349,7 +408,7 @@ export function Presets(props: {
           type="button"
           key={size}
           onClick={() => props.onPick(size)}
-          className={`h-6 min-w-6 rounded-md px-1 ${props.value === size ? active : hover}`}
+          className={`h-6 flex-1 rounded-md tabular-nums ${props.value === size ? active : hover}`}
         >
           {size}
         </button>
@@ -359,8 +418,8 @@ export function Presets(props: {
 }
 
 /**
- * Число со степперами −/+. Поле без состояния: значение берётся на Enter и при уходе из поля, а
- * сменившееся снаружи подставляется ключом.
+ * Число с −/+ по бокам — одним полем во всю ширину, без стрелок браузера. Поле без состояния:
+ * значение берётся на Enter и при уходе из поля, а сменившееся снаружи подставляется ключом.
  */
 export function Stepper(props: {
   value?: number | undefined;
@@ -368,20 +427,26 @@ export function Stepper(props: {
   onPick: (value: number) => void;
   onStep: (delta: number) => void;
 }) {
-  const take = (raw: string) =>
-    Number.isFinite(Number(raw)) && raw !== "" && props.onPick(Number(raw));
-  const step = `h-6 w-6 rounded-md ${hover}`;
+  const take = (raw: string) => {
+    const value = Number(raw.replace(",", "."));
+    if (raw.trim() !== "" && Number.isFinite(value) && value > 0) props.onPick(value);
+  };
+  const step = `w-7 shrink-0 text-[13px] ${hover}`;
   return (
-    <div className="flex items-center gap-1" title={props.title}>
+    <div
+      className="flex h-7 items-stretch overflow-hidden rounded-md border border-[var(--mw-panel-border,#8884)] focus-within:border-[var(--mw-focus-border,#3794ff)]"
+      title={props.title}
+    >
       <button type="button" title="Меньше" className={step} onClick={() => props.onStep(-1)}>
         −
       </button>
       <input
         key={props.value ?? "none"}
-        type="number"
+        type="text"
+        inputMode="decimal"
         defaultValue={props.value}
         placeholder="…"
-        className="h-6 w-14 rounded-md border border-[var(--mw-panel-border,#8884)] bg-transparent px-1 focus:outline focus:outline-[var(--mw-focus-border,#3794ff)]"
+        className="min-w-0 flex-1 border-x border-[var(--mw-panel-border,#8884)] bg-transparent text-center tabular-nums outline-none"
         onBlur={(event) => take(event.currentTarget.value)}
         onKeyDown={(event) => {
           event.stopPropagation();
@@ -395,21 +460,21 @@ export function Stepper(props: {
   );
 }
 
-/** Сегментированный переключатель иконками: путь, стрелки. */
+/** Сегментированный переключатель иконками во всю ширину: путь, стрелки. */
 export function Segmented(props: {
   value?: string | undefined;
   options: readonly { key: string; icon: string; title: string }[];
   onPick: (key: string) => void;
 }) {
   return (
-    <div className="flex rounded-md border border-[var(--mw-panel-border,#8884)] p-0.5">
+    <div className="flex gap-0.5 rounded-md border border-[var(--mw-panel-border,#8884)] p-0.5">
       {props.options.map((option) => (
         <button
           type="button"
           key={option.key}
           title={option.title}
           onClick={() => props.onPick(option.key)}
-          className={`h-6 min-w-7 rounded px-1.5 text-[13px] ${props.value === option.key ? `${active} ${ring}` : hover}`}
+          className={`h-6 flex-1 rounded text-[13px] ${props.value === option.key ? active : hover}`}
         >
           {option.icon}
         </button>
@@ -432,12 +497,17 @@ export function PopoverCorner(props: { children: ReactNode }) {
   );
 }
 
-/** Поповер 320px: карточка объекта или список склеенных связей; высотой не больше угла. */
-export function PopoverFrame(props: { children: ReactNode }) {
+/**
+ * Поповер 384px: карточка объекта или список склеенных связей; высотой не больше угла. У
+ * карточки (`bare`) рамка своя — поповер даёт ей только тень, а не вторую рамку с полями.
+ */
+export function PopoverFrame(props: { children: ReactNode; bare?: boolean }) {
   return (
     <div
-      className="nodrag nopan pointer-events-auto flex max-h-full min-h-0 w-80 flex-col gap-1 overflow-auto rounded-lg border p-1"
-      style={surface}
+      className={`nodrag nopan pointer-events-auto flex max-h-full min-h-0 w-96 flex-col overflow-auto rounded-md ${
+        props.bare ? "[&>[data-card-frame]]:max-h-full" : "gap-1 border p-1"
+      }`}
+      style={props.bare ? { boxShadow: surface.boxShadow } : surface}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {props.children}

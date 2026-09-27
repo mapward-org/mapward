@@ -1,10 +1,9 @@
 import type { MapOp, Point } from "@mapward/core";
 
 /**
- * Куда падает перетащенный узел — решение 0044. Перенос в другую группу — это перенос папки,
- * вещь серьёзная, поэтому граница своей группы липкая: пока центр узла внутри неё, узел остаётся
- * её жильцом, даже если под ним край соседней группы. Вышел центр — узел падает в самую глубокую
- * группу под центром, а нет такой — на холст.
+ * Куда падает перетащенный узел — решение 0044. Считается один раз, на отпускание: узел падает
+ * в самую глубокую группу под своим центром, а нет такой — на холст. Липкой границы нет: во
+ * время перетаскивания ничего не решается, поэтому и случайного переноса на лету не бывает.
  */
 
 export type Rect = { id: string; x: number; y: number; width: number; height: number };
@@ -25,22 +24,14 @@ const within = (inner: string, outer: string) =>
 export function dropTarget(params: {
   node: string;
   center: Point;
-  /** Группа, в которой узел лежит сейчас; нет — он на холсте. */
-  parent: string | undefined;
-  /** Развёрнутые группы вьюхи, прямоугольниками на холсте целиком. */
+  /** Группы вьюхи, прямоугольниками на холсте целиком. */
   groups: Rect[];
 }): string | undefined {
-  const candidates = params.groups
+  // Самая глубокая — самая маленькая из тех, что под центром: вложенная меньше своей группы.
+  return params.groups
     .filter((group) => !within(group.id, params.node))
     .filter((group) => inside(params.center, group))
-    .toSorted((a, b) => a.width * a.height - b.width * b.height);
-  const { parent } = params;
-  const own = parent === undefined ? undefined : params.groups.find((g) => g.id === parent);
-  if (own && inside(params.center, own)) {
-    // Внутри своей — только глубже в неё же: край соседа, заехавший на свою, не считается.
-    return candidates.find((group) => within(group.id, own.id))?.id ?? own.id;
-  }
-  return candidates[0]?.id;
+    .toSorted((a, b) => a.width * a.height - b.width * b.height)[0]?.id;
 }
 
 /** Родительская папка по адресу: `mapward://a/b` → `mapward://a`, верхний → корень. */

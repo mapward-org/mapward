@@ -28,17 +28,23 @@ export function editOps(view: string, editing: Editing, name: string, folder: st
 }
 
 /**
- * Брошенная карточка до имени: её видно сразу, а на диске её нет, пока не нажат Enter. Esc —
- * и не было ничего.
+ * Брошенная карточка или нарисованный фрейм до имени: их видно сразу, а на диске их нет, пока
+ * не нажат Enter. Esc — и не было ничего. У фрейма есть размер — какой протянули.
  */
-export type Draft = { prototype: string; parent?: string; position: Point };
+export type Draft = {
+  prototype: string;
+  parent?: string;
+  position: Point;
+  size?: { width: number; height: number };
+};
 
 export const DRAFT_ID = "draft:new";
 
 /** Черновик на холсте — узел с полем подписи, ещё без адреса. */
 export function withDraft(map: ObjectsMap, draft: Draft | undefined): ObjectsMap {
   if (!draft) return map;
-  // Черновик сразу цветом своего прототипа из палитры — таким он и появится.
+  // Черновик сразу цветом своего прототипа из палитры и в его виде — таким он и появится:
+  // фрейм рамкой с полем названия над ней, карточка карточкой.
   const item = map.palette.objects.find((one) => one.prototype === draft.prototype);
   const inGroup =
     draft.parent !== undefined && map.nodes.some((n) => n.id === draft.parent && n.expanded);
@@ -57,9 +63,9 @@ export function withDraft(map: ObjectsMap, draft: Draft | undefined): ObjectsMap
         ...(item?.color === undefined ? {} : { color: item.color }),
         ...(item?.textColor === undefined ? {} : { textColor: item.textColor }),
         view: "simple",
-        expandable: false,
-        expanded: false,
+        expanded: item?.frame === true,
         position: draft.position,
+        ...(draft.size ? { size: draft.size } : {}),
       },
     ],
   };
@@ -75,6 +81,28 @@ export function createOp(view: string, draft: Draft, name: string): MapOp | unde
     prototype: draft.prototype,
     ...(draft.parent === undefined ? {} : { parent: draft.parent }),
     position: draft.position,
+    ...(draft.size ? { size: draft.size } : {}),
+  };
+}
+
+/**
+ * Прямоугольник, протянутый мышью, — от угла к углу в любую сторону. Короткая протяжка — это
+ * клик: тогда размер по умолчанию, от точки клика.
+ */
+export function drawnBox(
+  a: Point,
+  b: Point,
+  fallback: { width: number; height: number },
+  min = { width: 24, height: 16 },
+): { x: number; y: number; width: number; height: number } {
+  const width = Math.abs(b.x - a.x);
+  const height = Math.abs(b.y - a.y);
+  if (width < min.width && height < min.height) return { x: a.x, y: a.y, ...fallback };
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.max(width, min.width),
+    height: Math.max(height, min.height),
   };
 }
 

@@ -1,0 +1,4 @@
+{
+  "name": "Ограниченный контекст",
+  "extends": "mapward://prototypes/base"
+}

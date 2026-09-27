@@ -2,7 +2,7 @@
   "name": "вызывает",
   "extends": "mapward://тест-карты/event-storming/prototypes/вызывает",
   "props": {
-    "from": "mapward://тест-карты/event-storming/покупатель",
-    "to": "mapward://тест-карты/event-storming/оформить-заказ"
+    "from": "mapward://тест-карты/event-storming/оплата/покупатель",
+    "to": "mapward://тест-карты/event-storming/оплата/оформить-заказ"
   }
 }

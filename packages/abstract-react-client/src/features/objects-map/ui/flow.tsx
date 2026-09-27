@@ -34,6 +34,7 @@ import {
 } from "react";
 import type {
   LineEnd,
+  LinePattern,
   MapOp,
   ObjectRef,
   ObjectsMap,
@@ -45,10 +46,10 @@ import type {
 } from "@mapward/core";
 import { canvasClasses } from "../../../lib/ui/canvas-classes.ts";
 import { tabHover } from "../../../lib/ui/tab-hover.ts";
-import type { Deletable, Popover, Tool } from "../pure-model/tools.ts";
+import { draws, type Deletable, type Popover, type Tool } from "../pure-model/tools.ts";
 import { dropOp, dropTarget, type Rect } from "../pure-model/drop.ts";
-import { layout, type Box } from "../pure-model/layout.ts";
-import { DRAFT_ID, lineEnd, type Draft } from "../pure-model/edit.ts";
+import { layout, ROOM, type Box } from "../pure-model/layout.ts";
+import { DRAFT_ID, drawnBox, lineEnd, type Draft } from "../pure-model/edit.ts";
 import { handles, routePath, type Route } from "../pure-model/route.ts";
 import { center as middle, endPoint, snapToFrame, type Frame } from "../pure-model/anchors.ts";
 
@@ -62,7 +63,6 @@ type Handlers = {
   /** Подпись поправлена на месте; пустая или та же — правки нет. */
   commit: (id: string, text: string) => void;
   cancel: () => void;
-  expand: (id: string, expanded: boolean) => void;
   preview: (id: string) => void;
   /** Фигуру потянули за ручку: новые угол и размер. */
   resize: (id: string, box: ResizeParams) => void;
@@ -77,7 +77,6 @@ type ObjectData = {
   node: ViewNode;
   renaming: boolean;
   connecting: boolean;
-  highlight: boolean;
   handlers: Handlers;
   content?: ReactNode;
 };
@@ -116,7 +115,12 @@ const SIDES = [Position.Top, Position.Right, Position.Bottom, Position.Left];
  * Shift+Enter переносит строку — подпись бывает в несколько строк. Выравнивание и шрифт — от
  * подписи: поле ввода по умолчанию прижимает текст влево, и подпись на время правки прыгала бы.
  */
-function Label(props: { text: string; renaming: boolean; id: string; handlers: Handlers }) {
+function Label(props: {
+  text: string;
+  renaming: boolean;
+  id: string;
+  handlers: Pick<Handlers, "commit" | "cancel">;
+}) {
   if (!props.renaming) {
     return <span className="block whitespace-pre-wrap break-words">{props.text}</span>;
   }
@@ -146,23 +150,6 @@ function Label(props: { text: string; renaming: boolean; id: string; handlers: H
   );
 }
 
-function ExpandButton(props: { node: ViewNode; handlers: Handlers }) {
-  if (!props.node.expandable) return null;
-  return (
-    <button
-      type="button"
-      title={props.node.expanded ? "Свернуть" : "Развернуть жильцов"}
-      className="nodrag rounded px-1 text-[10px] opacity-70 hover:opacity-100"
-      onClick={(event) => {
-        event.stopPropagation();
-        props.handlers.expand(props.node.id, !props.node.expanded);
-      }}
-    >
-      {props.node.expanded ? "−" : "+"}
-    </button>
-  );
-}
-
 const SHAPES: Record<ViewNode["shape"], CSSProperties> = {
   rect: { borderRadius: 2 },
   round: { borderRadius: 12 },
@@ -175,21 +162,28 @@ const SHAPES: Record<ViewNode["shape"], CSSProperties> = {
  * Содержимое в масштабе: раскладывается в узле, уменьшенном на масштаб, и растягивается
  * transform-ом обратно — узел больше, и всё в нём крупнее, а не просто больше места.
  */
-function Scaled(props: { scale: number; fill?: boolean; children: ReactNode }) {
+function Scaled(props: {
+  scale: number;
+  fill?: boolean;
+  /** Подмена токенов редактора для содержимого — цвет прототипа у полного превью. */
+  tokens?: CSSProperties | undefined;
+  children: ReactNode;
+}) {
   const share = `${100 / props.scale}%`;
   return (
     <div
       className={`h-full w-full ${props.fill ? "[&>[data-card-frame]]:h-full [&>[data-card-frame]]:max-h-none" : ""}`}
-      style={
-        props.scale === 1
+      style={{
+        ...props.tokens,
+        ...(props.scale === 1
           ? {}
           : {
               width: share,
               height: share,
               transform: `scale(${props.scale})`,
               transformOrigin: "0 0",
-            }
-      }
+            }),
+      }}
     >
       {props.children}
     </div>
@@ -292,7 +286,6 @@ function SimpleNode(props: NodeProps<Node<ObjectData>>) {
               handlers={handlers}
             />
           </div>
-          <ExpandButton node={node} handlers={handlers} />
         </div>
       </Scaled>
       {props.selected && (
@@ -305,6 +298,21 @@ function SimpleNode(props: NodeProps<Node<ObjectData>>) {
       )}
     </div>
   );
+}
+
+/**
+ * Цвет прототипа для полного превью. Карточку рисует своя фича на токенах редактора, поэтому
+ * цвет приходит подменой токенов: фон — цвет узла, текст — тот же читаемый цвет, что у простой
+ * карточки. Подмена действует на всё внутри, и метрики в теле читаются на том же фоне.
+ */
+function tinted(node: ViewNode): CSSProperties | undefined {
+  if (!node.color) return undefined;
+  return {
+    "--mw-editor-background": node.color,
+    ...(node.textColor
+      ? { "--mw-foreground": node.textColor, "--mw-descriptionForeground": node.textColor }
+      : {}),
+  } as CSSProperties;
 }
 
 /** Полное превью — карточка объекта; её рисует своя фича, сюда она приходит готовой. */
@@ -332,14 +340,9 @@ function CardNode(props: NodeProps<Node<ObjectData>>) {
       />
       <Ends connecting={props.data.connecting} />
       {/* Растянутое руками превью заполняет узел целиком: область метрик тянется и прокручивается. */}
-      <Scaled scale={scale} fill={node.size !== undefined}>
+      <Scaled scale={scale} fill={node.size !== undefined} tokens={tinted(node)}>
         {props.data.content}
       </Scaled>
-      {node.expandable && (
-        <div className="absolute right-1 bottom-1">
-          <ExpandButton node={node} handlers={handlers} />
-        </div>
-      )}
       {props.selected && (
         <ScaleHandle
           id={node.id}
@@ -353,33 +356,35 @@ function CardNode(props: NodeProps<Node<ObjectData>>) {
 }
 
 /**
- * Развёрнутая группа — прозрачная рамка: жильцы видны сквозь неё. В правом верхнем углу —
- * превью самой группы и «свернуть».
+ * Группа — фрейм, как в Miro: рамка с заливкой цвета прототипа, название — над рамкой. Таскают
+ * фрейм за любое пустое место — жильцы лежат поверх и тащатся сами. Двойной клик по названию — правка имени, «⋯» — превью группы. Не сворачивается:
+ * группой объект делает конфиг вьюхи. Растягивается ручками, и жильцы при этом стоят на месте.
  */
 function GroupNode(props: NodeProps<Node<ObjectData>>) {
   const { node, handlers } = props.data;
+  const accent = props.selected ? "var(--mw-focus-border, #3794ff)" : frame;
   return (
     <div
-      className="h-full w-full rounded-md text-[11px]"
+      className="relative h-full w-full rounded-sm text-[11px]"
       style={{
-        border: `1px ${node.kind === "ref" ? "dashed" : "solid"} ${
-          props.data.highlight || props.selected ? "var(--mw-focus-border, #3794ff)" : frame
-        }`,
-        background: props.data.highlight ? "rgba(55,148,255,.08)" : "transparent",
+        border: `1px ${node.kind === "ref" ? "dashed" : "solid"} ${accent}`,
+        background: node.color ?? "transparent",
         color: "var(--mw-foreground)",
       }}
     >
+      <NodeResizer
+        isVisible={props.selected}
+        minWidth={120}
+        minHeight={60}
+        color="var(--mw-focus-border, #3794ff)"
+        onResizeEnd={(_, box) => handlers.resizeNode(node.id, box)}
+      />
       <Ends connecting={props.data.connecting} />
-      {/* Цветная группа — цветная шапка с читаемой на ней подписью. */}
       <div
-        className={`flex items-center gap-1 rounded-t-md px-2 py-1 ${canvasClasses.dragHandle}`}
-        style={
-          node.color
-            ? { background: node.color, color: node.textColor ?? "var(--mw-foreground)" }
-            : {}
-        }
+        className="absolute bottom-full left-0 mb-1 flex max-w-full items-center gap-1 whitespace-nowrap"
+        style={{ color: props.selected ? accent : "var(--mw-foreground)" }}
       >
-        <div className="min-w-0 flex-1 font-semibold">
+        <div className="min-w-0 truncate font-semibold opacity-80">
           <Label
             text={node.label}
             renaming={props.data.renaming}
@@ -390,7 +395,7 @@ function GroupNode(props: NodeProps<Node<ObjectData>>) {
         <button
           type="button"
           title="Превью группы"
-          className="nodrag rounded px-1 opacity-70 hover:opacity-100"
+          className="nodrag rounded px-1 opacity-60 hover:opacity-100"
           onClick={(event) => {
             event.stopPropagation();
             handlers.preview(node.id);
@@ -398,7 +403,6 @@ function GroupNode(props: NodeProps<Node<ObjectData>>) {
         >
           ⋯
         </button>
-        <ExpandButton node={node} handlers={handlers} />
       </div>
     </div>
   );
@@ -419,8 +423,9 @@ function NoteNode(props: NodeProps<Node<NoteData>>) {
         onResizeEnd={(_, box) => handlers.resize(shape.id, box)}
       />
       <Ends connecting={false} />
+      {/* Центрует и flex, и text-align: поле правки во всю ширину иначе прижало бы текст влево. */}
       <div
-        className="flex h-full w-full items-center justify-center p-1"
+        className="flex h-full w-full items-center justify-center p-1 text-center"
         style={{
           border: text && !props.selected ? "none" : `1px ${text ? "dashed" : "solid"} ${line}`,
           borderRadius: shape.kind === "ellipse" ? "50%" : 2,
@@ -458,7 +463,8 @@ function AnchorNode(props: NodeProps<Node<{ line: string }>>) {
 const NODE_TYPES = {
   simple: SimpleNode,
   card: CardNode,
-  group: GroupNode,
+  // Не «group»: под этим именем у библиотеки холста свой стиль узла — толстая рамка, поля и тень.
+  frame: GroupNode,
   note: NoteNode,
   anchor: AnchorNode,
 };
@@ -478,7 +484,6 @@ type Build = {
   map: ObjectsMap;
   renaming: string | undefined;
   connecting: boolean;
-  highlight: string | undefined;
   handlers: Handlers;
   renderCard: (item: ObjectRef) => ReactNode;
 };
@@ -493,7 +498,6 @@ function build(params: Build): { nodes: Node[]; boxes: Box[] } {
       // Черновик брошенной карточки сразу с полем подписи: Enter создаёт, Esc убирает.
       renaming: params.renaming === node.id || node.id === DRAFT_ID,
       connecting: params.connecting,
-      highlight: params.highlight === node.id,
       handlers: params.handlers,
     };
     const common = {
@@ -504,9 +508,8 @@ function build(params: Build): { nodes: Node[]; boxes: Box[] } {
     if (node.expanded) {
       return {
         ...common,
-        type: "group",
+        type: "frame",
         data,
-        dragHandle: `.${canvasClasses.dragHandle}`,
         style: { width: box.width, height: box.height },
       };
     }
@@ -571,7 +574,7 @@ function lineSide(map: ObjectsMap, line: string, end: LineEnd | undefined, side:
   return "node" in end ? endNode(map, end) : anchorId(line, side);
 }
 
-function lineEdges(map: ObjectsMap): Edge[] {
+function lineEdges(map: ObjectsMap, edit: EdgeEdit): Edge[] {
   const out: Edge[] = [];
   for (const shape of map.shapes) {
     if (shape.kind !== "line") continue;
@@ -594,6 +597,8 @@ function lineEdges(map: ObjectsMap): Edge[] {
         route: shape.route ?? "straight",
         textColor: shape.textColor,
         fontSize: shape.fontSize,
+        shape: shape.id,
+        edit,
       },
       style: { stroke: color, strokeWidth: shape.strokeWidth ?? 1.5 },
     });
@@ -601,31 +606,67 @@ function lineEdges(map: ObjectsMap): Edge[] {
   return out;
 }
 
-/** Подпись стрелки — просто текст, без плашки; лёгкая тень держит её читаемой поверх линий. */
+/**
+ * Правка подписей стрелок и линий: какая подпись сейчас правится, чем её сохранить и как начать
+ * правку двойным кликом по тексту.
+ */
+type EdgeEdit = Pick<Handlers, "commit" | "cancel"> & {
+  renaming: string | undefined;
+  start: (id: string) => void;
+};
+
+/**
+ * Подпись стрелки — текст в разрыве линии, как в Miro: под ним фон холста, линия обрывается у
+ * текста и продолжается за ним. Рамки и плашки нет. С `edit` подпись правится: двойной клик по
+ * тексту — поле на месте подписи, Enter сохраняет.
+ */
 function EdgeText(props: {
   at: Point;
-  text: ReactNode;
+  text: string;
   color?: string | undefined;
   size?: number | undefined;
+  edit?: { id: string; renaming: boolean; data: EdgeEdit } | undefined;
 }) {
+  const edit = props.edit;
   return (
     <div
-      className="nodrag nopan whitespace-nowrap"
+      className={`nodrag nopan text-center ${edit?.renaming ? "min-w-16" : "whitespace-nowrap"}`}
+      title={edit && !edit.renaming ? "Двойной клик — править подпись" : undefined}
       style={{
         ...placed(props.at),
-        pointerEvents: "none",
+        pointerEvents: edit ? "all" : "none",
+        cursor: edit ? "text" : undefined,
         color: props.color ?? "var(--mw-foreground)",
         fontSize: props.size ?? 10,
-        textShadow: "0 0 3px var(--mw-editor-background), 0 0 3px var(--mw-editor-background)",
+        lineHeight: 1.25,
+        padding: "1px 4px",
+        background: "var(--mw-editor-background)",
+      }}
+      onDoubleClick={(event) => {
+        if (!edit) return;
+        event.stopPropagation();
+        edit.data.start(edit.id);
       }}
     >
-      {props.text}
+      {edit ? (
+        <Label text={props.text} renaming={edit.renaming} id={edit.id} handlers={edit.data} />
+      ) : (
+        props.text
+      )}
     </div>
   );
 }
 
+/** Узор линии стрелки: у прототипов связей он свой, чтобы стрелки различались на глаз. */
+const DASH: Record<LinePattern, string | undefined> = {
+  solid: undefined,
+  dashed: "8 5",
+  dotted: "1.5 4",
+};
+
 type BentData = {
   relation: ViewRelation;
+  edit: EdgeEdit;
   onBends: (id: string, bends: Point[]) => void;
   /** Стиль стрелки поверх прежнего — так переносят и отпускают концы. */
   onStyle: (id: string, patch: Partial<ArrowStyle>) => void;
@@ -715,6 +756,9 @@ function BentEdge(props: EdgeProps<Edge<BentData>>) {
   const path = routePath(points, style?.route ?? "straight");
   // Ручка «создать излом» — на трети отрезка, подпись — на середине: друг друга не закрывают.
   const { label, inserts } = handles(points);
+  // Подпись склеенной стрелки — число её связей, а не имя: такую не правят.
+  const editable = relation?.count === 1 && relation.link !== undefined;
+  const renaming = editable && props.data?.edit.renaming === props.id;
 
   const start = (event: ReactPointerEvent, index: number, insert: boolean) => {
     event.stopPropagation();
@@ -751,8 +795,16 @@ function BentEdge(props: EdgeProps<Edge<BentData>>) {
         }}
       />
       <EdgeLabelRenderer>
-        {props.label !== undefined && label && (
-          <EdgeText at={label} text={props.label} color={style?.textColor} size={style?.fontSize} />
+        {(props.label !== undefined || renaming) && label && (
+          <EdgeText
+            at={label}
+            text={typeof props.label === "string" ? props.label : ""}
+            color={style?.textColor}
+            size={style?.fontSize}
+            edit={
+              editable && props.data ? { id: props.id, renaming, data: props.data.edit } : undefined
+            }
+          />
         )}
         {props.selected &&
           (["from", "to"] as const).map((side) => (
@@ -805,7 +857,14 @@ function BentEdge(props: EdgeProps<Edge<BentData>>) {
   );
 }
 
-type LineData = { route: Route; textColor?: string | undefined; fontSize?: number | undefined };
+type LineData = {
+  route: Route;
+  textColor?: string | undefined;
+  fontSize?: number | undefined;
+  /** Фигура-линия: её подпись правится как текст фигуры. */
+  shape: string;
+  edit: EdgeEdit;
+};
 
 /** Линия-пометка: выделенная толще и цветом фокуса, на концах — точки. */
 function LineEdge(props: EdgeProps<Edge<LineData>>) {
@@ -816,6 +875,8 @@ function LineEdge(props: EdgeProps<Edge<LineData>>) {
   const path = routePath(ends, props.data?.route ?? "straight");
   const { label } = handles(ends);
   const width = Number(props.style?.strokeWidth ?? 1.5);
+  const data = props.data;
+  const renaming = data !== undefined && data.edit.renaming === data.shape;
   return (
     <>
       <BaseEdge
@@ -832,12 +893,13 @@ function LineEdge(props: EdgeProps<Edge<LineData>>) {
         }}
       />
       <EdgeLabelRenderer>
-        {props.label !== undefined && label && (
+        {(props.label !== undefined || renaming) && label && (
           <EdgeText
             at={label}
-            text={props.label}
-            color={props.data?.textColor}
-            size={props.data?.fontSize}
+            text={typeof props.label === "string" ? props.label : ""}
+            color={data?.textColor}
+            size={data?.fontSize}
+            edit={data ? { id: data.shape, renaming, data: data.edit } : undefined}
           />
         )}
         {props.selected &&
@@ -866,23 +928,30 @@ function edges(
   map: ObjectsMap,
   onBends: BentData["onBends"],
   onStyle: BentData["onStyle"],
+  edit: EdgeEdit,
 ): Edge[] {
   return [
-    ...map.relations.map((relation): Edge => ({
-      id: relation.id,
-      type: "bent",
-      source: relation.from,
-      target: relation.to,
-      ...(relation.label === undefined ? {} : { label: relation.label }),
-      data: { relation, onBends, onStyle },
-      markerEnd: { ...HEAD, color: relation.style?.stroke ?? HEAD.color },
-      style: {
-        stroke: relation.style?.stroke ?? "var(--mw-foreground)",
-        strokeWidth: relation.style?.strokeWidth ?? (relation.count > 1 ? 2 : 1.5),
-        opacity: 0.85,
-      },
-    })),
-    ...lineEdges(map),
+    ...map.relations.map((relation): Edge => {
+      // Цвет — сперва стиль стрелки на этой вьюхе, потом цвет прототипа связи.
+      const color = relation.style?.stroke ?? relation.color ?? "var(--mw-foreground)";
+      const dash = relation.line && DASH[relation.line];
+      return {
+        id: relation.id,
+        type: "bent",
+        source: relation.from,
+        target: relation.to,
+        ...(relation.label === undefined ? {} : { label: relation.label }),
+        data: { relation, onBends, onStyle, edit },
+        markerEnd: { ...HEAD, color },
+        style: {
+          stroke: color,
+          strokeWidth: relation.style?.strokeWidth ?? (relation.count > 1 ? 2 : 1.5),
+          opacity: 0.85,
+          ...(dash ? { strokeDasharray: dash, strokeLinecap: "round" } : {}),
+        },
+      };
+    }),
+    ...lineEdges(map, edit),
   ];
 }
 
@@ -909,6 +978,60 @@ function EdgePin(props: { at: Point; side: "top" | "right"; children: ReactNode 
         {props.children}
       </div>
     </EdgeLabelRenderer>
+  );
+}
+
+/**
+ * Слой рисования протяжкой — поверх холста, пока выбран инструмент фигуры, линии или фрейма:
+ * нажал, протянул, отпустил. Пока тянешь — пунктирная рамка или линия; решение — на отпускание,
+ * в экранных координатах, а в координаты холста их переводит холст.
+ */
+/** Экранная точка внутри слоя: от его левого верхнего угла. */
+const local = (point: Point, box: DOMRect) => ({ x: point.x - box.left, y: point.y - box.top });
+
+function DrawLayer(props: { line: boolean; onDrawn: (a: Point, b: Point) => void }) {
+  const [drag, setDrag] = useState<{ a: Point; b: Point; box: DOMRect } | undefined>(undefined);
+  return (
+    <div
+      className="nodrag nopan absolute inset-0 z-[5] cursor-crosshair"
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const at = { x: event.clientX, y: event.clientY };
+        setDrag({ a: at, b: at, box: event.currentTarget.getBoundingClientRect() });
+      }}
+      onPointerMove={(event) =>
+        drag && setDrag({ ...drag, b: { x: event.clientX, y: event.clientY } })
+      }
+      onPointerUp={(event) => {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        if (drag) props.onDrawn(drag.a, { x: event.clientX, y: event.clientY });
+        setDrag(undefined);
+      }}
+    >
+      {drag && (
+        <svg className="pointer-events-none absolute inset-0 h-full w-full">
+          {props.line ? (
+            <line
+              {...{ x1: local(drag.a, drag.box).x, y1: local(drag.a, drag.box).y }}
+              {...{ x2: local(drag.b, drag.box).x, y2: local(drag.b, drag.box).y }}
+              stroke="var(--mw-focus-border, #3794ff)"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+            />
+          ) : (
+            <rect
+              x={Math.min(local(drag.a, drag.box).x, local(drag.b, drag.box).x)}
+              y={Math.min(local(drag.a, drag.box).y, local(drag.b, drag.box).y)}
+              width={Math.abs(drag.b.x - drag.a.x)}
+              height={Math.abs(drag.b.y - drag.a.y)}
+              fill="rgba(55,148,255,.06)"
+              stroke="var(--mw-focus-border, #3794ff)"
+              strokeDasharray="4 3"
+            />
+          )}
+        </svg>
+      )}
+    </div>
   );
 }
 
@@ -967,6 +1090,12 @@ export type GraphProps = {
   hint?: string | undefined;
   /** Клик с инструментом «линия»: её начало или конец. */
   onLine: (end: LineEnd) => void;
+  /** Линия протянута мышью: оба конца сразу. */
+  onDrawLine: (from: LineEnd, to: LineEnd) => void;
+  /** Фигура нарисована: стор оденет её в последний стиль её вида. */
+  onDrawShape: (shape: ViewShape) => void;
+  /** Связь проведена: стор создаст её в последнем стиле связей. */
+  onRelate: (from: string, to: string, prototype: string) => void;
   /**
    * Меню, пристёгнутые к узлам холста: контекстная панель стоит рядом с объектом и едет за
    * зумом и сдвигом. Что положить, решает compose; поповер с превью живёт в углу, не здесь.
@@ -1052,7 +1181,6 @@ function Canvas(props: GraphProps) {
     const finish = endPoint(to, arrow.style?.toAnchor, bends.at(-1) ?? middle(from));
     return handles([start, ...bends, finish]).label ?? start;
   };
-  const [highlight, setHighlight] = useState<string | undefined>(undefined);
   const view = props.map.view;
 
   const handlers: Handlers = {
@@ -1069,6 +1197,12 @@ function Canvas(props: GraphProps) {
           void props.onEdit([{ op: "put-shape", view, shape: { ...shape, text: value } }]);
         return;
       }
+      const arrow = props.map.relations.find((item) => item.id === id);
+      if (arrow) {
+        if (arrow.link && value && value !== arrow.label)
+          void props.onEdit([{ op: "rename", object: arrow.link, label: value, view }]);
+        return;
+      }
       const node = props.map.nodes.find((item) => item.id === id);
       if (node && value && value !== node.label) {
         void props.onEdit([{ op: "rename", object: id, label: value, view }]);
@@ -1078,8 +1212,6 @@ function Canvas(props: GraphProps) {
       props.onRename(undefined);
       props.onDraftCancel();
     },
-    expand: (id, expanded) =>
-      void props.onEdit([{ op: "set-expanded", view, object: id, expanded }]),
     preview: (id) => props.onPopover({ kind: "object", address: id }),
     resize: (id, box) => {
       const shape = props.map.shapes.find((item) => item.id === id);
@@ -1095,12 +1227,29 @@ function Canvas(props: GraphProps) {
         ...(kept === undefined || kept === 1 ? {} : { scale: kept }),
       };
       const ops: MapOp[] = [{ op: "resize-nodes", view, sizes: { [id]: size } }];
-      const old = props.map.nodes.find((item) => item.id === id)?.position;
+      const old =
+        flow.getInternalNode(id)?.position ?? props.map.nodes.find((n) => n.id === id)?.position;
       if (old && (Math.abs(old.x - box.x) > 0.5 || Math.abs(old.y - box.y) > 0.5)) {
-        ops.push({ op: "move-nodes", view, positions: { [id]: { x: box.x, y: box.y } } });
+        // Фрейм тянули за левый или верхний край: он сдвинулся, а жильцы, чьи позиции
+        // отсчитаны от него, сдвигаются обратно — на холсте они стоят где стояли.
+        const dx = box.x - old.x;
+        const dy = box.y - old.y;
+        const positions: Record<string, Point> = { [id]: { x: box.x, y: box.y } };
+        for (const child of props.map.nodes.filter((n) => n.parent === id)) {
+          const at = flow.getInternalNode(child.id)?.position ?? child.position;
+          if (at) positions[child.id] = { x: at.x - dx, y: at.y - dy };
+        }
+        ops.push({ op: "move-nodes", view, positions });
       }
       void props.onEdit(ops);
     },
+  };
+
+  const edgeEdit: EdgeEdit = {
+    renaming: props.renaming,
+    commit: handlers.commit,
+    cancel: handlers.cancel,
+    start: (id) => props.onRename(id),
   };
 
   const bend = (id: string, bends: Point[]) =>
@@ -1114,31 +1263,30 @@ function Canvas(props: GraphProps) {
     void props.onEdit([{ op: "style-arrow", view, arrow: id, style: next as ArrowStyle }]);
   };
 
-  const params = (lit: string | undefined): Build => ({
+  const params = (): Build => ({
     map: props.map,
     renaming: props.renaming,
     connecting: props.tool.kind === "relation",
-    highlight: lit,
     handlers,
     renderCard: props.renderCard,
   });
 
-  const [nodes, setNodes] = useState<Node[]>(() => build(params(undefined)).nodes);
-  const [lines, setLines] = useState<Edge[]>(() => edges(props.map, bend, restyle));
-  const restore = () => setNodes((now) => keepSelected(build(params(undefined)).nodes, now));
+  const [nodes, setNodes] = useState<Node[]>(() => build(params()).nodes);
+  const [lines, setLines] = useState<Edge[]>(() => edges(props.map, bend, restyle, edgeEdit));
+  const restore = () => setNodes((now) => keepSelected(build(params()).nodes, now));
 
   // Новая картинка — новые узлы. Картинка приходит тем же объектом, пока по содержимому ничего
   // не поменялось (стор сводит снимки подписки к одному), поэтому пересборки без дела нет и
   // выделение с ручками ресайза не слетает посреди жеста.
   useEffect(() => {
-    setNodes((now) => keepSelected(build(params(highlight)).nodes, now));
+    setNodes((now) => keepSelected(build(params()).nodes, now));
     // oxlint-disable-next-line exhaustive-deps
-  }, [props.map, props.renaming, props.tool.kind, highlight]);
+  }, [props.map, props.renaming, props.tool.kind]);
 
   useEffect(() => {
-    setLines((now) => keepSelected(edges(props.map, bend, restyle), now));
+    setLines((now) => keepSelected(edges(props.map, bend, restyle, edgeEdit), now));
     // oxlint-disable-next-line exhaustive-deps
-  }, [props.map]);
+  }, [props.map, props.renaming]);
 
   /** Развёрнутые группы прямоугольниками на холсте целиком — для «куда падает узел». */
   const groups = (): Rect[] =>
@@ -1163,7 +1311,7 @@ function Canvas(props: GraphProps) {
       x: at.x + (internal?.measured.width ?? 0) / 2,
       y: at.y + (internal?.measured.height ?? 0) / 2,
     };
-    const target = dropTarget({ node: node.id, center, parent: node.parentId, groups: groups() });
+    const target = dropTarget({ node: node.id, center, groups: groups() });
     return { at, target };
   };
 
@@ -1174,13 +1322,11 @@ function Canvas(props: GraphProps) {
   };
 
   /**
-   * Операция уходит раньше, чем гаснет подсветка: её ожидаемый результат ложится на холст в
-   * тот же такт, и холст не успевает нарисовать узел на старом месте.
+   * Перенос считается один раз, на отпускание: во время перетаскивания холст ничего не
+   * пересобирает. Ожидаемый результат ложится на холст сразу, отказ возвращает узел.
    */
   const send = async (ops: MapOp[]) => {
-    const done = props.onEdit(ops);
-    setHighlight(undefined);
-    if (!(await done)) restore();
+    if (!(await props.onEdit(ops))) restore();
   };
 
   const dragStop = async (dragged: Node, all: Node[]) => {
@@ -1192,55 +1338,50 @@ function Canvas(props: GraphProps) {
       await send([{ op: "put-shape", view, shape }]);
       return;
     }
-    if (dragged.type === "note") {
-      const shapes = all.filter((node) => node.type === "note");
-      const ops: MapOp[] = shapes.map((node) => ({
+    // Фигуры — пометки на холсте: в фрейм не переезжают, у них только место.
+    const shapes: MapOp[] = all
+      .filter((node) => node.type === "note")
+      .map((node) => ({
         op: "put-shape",
         view,
         shape: { ...(node.data as NoteData).shape, x: node.position.x, y: node.position.y },
       }));
-      await send(ops);
-      return;
-    }
     const objects = all.filter((node) => node.type !== "note" && node.type !== "anchor");
-    // Несколько узлов разом — только сдвиг: переносить пачку папок одним жестом слишком легко.
-    if (objects.length > 1) {
-      const positions = Object.fromEntries(objects.map((node) => [node.id, node.position]));
-      await send([{ op: "move-nodes", view, positions }]);
+    // Жилец выделенного фрейма едет вместе с фреймом — отдельно его не двигают.
+    const chosen = new Set(objects.map((node) => node.id));
+    const tops = objects.filter(
+      (node) => node.parentId === undefined || !chosen.has(node.parentId),
+    );
+    const lead = tops.find((node) => node.id === dragged.id) ?? tops[0];
+    if (!lead) {
+      await send(shapes);
       return;
     }
-    const { at, target } = where(dragged);
-    const node = (dragged.data as ObjectData).node;
-    const op = dropOp({
-      view,
-      node: dragged.id,
-      kind: node.kind,
-      parent: dragged.parentId,
-      target,
-      position: relativeTo(target, at),
-      stay: dragged.position,
+    // Куда падает пачка, решает узел под курсором, и падает вся: брошенные в фрейм разом
+    // становятся его жильцами, вынесенные из него — уходят из него все.
+    const { target } = where(lead);
+    const moves = tops.map((node) => {
+      const inside =
+        target !== undefined && (target === node.id || target.startsWith(`${node.id}/`));
+      const aim = inside ? node.parentId : target;
+      const at = flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
+      return dropOp({
+        view,
+        node: node.id,
+        kind: (node.data as ObjectData).node.kind,
+        parent: node.parentId,
+        target: aim,
+        position: relativeTo(aim, at),
+        stay: node.position,
+      });
     });
-    await send([op]);
+    await send([...shapes, ...moves]);
   };
 
   const place = (event: { clientX: number; clientY: number }) => {
     const point = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-    const parent = dropTarget({ node: "", center: point, parent: undefined, groups: groups() });
+    const parent = dropTarget({ node: "", center: point, groups: groups() });
     const tool = props.tool;
-    if (tool.kind === "shape") {
-      const size = tool.shape === "text" ? { width: 160, height: 32 } : { width: 160, height: 80 };
-      const shape = {
-        id: shapeId(),
-        kind: tool.shape,
-        x: point.x,
-        y: point.y,
-        ...size,
-        text: tool.shape === "text" ? "текст" : "",
-      };
-      void props.onEdit([{ op: "put-shape", view, shape }]);
-      props.onToolDone();
-      return;
-    }
     if (tool.kind === "object") {
       if (parent === undefined && !props.map.canPlaceObjects) {
         props.onSay(
@@ -1255,11 +1396,64 @@ function Canvas(props: GraphProps) {
       });
       return;
     }
+    props.onPopover(undefined);
+  };
+
+  /** Узел или фигура под точкой холста — самый маленький, то есть самый глубокий. */
+  const hitAt = (point: Point): string | undefined => {
+    const hit = flow
+      .getIntersectingNodes({ x: point.x, y: point.y, width: 1, height: 1 }, true)
+      .filter((node) => node.type !== "anchor")
+      .toSorted(
+        (a, b) =>
+          (a.measured?.width ?? 0) * (a.measured?.height ?? 0) -
+          (b.measured?.width ?? 0) * (b.measured?.height ?? 0),
+      )[0];
+    if (!hit) return undefined;
+    return hit.type === "note" ? hit.id.slice("shape:".length) : hit.id;
+  };
+
+  /** Протяжка отпущена: фигура, линия или фрейм по двум точкам; короткая — как клик. */
+  const drawn = (a: Point, b: Point) => {
+    const from = flow.screenToFlowPosition(a);
+    const to = flow.screenToFlowPosition(b);
+    const moved = Math.hypot(b.x - a.x, b.y - a.y) > 6;
+    const tool = props.tool;
     if (tool.kind === "line") {
-      props.onLine(lineEnd(point, undefined));
+      // Без протяжки — по-старому: клик в начало, клик в конец.
+      if (!moved) props.onLine(lineEnd(from, hitAt(from)));
+      else props.onDrawLine(lineEnd(from, hitAt(from)), lineEnd(to, hitAt(to)));
       return;
     }
-    props.onPopover(undefined);
+    if (tool.kind === "shape") {
+      const fallback =
+        tool.shape === "text" ? { width: 160, height: 32 } : { width: 160, height: 80 };
+      const box = drawnBox(from, moved ? to : from, fallback);
+      props.onDrawShape({
+        id: shapeId(),
+        kind: tool.shape,
+        ...box,
+        text: tool.shape === "text" ? "текст" : "",
+      });
+      return;
+    }
+    if (tool.kind === "object") {
+      const box = drawnBox(from, moved ? to : from, ROOM, { width: 120, height: 60 });
+      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const parent = dropTarget({ node: "", center, groups: groups() });
+      if (parent === undefined && !props.map.canPlaceObjects) {
+        props.onSay(
+          "Здесь создавать нельзя: у вьюхи не названо место для новых объектов — рисуй в группе",
+        );
+        return;
+      }
+      props.onPlace({
+        prototype: tool.prototype,
+        ...(parent === undefined ? {} : { parent }),
+        position: relativeTo(parent, { x: box.x, y: box.y }),
+        size: { width: Math.round(box.width), height: Math.round(box.height) },
+      });
+    }
   };
 
   const key = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -1319,11 +1513,6 @@ function Canvas(props: GraphProps) {
         onlyRenderVisibleElements
         deleteKeyCode={null}
         onNodesChange={(changes: NodeChange[]) => setNodes((now) => applyNodeChanges(changes, now))}
-        onNodeDrag={(_, node) => {
-          if (node.type === "note") return;
-          const { target } = where(node);
-          if (target !== highlight) setHighlight(target === node.parentId ? undefined : target);
-        }}
         onNodeDragStop={(_, node, all) => void dragStop(node, all)}
         onConnect={(connection) => {
           if (props.tool.kind !== "relation") return;
@@ -1331,15 +1520,8 @@ function Canvas(props: GraphProps) {
             props.onSay("Стрелку провести нельзя: у вьюхи не названо место для новых связей");
             return;
           }
-          void props.onEdit([
-            {
-              op: "create-relation",
-              view,
-              from: connection.source,
-              to: connection.target,
-              prototype: props.tool.prototype,
-            },
-          ]);
+          // Как фигура и линия: провёл связь — снова выбор, следующая связь — снова кнопкой.
+          props.onRelate(connection.source, connection.target, props.tool.prototype);
         }}
         onPaneClick={place}
         onSelectionChange={({ nodes: chosen, edges: picks }) =>
@@ -1364,6 +1546,15 @@ function Canvas(props: GraphProps) {
         onNodeDoubleClick={(_, node) => {
           if (node.type === "note") props.onRename((node.data as NoteData).shape.id);
           else if (node.type !== "card" && node.type !== "anchor") props.onRename(node.id);
+        }}
+        onEdgeDoubleClick={(_, edge) => {
+          if (edge.id.startsWith("line:")) {
+            props.onRename(edge.id.slice("line:".length));
+            return;
+          }
+          const relation = (edge.data as BentData).relation;
+          if (relation.count === 1 && relation.link) props.onRename(edge.id);
+          else props.onSay("У склеенной стрелки подпись — число связей; правь связь из списка");
         }}
         onEdgeClick={(_, edge) => {
           if (edge.id.startsWith("line:")) return;
@@ -1398,6 +1589,7 @@ function Canvas(props: GraphProps) {
           ) : null,
         )}
       </ReactFlow>
+      {draws(props.tool) && <DrawLayer line={props.tool.kind === "line"} onDrawn={drawn} />}
       {props.hint && cursor && <CursorHint at={cursor} text={props.hint} />}
     </div>
   );

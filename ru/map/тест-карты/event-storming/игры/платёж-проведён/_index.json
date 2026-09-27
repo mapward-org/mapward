@@ -1,0 +1,4 @@
+{
+  "name": "Платёж проведён",
+  "extends": "mapward://тест-карты/event-storming/prototypes/событие"
+}

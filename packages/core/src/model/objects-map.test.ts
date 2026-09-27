@@ -113,12 +113,12 @@ test("an expanded group draws its residents inside, and arrows land on them", ()
   ]);
 });
 
-test("a hand-folded group beats the config", () => {
+test("only the config makes a group: an object with residents but not in expand is one node", () => {
   const value = objectsMap(
     map,
     "v",
-    config({ show: ["systems/*"], expand: { objects: ["systems/*"] } }),
-    { expanded: { "mapward://systems/bank": false } },
+    config({ show: ["systems/*"], expand: { objects: ["systems/shop"] } }),
+    {},
   );
   expect(value.nodes.find((node) => node.id === "mapward://systems/bank")?.expanded).toBe(false);
   expect(value.nodes.some((node) => node.id === "mapward://systems/bank/pay")).toBe(false);
@@ -198,4 +198,68 @@ test("a label reads on its card, and a palette button wears its prototype's colo
   );
   expect(value.nodes[0]?.textColor).toBe("#1f1f1f");
   expect(value.palette.objects[0]).toMatchObject({ color: "#ff9f43", textColor: "#1f1f1f" });
+});
+
+test("arrows of different relation prototypes look different", () => {
+  const typed = (address: string, from: string, to: string, prototype: string) =>
+    object(address, "зовёт", {
+      props: { from, to },
+      layers: [
+        { address, path: "", from: "own" },
+        { address: prototype, path: "", from: "prototype" },
+      ],
+    });
+  const root = object("mapward://", "Карта", {
+    children: [
+      service("mapward://a", "А"),
+      service("mapward://b", "Б"),
+      service("mapward://c", "В"),
+      typed("mapward://ab", "mapward://a", "mapward://b", "mapward://prototypes/calls"),
+      typed("mapward://bc", "mapward://b", "mapward://c", "mapward://prototypes/emits"),
+    ],
+  });
+  const value = objectsMap(
+    root,
+    "v",
+    config({
+      prototypes: ["Сервис"],
+      style: { prototypes: { "mapward://prototypes/emits": { color: "#ff9f43" } } },
+      palette: { relations: ["mapward://prototypes/calls", "mapward://prototypes/emits"] },
+    }),
+    {},
+  );
+  const look = (id: string) => {
+    const arrow = value.relations.find((item) => item.id === id);
+    return { color: arrow?.color, line: arrow?.line };
+  };
+  expect(look("mapward://a→mapward://b")).toEqual({ color: undefined, line: "solid" });
+  expect(look("mapward://b→mapward://c")).toEqual({ color: "#ff9f43", line: "dashed" });
+  expect(value.palette.relations.map((item) => item.line)).toEqual(["solid", "dashed"]);
+});
+
+test("an object expanded by the config is a group even with no residents yet", () => {
+  const value = objectsMap(
+    object("mapward://", "Карта", {
+      children: [service("mapward://ctx", "Контекст"), service("mapward://lone", "Одиночка")],
+    }),
+    "v",
+    config({ prototypes: ["Сервис"], expand: { objects: ["ctx"] } }),
+    {},
+  );
+  const node = (id: string) => value.nodes.find((item) => item.id === id);
+  expect(node("mapward://ctx")?.expanded).toBe(true);
+  expect(node("mapward://lone")?.expanded).toBe(false);
+});
+
+test("a palette button knows its prototype draws frames", () => {
+  const value = objectsMap(
+    map,
+    "v",
+    config({
+      expand: { prototypes: ["mapward://prototypes/service"] },
+      palette: { objects: ["mapward://prototypes/service", "mapward://prototypes/other"] },
+    }),
+    {},
+  );
+  expect(value.palette.objects.map((item) => item.frame)).toEqual([true, undefined]);
 });

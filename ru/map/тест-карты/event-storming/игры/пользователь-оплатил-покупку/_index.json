@@ -1,0 +1,4 @@
+{
+  "name": "Пользователь оплатил покупку",
+  "extends": "mapward://тест-карты/event-storming/prototypes/событие"
+}

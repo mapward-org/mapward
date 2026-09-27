@@ -1,0 +1,8 @@
+{
+  "name": "Картипулька",
+  "extends": "mapward://тест-карты/event-storming/prototypes/порождает",
+  "props": {
+    "from": "mapward://тест-карты/event-storming/игры/пользователь-зарегистрировался",
+    "to": "mapward://тест-карты/event-storming/игры/пользователь-создал-заказ"
+  }
+}

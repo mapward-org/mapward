@@ -1,0 +1,4 @@
+{
+  "name": "пользователь зарегистрировался",
+  "extends": "mapward://тест-карты/event-storming/prototypes/событие"
+}

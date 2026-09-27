@@ -20,7 +20,6 @@ const map: ObjectsMap = {
       object: "mapward://a",
       shape: "rect",
       view: "simple",
-      expandable: false,
       expanded: false,
       position: { x: 0, y: 0 },
     },
@@ -71,11 +70,11 @@ test("a successful edit goes onto the undo stack, undo and redo walk it", async 
   ]);
   const store = new ObjectsMapStore(port, views, "mapward://_metrics/canvas");
   await store.edit([{ op: "move-nodes", view: "v", positions: {} }], map);
-  await store.edit([{ op: "set-expanded", view: "v", object: "x", expanded: true }], map);
+  await store.edit([{ op: "resize-nodes", view: "v", sizes: {} }], map);
   await store.undo();
   expect(store.canRedo).toBe(true);
   await store.redo();
-  expect(calls).toEqual(["edit move-nodes", "edit set-expanded", "undo b", "redo b"]);
+  expect(calls).toEqual(["edit move-nodes", "edit resize-nodes", "undo b", "redo b"]);
   expect(store.canRedo).toBe(false);
 });
 
@@ -228,4 +227,56 @@ test("the same selection reported again does not touch the store", () => {
   expect(store.selected).toBe(first);
   store.select(undefined);
   expect(store.selected).toBeUndefined();
+});
+
+test("a folded rail stays folded for the next canvas, it lives in the viewer's state", () => {
+  const stored = new Map<string, unknown>();
+  const kept = {
+    slot<T>(key: string, initial: T) {
+      return {
+        get value() {
+          return (stored.has(key) ? stored.get(key) : initial) as T;
+        },
+        set(value: T) {
+          stored.set(key, value);
+        },
+      };
+    },
+  };
+  const { port } = fake([]);
+  const first = new ObjectsMapStore(port, kept, "v");
+  first.toggleRailMore();
+  first.toggleRail();
+  expect(first.railFolded).toBe(true);
+  expect(first.railMore).toBe(false);
+  expect(new ObjectsMapStore(port, kept, "other").railFolded).toBe(true);
+});
+
+test("a new relation and a new shape come dressed in the last style, as in Miro", async () => {
+  const memory = {
+    slot<T>(key: string, initial: T) {
+      const seeded: Record<string, unknown> = {
+        "objects-map:last-style": { arrow: { strokeWidth: 3 }, rect: { color: "#ffd166" } },
+      };
+      return { value: (seeded[key] ?? initial) as T, set() {} };
+    },
+  };
+  const { port, sent } = fake([]);
+  const store = new ObjectsMapStore(port, memory, "v");
+  await store.relate("mapward://a", "mapward://b", "mapward://prototypes/relation", map);
+  expect(sent[0]).toEqual([
+    {
+      op: "create-relation",
+      view: "v",
+      from: "mapward://a",
+      to: "mapward://b",
+      prototype: "mapward://prototypes/relation",
+    },
+    { op: "style-arrow", view: "v", arrow: "mapward://a→mapward://b", style: { strokeWidth: 3 } },
+  ]);
+  await store.drawShape({ id: "s", kind: "rect", x: 0, y: 0 }, map);
+  expect(sent[1]).toEqual([
+    { op: "put-shape", view: "v", shape: { id: "s", kind: "rect", x: 0, y: 0, color: "#ffd166" } },
+  ]);
+  expect(store.tool).toEqual({ kind: "select" });
 });

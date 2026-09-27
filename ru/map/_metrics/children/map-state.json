@@ -5,8 +5,8 @@
       "y": -375.51695814566085
     },
     "mapward://packages/core": {
-      "x": 286.25948407573577,
-      "y": 238.1355947345421
+      "x": 287.27715271639346,
+      "y": 256.4536302663803
     },
     "mapward://apps/cli-application": {
       "x": -113.3296450624459,
@@ -17,8 +17,8 @@
       "y": -14.7266831672641
     },
     "mapward://packages/abstract-server": {
-      "x": 11.46343882576403,
-      "y": -18.82827489595304
+      "x": 19.604787951025457,
+      "y": -17.81060625529536
     },
     "mapward://packages/docs": {
       "x": -195.41323325033824,
@@ -27,14 +27,6 @@
     "mapward://packages/display": {
       "x": 699.5558609063036,
       "y": 222.95512012871296
-    },
-    "mapward://packages/пакет": {
-      "x": 569.0080125143467,
-      "y": -591.3744753768874
-    },
-    "mapward://packages/пакет-2": {
-      "x": 793.2206759454979,
-      "y": -235.12162453399677
     }
   },
   "shapes": [
@@ -67,10 +59,32 @@
     "mapward://apps/vscode-application": {
       "width": 345,
       "height": 92
+    }
+  },
+  "arrows": {
+    "mapward://apps/vscode-application→mapward://packages/core": {
+      "route": "rounded"
     },
-    "mapward://packages/пакет-2": {
-      "width": 331,
-      "height": 194
+    "mapward://apps/vscode-application→mapward://packages/abstract-react-client": {
+      "route": "orthogonal"
+    },
+    "mapward://packages/abstract-react-client→mapward://packages/core": {
+      "route": "orthogonal"
+    },
+    "mapward://packages/abstract-react-client→mapward://packages/display": {
+      "route": "orthogonal"
+    },
+    "mapward://apps/vscode-application→mapward://packages/abstract-server": {
+      "route": "orthogonal"
+    },
+    "mapward://apps/cli-application→mapward://packages/abstract-server": {
+      "route": "orthogonal"
+    },
+    "mapward://packages/abstract-server→mapward://packages/docs": {
+      "route": "orthogonal"
+    },
+    "mapward://packages/abstract-server→mapward://packages/core": {
+      "route": "orthogonal"
     }
   }
 }

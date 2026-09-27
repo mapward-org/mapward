@@ -63,26 +63,29 @@ export function CardName(props: {
   /** Ctrl + клик — отдельным табом; без табов — просто переход. */
   onOpenTab?: (() => void) | undefined;
 }) {
+  // Имя — главное, и ему отдана вся строка до кнопок, до двух строк переноса. Прототип бывает
+  // длинным и раньше съедал имя целиком — он ушёл вниз, к адресу, мелко.
+  const where = props.address.replace("mapward://", "") || "корень";
   return (
-    <span className="flex min-w-0 flex-col">
+    <span className="flex min-w-0 flex-1 flex-col">
       <button
         type="button"
         onClick={(event) =>
           props.onOpenTab && (event.ctrlKey || event.metaKey) ? props.onOpenTab() : props.onOpen()
         }
-        title={props.onOpenTab ? "Ctrl + клик — открыть отдельным табом" : undefined}
-        className={`min-w-0 truncate text-left font-medium ${props.onOpenTab ? tabHover.tabLink : "hover:underline"}`}
+        title={`${props.prototypeName ? `${props.prototypeName}: ` : ""}${props.name}${
+          props.onOpenTab ? " — Ctrl + клик: отдельным табом" : ""
+        }`}
+        className={`line-clamp-2 min-w-0 text-left font-medium break-words ${props.onOpenTab ? tabHover.tabLink : "hover:underline"}`}
       >
-        {props.prototypeName && (
-          <span className="font-normal opacity-60">{props.prototypeName}: </span>
-        )}
         {props.name}
       </button>
       <span
-        className="truncate font-mono text-[9px] leading-tight opacity-50"
-        title={props.address}
+        className="truncate text-[9px] leading-tight opacity-60"
+        title={`${props.prototypeName ? `${props.prototypeName} · ` : ""}${props.address}`}
       >
-        {props.address.replace("mapward://", "") || "корень"}
+        {props.prototypeName && <span>{props.prototypeName} · </span>}
+        <span className="font-mono">{where}</span>
       </span>
     </span>
   );

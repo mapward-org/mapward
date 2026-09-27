@@ -7,6 +7,7 @@
       "show": ["тест-карты/event-storming/*"],
       "palette": {
         "objects": [
+          "mapward://тест-карты/event-storming/prototypes/ограниченный-контекст",
           "mapward://тест-карты/event-storming/prototypes/событие",
           "mapward://тест-карты/event-storming/prototypes/команда",
           "mapward://тест-карты/event-storming/prototypes/агрегат",
@@ -54,8 +55,22 @@
           "mapward://тест-карты/event-storming/prototypes/модель-чтения": {
             "color": "#1dd1a1",
             "shape": "note"
+          },
+          "mapward://тест-карты/event-storming/prototypes/вызывает": {
+            "color": "#54a0ff",
+            "line": "solid"
+          },
+          "mapward://тест-карты/event-storming/prototypes/порождает": {
+            "color": "#ff9f43",
+            "line": "dashed"
+          },
+          "mapward://тест-карты/event-storming/prototypes/ограниченный-контекст": {
+            "color": "#dfe6e9"
           }
         }
+      },
+      "expand": {
+        "prototypes": ["mapward://тест-карты/event-storming/prototypes/ограниченный-контекст"]
       }
     }
   ],

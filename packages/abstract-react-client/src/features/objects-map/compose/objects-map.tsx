@@ -3,6 +3,7 @@ import type { ObjectsMap } from "@mapward/core";
 import { useViewStates } from "../../../services/state/ports.tsx";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { ObjectsMapStore } from "../model/objects-map.ts";
+import { objectTool } from "../pure-model/tools.ts";
 import { ARROWS, FONT_SIZES, railObjects, ROUTES, routeIcon, WIDTHS } from "../pure-model/bar.ts";
 import { useObjectsMapPort } from "../ports.tsx";
 import { Graph } from "../ui/flow.tsx";
@@ -28,11 +29,11 @@ import {
   Presets,
   RailButton,
   RailChip,
+  RailFolded,
   RailFrame,
   RailMoreItem,
   RailMoreList,
   RailSep,
-  RailSpacer,
   RecentColors,
   RelationRow,
   Segmented,
@@ -45,12 +46,17 @@ type Props = { store: ObjectsMapStore; map: ObjectsMap };
 
 /**
  * Рейка инструментов слева, как в Miro: фигуры, чипы прототипов цветом прототипа (сверх шести —
- * под «+»), связи, внизу отмена и повтор.
+ * под «+»), связи образцом своей линии, внизу отмена и повтор. Сворачивается в одну кнопку, когда
+ * карту смотрят, а не правят.
  */
 const Rail = observer(function Rail(props: Props) {
   const store = props.store;
-  return (
+  return store.railFolded ? (
+    <RailFolded onOpen={() => store.toggleRail()} />
+  ) : (
     <RailFrame>
+      <RailButton icon="‹" title="Свернуть инструменты" onClick={() => store.toggleRail()} />
+      <RailSep />
       <RailButton
         icon="↖"
         title="Выбрать и двигать"
@@ -88,8 +94,8 @@ const Rail = observer(function Rail(props: Props) {
           color={item.color}
           label={item.label}
           title={item.label}
-          on={store.isTool({ kind: "object", prototype: item.prototype })}
-          onClick={() => store.choose({ kind: "object", prototype: item.prototype })}
+          on={store.isTool(objectTool(item))}
+          onClick={() => store.choose(objectTool(item))}
         />
       ))}
       {railObjects(props.map.palette.objects).more.length > 0 && (
@@ -102,8 +108,8 @@ const Rail = observer(function Rail(props: Props) {
                     key={item.prototype}
                     color={item.color}
                     label={item.label}
-                    on={store.isTool({ kind: "object", prototype: item.prototype })}
-                    onClick={() => store.choose({ kind: "object", prototype: item.prototype })}
+                    on={store.isTool(objectTool(item))}
+                    onClick={() => store.choose(objectTool(item))}
                   />
                 ))}
               </RailMoreList>
@@ -123,6 +129,7 @@ const Rail = observer(function Rail(props: Props) {
         <RailChip
           key={item.prototype}
           arrow
+          line={item.line}
           color={item.color}
           label={item.label}
           title={item.label}
@@ -130,7 +137,7 @@ const Rail = observer(function Rail(props: Props) {
           onClick={() => store.choose({ kind: "relation", prototype: item.prototype })}
         />
       ))}
-      <RailSpacer />
+      <RailSep />
       <RailButton
         icon="↶"
         title="Отменить (Ctrl+Z)"
@@ -226,7 +233,7 @@ const ContextBar = observer(function ContextBar(props: Props) {
             key={key}
             menu={
               store.menu === "text" && (
-                <MenuFrame wide>
+                <MenuFrame>
                   <MenuLabel text="Цвет текста" />
                   <ColorGrid
                     value={store.look(map).textColor}
@@ -363,7 +370,7 @@ const PopoverContent = observer(function PopoverContent(props: Props) {
   const port = useObjectsMapPort();
   const store = props.store;
   return store.popoverAddress !== undefined ? (
-    <PopoverFrame>
+    <PopoverFrame bare>
       <port.Card
         item={{ object: store.popoverAddress }}
         actions={
@@ -442,6 +449,9 @@ export const ObjectsMapView = observer(function ObjectsMapView(props: {
         onDraftCancel={() => store.dropDraft()}
         onSelect={(chosen) => store.select(chosen)}
         onLine={(end) => store.lineAt(end, props.map)}
+        onDrawLine={(from, to) => store.drawLine(from, to, props.map)}
+        onDrawShape={(shape) => store.drawShape(shape, props.map)}
+        onRelate={(from, to, prototype) => store.relate(from, to, prototype, props.map)}
         pinned={[
           {
             ...store.barAt(props.map),

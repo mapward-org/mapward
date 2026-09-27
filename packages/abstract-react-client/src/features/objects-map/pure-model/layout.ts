@@ -2,7 +2,7 @@ import type { ObjectsMap, Point, ViewNode } from "@mapward/core";
 
 /**
  * Где и какого размера узел на холсте. Позиция приходит из состояния вьюхи; у узла без неё — ряд
- * по порядку, честный, хоть и некрасивый. Группа растягивается под своих жильцов: библиотека
+ * по порядку, честный, хоть и некрасивый. Нерастянутая группа растёт под своих жильцов: библиотека
  * холста размер родителя не считает, а жилец за рамкой выглядел бы вынесенным из группы.
  */
 
@@ -22,9 +22,13 @@ const pixels = (size: string | number | undefined, fallback: number): number => 
   return Number.isFinite(parsed) && /^\d+(\.\d+)?(px)?$/.test(size ?? "") ? parsed : fallback;
 };
 
+/** Развёрнутая группа, пока её не растянули руками: места хватает бросить внутрь пару стикеров. */
+export const ROOM = { width: 360, height: 220 };
+
 function ownSize(node: ViewNode): { width: number; height: number } {
   // Растянутое руками перекрывает стиль вьюхи.
   if (node.size) return node.size;
+  if (node.expanded) return ROOM;
   return node.view === "preview"
     ? { width: pixels(node.width, PREVIEW.width), height: pixels(node.maxHeight, PREVIEW.height) }
     : SIMPLE;
@@ -50,15 +54,14 @@ export function layout(map: Pick<ObjectsMap, "nodes">): Box[] {
     const inside = children.get(node.id) ?? [];
     const placed = node.expanded ? inside.map((child, i) => measure(child, i)) : [];
     const own = ownSize(node);
-    const width = Math.max(
-      own.width,
-      ...placed.map((box) => box.position.x + box.width + PAD.side),
-    );
-    const height = Math.max(
-      own.height,
-      ...placed.map((box) => box.position.y + box.height + PAD.side),
-    );
-    const size = { width, height };
+    // Растянутый руками фрейм — ровно такой, как его растянули, как в Miro: жилец может и
+    // выглядывать за край. Нерастянутый дорастает до жильцов, чтобы никто не оказался снаружи.
+    const fit = (extent: (box: Box) => number, base: number) =>
+      node.size ? base : Math.max(base, ...placed.map(extent));
+    const size = {
+      width: fit((box) => box.position.x + box.width + PAD.side, own.width),
+      height: fit((box) => box.position.y + box.height + PAD.side, own.height),
+    };
     const box: Box = {
       id: node.id,
       ...(node.parent === undefined ? {} : { parent: node.parent }),
@@ -70,8 +73,17 @@ export function layout(map: Pick<ObjectsMap, "nodes">): Box[] {
   };
 
   (children.get(undefined) ?? []).forEach((node, index) => measure(node, index));
-  // Родитель раньше детей — так библиотека холста и ждёт; порядок узлов вьюхи уже такой.
-  return map.nodes.map((node) => boxes.get(node.id)).filter((box): box is Box => box !== undefined);
+  // Родитель раньше детей — так библиотека холста и ждёт. У вьюхи порядок уже такой, а узел,
+  // только что брошенный в фрейм, может стоять раньше фрейма: без сортировки он бы моргнул.
+  const byId = new Map(map.nodes.map((node) => [node.id, node]));
+  const depth = (node: ViewNode): number => {
+    const parent = node.parent === undefined ? undefined : byId.get(node.parent);
+    return parent ? depth(parent) + 1 : 0;
+  };
+  return map.nodes
+    .toSorted((a, b) => depth(a) - depth(b))
+    .map((node) => boxes.get(node.id))
+    .filter((box): box is Box => box !== undefined);
 }
 
 /** Положение узла на холсте целиком: своя позиция плюс позиции всех групп над ним. */

@@ -54,10 +54,11 @@ function reflects(map: ObjectsMap, sent: ObjectsMap, op: MapOp): boolean {
     }
     case "set-folder":
       return node(child(parentOf(op.object), slug(op.folder))) !== undefined;
-    case "rename":
-      return node(op.object)?.label === op.label.trim();
-    case "set-expanded":
-      return node(op.object)?.expanded === op.expanded;
+    case "rename": {
+      // Подпись стрелки — имя её связи: у стрелки, склеенной из одной связи, ссылка на неё.
+      const arrow = map.relations.find((item) => item.link === op.object);
+      return (node(op.object) ?? arrow)?.label === op.label.trim();
+    }
     case "delete-object":
       return !map.nodes.some((item) => within(item.id, op.object));
     case "remove-ref":
@@ -122,29 +123,49 @@ function apply(map: ObjectsMap, op: MapOp, id: string): ObjectsMap {
           return size ? { ...item, size } : item;
         }),
       );
-    case "move-object":
-      return nodes((list) => {
-        const inGroup = list.some((item) => item.id === op.parent && item.expanded);
-        return list.map((item) => {
-          if (item.id !== op.object) return item;
-          const { parent: _old, ...rest } = item;
+    case "move-object": {
+      // Узел сразу под адресом, который даст сервер: папка переезжает к новому родителю. С
+      // прежним адресом холст смонтировал бы узел второй раз, когда придёт значение, — и он
+      // моргнул бы. Имя, занятое соседом, сервер поменяет — тогда смонтируется, но только раз.
+      const moved = child(op.parent, op.object.split("/").at(-1) ?? "");
+      const renamed = (address: string) =>
+        within(address, op.object) ? moved + address.slice(op.object.length) : address;
+      const inGroup = map.nodes.some((item) => item.id === op.parent && item.expanded);
+      return {
+        ...map,
+        nodes: map.nodes.map((item) => {
+          const next = {
+            ...item,
+            id: renamed(item.id),
+            link: renamed(item.link),
+            object: renamed(item.object),
+            ...(item.parent === undefined ? {} : { parent: renamed(item.parent) }),
+          };
+          if (item.id !== op.object) return next;
+          const { parent: _old, ...rest } = next;
           return {
             ...rest,
             ...(inGroup ? { parent: op.parent } : {}),
             ...(op.position ? { position: op.position } : {}),
           };
-        });
-      });
+        }),
+        relations: map.relations.map((arrow) => ({
+          ...arrow,
+          from: renamed(arrow.from),
+          to: renamed(arrow.to),
+        })),
+      };
+    }
     case "rename":
-      return nodes((list) =>
-        list.map((item) => (item.id === op.object ? { ...item, label: op.label } : item)),
-      );
-    case "set-expanded":
-      return nodes((list) =>
-        list
-          .filter((item) => op.expanded || item.id === op.object || !within(item.id, op.object))
-          .map((item) => (item.id === op.object ? { ...item, expanded: op.expanded } : item)),
-      );
+      return {
+        ...map,
+        nodes: map.nodes.map((item) =>
+          item.id === op.object ? { ...item, label: op.label } : item,
+        ),
+        relations: map.relations.map((item) =>
+          item.link === op.object ? { ...item, label: op.label } : item,
+        ),
+      };
     case "delete-object":
     case "remove-ref": {
       const gone = (address: string) =>
@@ -170,9 +191,10 @@ function apply(map: ObjectsMap, op: MapOp, id: string): ObjectsMap {
         ...(pick?.color === undefined ? {} : { color: pick.color }),
         ...(pick?.textColor === undefined ? {} : { textColor: pick.textColor }),
         view: "simple",
-        expandable: false,
-        expanded: false,
+        // Фрейм — рамкой сразу, и того размера, каким его нарисовали.
+        expanded: pick?.frame === true,
         ...(op.position ? { position: op.position } : {}),
+        ...(op.size ? { size: op.size } : {}),
       };
       return { ...map, nodes: [...map.nodes, node] };
     }

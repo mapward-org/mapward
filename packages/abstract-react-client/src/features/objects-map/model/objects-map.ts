@@ -23,6 +23,8 @@ import {
 import type { Draft, Editing } from "../pure-model/edit.ts";
 import { barFor, lookOf, patchFor, remember, stepField } from "../pure-model/bar.ts";
 import type { BarKey, Field, Look, Menu, Target } from "../pure-model/bar.ts";
+import { rememberedArrow, rememberStyle, withRemembered } from "../pure-model/remembered.ts";
+import type { Remembered } from "../pure-model/remembered.ts";
 
 /** Сдвиг и масштаб холста — как их помнит холст. */
 export type Viewport = { x: number; y: number; zoom: number };
@@ -88,6 +90,13 @@ export class ObjectsMapStore {
   private done: string[] = [];
   private undone: string[] = [];
   private readonly viewport: Slot<Viewport | undefined>;
+  /**
+   * Свёрнута ли рейка инструментов — когда карту смотрят, а не правят. Настройка смотрящего, а не
+   * вьюхи: одна на все холсты и переживает перезагрузку окна.
+   */
+  private readonly rail: Slot<boolean>;
+  /** Последние настройки фигур, линий и связей — как в Miro; тоже настройка смотрящего. */
+  private readonly remembered: Slot<Remembered>;
   private cached:
     | {
         map: ObjectsMap;
@@ -104,6 +113,8 @@ export class ObjectsMapStore {
     address: string,
   ) {
     this.viewport = views.slot<Viewport | undefined>(`viewport:${address}`, undefined);
+    this.rail = views.slot<boolean>("objects-map:rail-folded", false);
+    this.remembered = views.slot<Remembered>("objects-map:last-style", {});
     makeObservable<
       ObjectsMapStore,
       "done" | "undone" | "settle" | "pending" | "answer" | "expired" | "expire"
@@ -117,6 +128,7 @@ export class ObjectsMapStore {
       toggleMenu: action,
       closeMenu: action,
       toggleRailMore: action,
+      toggleRail: action,
       removeSelected: action,
       step: action,
       editSelected: action,
@@ -159,6 +171,9 @@ export class ObjectsMapStore {
       select: action,
       style: action,
       lineAt: action,
+      drawLine: action,
+      drawShape: action,
+      relate: action,
       styleArrow: action,
     });
   }
@@ -292,6 +307,16 @@ export class ObjectsMapStore {
     this.railMore = !this.railMore;
   }
 
+  get railFolded(): boolean {
+    return this.rail.value;
+  }
+
+  /** Свернуть или развернуть рейку; свёрнутая уносит с собой и список «+». */
+  toggleRail(): void {
+    this.rail.set(!this.rail.value);
+    this.railMore = false;
+  }
+
   /** Выделенное как цель панели: фигура, стрелка или объект — из картинки, с правками поверх. */
   target(map: ObjectsMap): Target | undefined {
     const chosen = this.selected;
@@ -340,6 +365,8 @@ export class ObjectsMapStore {
     if (typeof value === "string" && value.startsWith("#"))
       this.recent = remember(this.recent, value);
     const patch = patchFor(target, field, value);
+    const kind = target.kind === "shape" ? target.shape.kind : "arrow";
+    this.remembered.set(rememberStyle(this.remembered.value, kind, patch));
     if (target.kind === "shape") await this.style(patch as Partial<ViewShape>, map);
     else await this.styleArrow(patch as Partial<ArrowStyle>, map);
   }
@@ -408,10 +435,11 @@ export class ObjectsMapStore {
   get cursorHint(): string | undefined {
     switch (this.tool.kind) {
       case "object":
+        return this.tool.frame ? "тяни рамку — фрейм" : "клик по холсту — поставить";
       case "shape":
-        return "клик по холсту — поставить";
+        return "тяни — нарисовать, клик — обычного размера";
       case "line":
-        return this.lineStart ? "клик — конец линии" : "клик — начало линии";
+        return this.lineStart ? "клик — конец линии" : "тяни от начала к концу";
       case "relation":
         return "тяни от узла к узлу — связь";
       default:
@@ -504,10 +532,35 @@ export class ObjectsMapStore {
     }
     this.lineStart = undefined;
     this.tool = { kind: "select" };
-    await this.edit(
-      [{ op: "put-shape", view: map.view, shape: lineShape(shapeId(), start, end) }],
-      map,
-    );
+    await this.drawShape(lineShape(shapeId(), start, end), map);
+  }
+
+  /** Линия протянута мышью: сразу оба конца, одна операция. */
+  async drawLine(from: LineEnd, to: LineEnd, map: ObjectsMap): Promise<void> {
+    this.lineStart = undefined;
+    await this.drawShape(lineShape(shapeId(), from, to), map);
+  }
+
+  /** Новая фигура или линия — в последнем стиле своего вида; инструмент снова «выбор». */
+  async drawShape(shape: ViewShape, map: ObjectsMap): Promise<void> {
+    this.tool = { kind: "select" };
+    const dressed = withRemembered(shape, this.remembered.value);
+    await this.edit([{ op: "put-shape", view: map.view, shape: dressed }], map);
+  }
+
+  /**
+   * Новая связь — в последнем стиле связей. Стиль лежит у стрелки вьюхи, а стрелка зовётся
+   * парой видимых концов; есть уже такая — связь склеится с ней, и её стиль не трогается.
+   */
+  async relate(from: string, to: string, prototype: string, map: ObjectsMap): Promise<void> {
+    this.tool = { kind: "select" };
+    const view = map.view;
+    const ops: MapOp[] = [{ op: "create-relation", view, from, to, prototype }];
+    const arrow = `${from}→${to}`;
+    const style = rememberedArrow(this.remembered.value);
+    if (style && !map.relations.some((item) => item.id === arrow))
+      ops.push({ op: "style-arrow", view, arrow, style });
+    await this.edit(ops, map);
   }
 
   /**

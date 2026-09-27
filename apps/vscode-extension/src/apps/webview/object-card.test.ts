@@ -44,7 +44,9 @@ const card = (item: { object: string; group?: string; width?: number }) =>
 
 test("карточка — шапка с прототипом и сетка вкладки превью", () => {
   const html = card({ object: core.address, width: 280 });
-  expect(html).toContain("Пакет<!-- -->: </span>core");
+  // Имя строкой целиком, прототип — второй строкой рядом с адресом: длинный не съедает имя.
+  expect(html).toContain(">core</button>");
+  expect(html).toContain("Пакет<!-- --> · </span>");
   expect(html).toContain("директивы");
   expect(html).toContain("сетка превью: tests");
   expect(html).toContain("width:280px");

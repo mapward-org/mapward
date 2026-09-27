@@ -273,7 +273,7 @@ export function findMetric(root: MapObject, address: string): MapMetric | undefi
   return undefined;
 }
 
-/** Which object a metric belongs to — `object-children-map` reads the model, not the disk. */
+/** Which object a metric belongs to — `objects-map` reads the model, not the disk. */
 export function findMetricOwner(
   root: MapObject,
   address: string,

@@ -40,6 +40,8 @@ export const MapOp = T.Union([
     /** Группа, на которую бросили; не названа — место для новых объектов из конфига вьюхи. */
     parent: T.Optional(T.String()),
     position: T.Optional(Point),
+    /** Размер, которым объект нарисовали протяжкой, — у фрейма; нет — размер из стиля. */
+    size: T.Optional(T.Object({ width: T.Number(), height: T.Number() })),
   }),
   T.Object({
     op: T.Literal("create-relation"),
@@ -105,12 +107,6 @@ export const MapOp = T.Union([
     arrow: T.String(),
     /** Поля стиля целиком: так отмена возвращает прежний стиль, а не его кусок. */
     style: ArrowStyle,
-  }),
-  T.Object({
-    op: T.Literal("set-expanded"),
-    view: T.String(),
-    object: T.String(),
-    expanded: T.Boolean(),
   }),
   T.Object({ op: T.Literal("put-shape"), view: T.String(), shape: ViewShape }),
   T.Object({ op: T.Literal("remove-shape"), view: T.String(), id: T.String() }),
@@ -296,9 +292,6 @@ function forget(draft: Draft, address: string): void {
             positions: Object.fromEntries(Object.entries(state.positions).filter(([k]) => keep(k))),
           }
         : {}),
-      ...(state.expanded
-        ? { expanded: Object.fromEntries(Object.entries(state.expanded).filter(([k]) => keep(k))) }
-        : {}),
       ...(state.sizes
         ? { sizes: Object.fromEntries(Object.entries(state.sizes).filter(([k]) => keep(k))) }
         : {}),
@@ -374,13 +367,15 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
         op.parent !== undefined ||
         view.config.show.some((pattern) => matchesAddress(address, pattern)) ||
         view.config.prototypes.some((key) => key === prototype || key === prototypeName);
-      editState(draft, view.statePath, (state) =>
-        withPosition(
+      editState(draft, view.statePath, (state) => {
+        const placed = withPosition(
           seen ? state : { ...state, refs: [...(state.refs ?? []), address] },
           address,
           op.position,
-        ),
-      );
+        );
+        // Адрес знает только сервер — имя папки может занять сосед, — поэтому и размер пишет он.
+        return op.size ? { ...placed, sizes: { ...placed.sizes, [address]: op.size } } : placed;
+      });
       return { changes: draft.changes() };
     }
 
@@ -555,15 +550,6 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
       editState(draft, view.statePath, (state) => ({
         ...state,
         arrows: { ...state.arrows, [op.arrow]: op.style },
-      }));
-      return { changes: draft.changes() };
-    }
-
-    case "set-expanded": {
-      if (!view) return fail("Нужна вьюха");
-      editState(draft, view.statePath, (state) => ({
-        ...state,
-        expanded: { ...state.expanded, [op.object]: op.expanded },
       }));
       return { changes: draft.changes() };
     }

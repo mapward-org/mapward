@@ -169,6 +169,20 @@ test("creating on empty space goes to the configured place, with the palette's p
   expect(state.positions["mapward://systems/склад"]).toEqual({ x: 3, y: 4 });
 });
 
+test("a frame drawn by dragging is created with the size it was drawn", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "create-object",
+      view: "mapward://_metrics/canvas",
+      name: "Оплата",
+      position: { x: 0, y: 0 },
+      size: { width: 420, height: 260 },
+    }),
+  );
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.sizes["mapward://systems/оплата"]).toEqual({ width: 420, height: 260 });
+});
+
 test("a relation lands in the configured shelf with its ends in props", () => {
   const list = changes(
     planEdit(context, {

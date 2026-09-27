@@ -1,13 +1,28 @@
 import type { MapOp, PaletteItem } from "@mapward/core";
 
-/** Что ставит клик по холсту — боковая панель, как в Miro. Фигура — пометка, не объект. */
+/**
+ * Что ставит холст — боковая панель, как в Miro. Фигура — пометка, не объект. Фигуру, линию и
+ * фрейм рисуют протяжкой, карточку ставят кликом.
+ */
 export type Tool =
   | { kind: "select" }
   | { kind: "shape"; shape: "rect" | "ellipse" | "text" }
-  /** Линия: первый клик — начало, второй — конец; над узлом конец к нему прицепляется. */
+  /** Линия: тянешь от начала к концу; над узлом конец к нему прицепляется. */
   | { kind: "line" }
-  | { kind: "object"; prototype: string }
+  /** `frame` — прототип рисует фреймы: такой объект тянут рамкой, а не ставят кликом. */
+  | { kind: "object"; prototype: string; frame?: true }
   | { kind: "relation"; prototype: string };
+
+/** Инструмент кнопки палитры: у прототипа-фрейма — с пометкой, что его рисуют протяжкой. */
+export const objectTool = (item: Pick<PaletteItem, "prototype" | "frame">): Tool => ({
+  kind: "object",
+  prototype: item.prototype,
+  ...(item.frame ? { frame: true as const } : {}),
+});
+
+/** Рисуется ли инструментом протяжкой: фигура, линия, фрейм. */
+export const draws = (tool: Tool): boolean =>
+  tool.kind === "shape" || tool.kind === "line" || (tool.kind === "object" && tool.frame === true);
 
 /** Что открыто поверх холста по клику: превью объекта или список склеенных связей. */
 export type Popover =
@@ -62,7 +77,7 @@ export function toolItems(palette: {
     {
       key: "line",
       tool: { kind: "line" },
-      title: "Линия — пометка, не связь: клик в начало, клик в конец; над узлом конец цепляется",
+      title: "Линия — пометка, не связь: тяни от начала к концу; над узлом конец цепляется",
       label: "╱ линия",
     },
   ];
@@ -70,7 +85,7 @@ export function toolItems(palette: {
   for (const item of palette.objects) {
     items.push({
       key: `o:${item.prototype}`,
-      tool: { kind: "object", prototype: item.prototype },
+      tool: objectTool(item),
       title: `Новый объект прототипа «${item.label}»`,
       label: `▢ ${item.label}`,
       color: item.color,

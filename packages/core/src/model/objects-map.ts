@@ -15,6 +15,11 @@ export const VIEW_STATE = "map-state.json";
 
 export type NodeShape = "rect" | "round" | "ellipse" | "diamond" | "note";
 export type NodeView = "simple" | "preview";
+/** Линия стрелки: у связей разных прототипов она своя, чтобы их различать на глаз. */
+export type LinePattern = "solid" | "dashed" | "dotted";
+
+/** Узор линии для прототипов связей без своего: по месту в палитре, по кругу. */
+export const LINE_PATTERNS: LinePattern[] = ["solid", "dashed", "dotted"];
 
 /**
  * Как нарисовать объект. Задаётся на трёх уровнях — для всех, для прототипа, для объекта, — и
@@ -28,6 +33,8 @@ export type NodeStyle = {
   /** Поле `props`, которое идёт подписью; не задано или пусто — имя объекта. */
   label?: string;
   view?: NodeView;
+  /** У связи — её линия; цвет связи — `color`. */
+  line?: LinePattern;
   /** Вкладка и размер полного превью — как у карточки объекта. */
   group?: string;
   width?: string | number;
@@ -128,8 +135,6 @@ export type ViewShape = Static<typeof ViewShape>;
  */
 export type ViewState = {
   positions?: Record<string, Point>;
-  /** Свёрнуто или развёрнуто руками поверх конфига. */
-  expanded?: Record<string, boolean>;
   /** Ссылки на чужие объекты: удалить ссылку не значит удалить объект. */
   refs?: string[];
   shapes?: ViewShape[];
@@ -167,8 +172,10 @@ export type ViewNode = {
   group?: string;
   width?: string | number;
   maxHeight?: string | number;
-  /** Есть ли у объекта жильцы — только такой узел можно развернуть. */
-  expandable: boolean;
+  /**
+   * Группа — рамка с жильцами, как фрейм в Miro. Группой объект делает только конфиг вьюхи
+   * (`expand`): на холсте её не сворачивают, иначе размеры и позиции соседей поехали бы.
+   */
   expanded: boolean;
   position?: Point;
   /** Размер, растянутый руками; нет — размер из стиля. */
@@ -191,10 +198,22 @@ export type ViewRelation = {
   /** Точки излома, если стрелку ломали руками; нет — прямой путь. */
   bends?: Point[];
   style?: ArrowStyle;
+  /** Цвет и линия прототипа связи — по ним стрелки разных прототипов различимы. */
+  color?: string;
+  line?: LinePattern;
 };
 
 /** Кнопка боковой панели: прототип и его цвета — чтобы кнопку было видно по цвету стикера. */
-export type PaletteItem = { prototype: string; label: string; color?: string; textColor?: string };
+export type PaletteItem = {
+  prototype: string;
+  label: string;
+  color?: string;
+  textColor?: string;
+  /** Только у прототипа связи: линия, которой его стрелка рисуется. */
+  line?: LinePattern;
+  /** Объекты прототипа — фреймы (`expand`): их рисуют протяжкой, а не ставят кликом. */
+  frame?: boolean;
+};
 
 /** Канал цвета в линейную яркость — по WCAG. */
 const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
@@ -353,11 +372,34 @@ function paletteItem(root: MapObject, config: ObjectsMapConfig, address: string)
   const own = config.style.prototypes?.[address] ?? config.style.prototypes?.[label];
   const color = own?.color ?? config.style.all?.color;
   const textColor = own?.textColor ?? config.style.all?.textColor ?? readableText(color);
+  const frame = config.expand.prototypes.some((key) => key === address || key === label);
   return {
     prototype: address,
     label,
     ...(color === undefined ? {} : { color }),
     ...(textColor === undefined ? {} : { textColor }),
+    ...(frame ? { frame } : {}),
+  };
+}
+
+/**
+ * Как рисуется стрелка связи: цвет и линия — из стиля её прототипа. Стиль «для всех» сюда не
+ * идёт — он про узлы. Прототип без своей линии, стоящий в палитре, получает узор по месту в ней:
+ * две связи из палитры не выглядят одинаково, даже когда стиль им не задавали.
+ */
+function relationLook(
+  relation: MapObject,
+  config: ObjectsMapConfig,
+): { color?: string; line?: LinePattern } {
+  const own = Object.entries(config.style.prototypes ?? {})
+    .filter(([key]) => ofPrototype(relation, [key]))
+    .map(([, style]) => style);
+  const style = Object.assign({}, ...own) as NodeStyle;
+  const index = config.palette.relations.findIndex((key) => ofPrototype(relation, [key]));
+  const line = style.line ?? (index < 0 ? undefined : LINE_PATTERNS[index % LINE_PATTERNS.length]);
+  return {
+    ...(style.color === undefined ? {} : { color: style.color }),
+    ...(line === undefined ? {} : { line }),
   };
 }
 
@@ -417,7 +459,9 @@ export function objectsMap(
     const configured =
       config.expand.objects.some((pattern) => matchesAddress(object.address, pattern)) ||
       ofPrototype(object, config.expand.prototypes);
-    const expanded = inside.length > 0 && (state.expanded?.[object.address] ?? configured);
+    // Раскрытый конфигом — группа и без жильцов: ограниченный контекст ставят пустой рамкой и
+    // бросают в него стикеры. Не раскрытый — один узел, стрелки к жильцам подняты к нему (C4).
+    const expanded = configured;
     const position = state.positions?.[object.address];
     const size = state.sizes?.[object.address];
 
@@ -438,7 +482,6 @@ export function objectsMap(
       ...(style.group === undefined ? {} : { group: style.group }),
       ...(style.width === undefined ? {} : { width: style.width }),
       ...(style.maxHeight === undefined ? {} : { maxHeight: style.maxHeight }),
-      expandable: inside.length > 0,
       expanded,
       ...(position === undefined ? {} : { position }),
       ...(size === undefined ? {} : { size }),
@@ -468,6 +511,7 @@ export function objectsMap(
       delete known.link;
       continue;
     }
+    // Склеенная стрелка рисуется так, как первая из её связей.
     arrows.set(key, {
       id: key,
       from: a,
@@ -476,6 +520,7 @@ export function objectsMap(
       link: relation.address,
       count: 1,
       relations: [item],
+      ...relationLook(relation, config),
     });
   }
 
@@ -493,7 +538,12 @@ export function objectsMap(
     shapes: state.shapes ?? [],
     palette: {
       objects: config.palette.objects.map((address) => paletteItem(root, config, address)),
-      relations: config.palette.relations.map((address) => paletteItem(root, config, address)),
+      relations: config.palette.relations.map((address, index) => {
+        const item = paletteItem(root, config, address);
+        const own = config.style.prototypes?.[address] ?? config.style.prototypes?.[item.label];
+        const line = own?.line ?? LINE_PATTERNS[index % LINE_PATTERNS.length];
+        return line === undefined ? item : { ...item, line };
+      }),
     },
     canPlaceObjects: config.placeObjects !== undefined,
     canPlaceRelations: config.placeRelations !== undefined,

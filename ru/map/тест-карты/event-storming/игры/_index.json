@@ -1,0 +1,4 @@
+{
+  "name": "Игры",
+  "extends": "mapward://тест-карты/event-storming/prototypes/ограниченный-контекст"
+}

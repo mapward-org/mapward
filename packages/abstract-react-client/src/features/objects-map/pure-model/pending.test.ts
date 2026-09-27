@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { ObjectsMap, ViewNode } from "@mapward/core";
 import { overlay, pendingId, reflected } from "./pending.ts";
 import type { PendingEdit } from "./pending.ts";
-import { editOps, lineEnd, withDraft } from "./edit.ts";
+import { drawnBox, editOps, lineEnd, withDraft } from "./edit.ts";
 
 const node = (id: string, extra: Partial<ViewNode> = {}): ViewNode => ({
   id,
@@ -12,7 +12,6 @@ const node = (id: string, extra: Partial<ViewNode> = {}): ViewNode => ({
   object: id,
   shape: "rect",
   view: "simple",
-  expandable: false,
   expanded: false,
   ...extra,
 });
@@ -20,7 +19,7 @@ const node = (id: string, extra: Partial<ViewNode> = {}): ViewNode => ({
 const map: ObjectsMap = {
   view: "v",
   nodes: [
-    node("mapward://shop", { expandable: true, expanded: true }),
+    node("mapward://shop", { expanded: true }),
     node("mapward://shop/cart", { parent: "mapward://shop", position: { x: 1, y: 1 } }),
     node("mapward://bank"),
   ],
@@ -58,10 +57,14 @@ test("an object carried into a group is drawn inside it at once", () => {
       },
     ]),
   ]);
-  expect(picture.nodes.find((n) => n.id === "mapward://bank")).toMatchObject({
+  // Сразу под адресом, который даст сервер, — и стрелки ведут уже к нему: узел не моргнёт.
+  expect(picture.nodes.find((n) => n.id === "mapward://shop/bank")).toMatchObject({
     parent: "mapward://shop",
+    object: "mapward://shop/bank",
     position: { x: 3, y: 4 },
   });
+  expect(picture.nodes.some((n) => n.id === "mapward://bank")).toBe(false);
+  expect(picture.relations[0]?.to).toBe("mapward://shop/bank");
 });
 
 test("a deleted object takes its residents and arrows off the canvas", () => {
@@ -79,16 +82,14 @@ test("a created object shows under a temporary id, named, where it was dropped",
   expect(picture.nodes.at(-1)).toMatchObject({ id: pendingId(7, 0), label: "Склад" });
 });
 
-test("rename, fold and shapes apply as sent", () => {
+test("rename and shapes apply as sent", () => {
   const picture = overlay(map, [
     entry([
       { op: "rename", object: "mapward://bank", label: "Банк" },
-      { op: "set-expanded", view: "v", object: "mapward://shop", expanded: false },
       { op: "put-shape", view: "v", shape: { id: "s", kind: "rect", x: 0, y: 0, width: 300 } },
     ]),
   ]);
   expect(picture.nodes.find((n) => n.id === "mapward://bank")?.label).toBe("Банк");
-  expect(picture.nodes.some((n) => n.id === "mapward://shop/cart")).toBe(false);
   expect(picture.shapes[0]?.width).toBe(300);
 });
 
@@ -179,6 +180,30 @@ test("an arrow style is drawn at once and reflected when the whole style matches
   expect(reflected(picture, edit)).toBe(true);
 });
 
+test("a renamed relation relabels its arrow at once", () => {
+  const linked: ObjectsMap = {
+    ...map,
+    relations: [
+      {
+        id: "r",
+        from: "mapward://shop/cart",
+        to: "mapward://bank",
+        count: 1,
+        relations: [],
+        label: "зовёт",
+        link: "mapward://relations/r",
+      },
+    ],
+  };
+  const edit = entry([{ op: "rename", object: "mapward://relations/r", label: "шлёт" }], {
+    sent: linked,
+  });
+  const picture = overlay(linked, [edit]);
+  expect(picture.relations[0]?.label).toBe("шлёт");
+  expect(reflected(linked, edit)).toBe(false);
+  expect(reflected(picture, edit)).toBe(true);
+});
+
 test("a draft and a created object take the colour of their prototype from the palette", () => {
   const colored = {
     ...map,
@@ -194,4 +219,31 @@ test("a draft and a created object take the colour of their prototype from the p
     entry([{ op: "create-object", view: "v", name: "Оплачено", prototype: "p" }]),
   ]);
   expect(picture.nodes.at(-1)).toMatchObject({ color: "#ff9f43", textColor: "#1e1e1e" });
+});
+
+test("a box drawn in any direction is corner to corner; a short drag is a click", () => {
+  const fallback = { width: 160, height: 80 };
+  expect(drawnBox({ x: 100, y: 100 }, { x: 20, y: 40 }, fallback)).toEqual({
+    x: 20,
+    y: 40,
+    width: 80,
+    height: 60,
+  });
+  expect(drawnBox({ x: 5, y: 5 }, { x: 7, y: 6 }, fallback)).toEqual({ x: 5, y: 5, ...fallback });
+});
+
+test("a frame drafted by dragging is drawn as a frame of that size", () => {
+  const framed: ObjectsMap = {
+    ...map,
+    palette: {
+      objects: [{ prototype: "mapward://ctx", label: "Контекст", frame: true }],
+      relations: [],
+    },
+  };
+  const picture = withDraft(framed, {
+    prototype: "mapward://ctx",
+    position: { x: 0, y: 0 },
+    size: { width: 400, height: 240 },
+  });
+  expect(picture.nodes.at(-1)).toMatchObject({ expanded: true, size: { width: 400, height: 240 } });
 });
