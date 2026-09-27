@@ -5,7 +5,8 @@
     {
       "kind": "read-dir",
       "basePath": "${{ mapward://~#props.fullPath }}",
-      "exclude": ["**/node_modules/**", "**/dist/**"]
+      "exclude": ["**/node_modules/**", "**/dist/**"],
+      "watch": true
     }
   ],
   "transforms": [{ "kind": "git-status" }],
