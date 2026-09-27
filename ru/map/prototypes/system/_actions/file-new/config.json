@@ -1,0 +1,20 @@
+{
+  "label": "Новый файл",
+  "description": "Создать пустой файл. В имени можно написать вложенный путь — недостающие папки создадутся.",
+  "inputs": {
+    "folder": {
+      "type": "string",
+      "required": true,
+      "default": "${{ mapward://~#props.fullPath }}",
+      "description": "в какой папке"
+    },
+    "name": { "type": "string", "required": true, "description": "имя файла, можно lib/util.ts" }
+  },
+  "runners": [
+    {
+      "kind": "script",
+      "name": "создать файл",
+      "run": "node \"${{ mapward:// }}/shared-metrics/files/file-ops.mjs\" new-file \"${{ mapward://~#props.fullPath }}\""
+    }
+  ]
+}

@@ -4,6 +4,7 @@ export {
   KitActionButton,
   ObjectActionMenu,
   RowActionButtonFor,
+  RowActionMenuFor,
 } from "./compose/actions.tsx";
 export { ActionRunner } from "./adapters/action-runner.ts";
 export { ActionsStore } from "./model/actions-store.ts";

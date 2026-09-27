@@ -26,6 +26,7 @@ import {
   ObjectActionMenu,
   ProvideActions,
   RowActionButtonFor,
+  RowActionMenuFor,
 } from "../features/actions/index.ts";
 import { ObjectRuns, ProvideRuns, RunsScreen } from "../features/runs/index.ts";
 import {
@@ -125,6 +126,7 @@ export const ObjectView = observer(function ObjectView(props: {
               run: (object, action, inputs) => actions.run(object, action, inputs),
               Cell: CellActionButton,
               Row: RowActionButtonFor,
+              Menu: RowActionMenuFor,
               Button: KitActionButton,
             },
             ObjectsMap: ObjectsMapView,

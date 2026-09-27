@@ -1,4 +1,5 @@
 import { action, makeObservable, reaction, observableRef } from "mobx";
+import { confirmQuestion } from "@mapward/core";
 import type { ActionInput, MapAction, RunSource, RunStarted } from "@mapward/core";
 import {
   actionLabel,
@@ -21,7 +22,10 @@ export type LaunchRunner = {
   ): Promise<RunStarted & { failed?: string }>;
 };
 
-/** Открытая форма запуска. */
+/** Вопрос перед запуском — и то, что уйдёт серверу, если на него ответят «да». */
+type Asking = { question: string; payload: Record<string, unknown> };
+
+/** Открытая форма запуска или вопрос перед ним. */
 type Open = {
   action: MapAction;
   given: Record<string, unknown>;
@@ -30,13 +34,15 @@ type Open = {
   errors: Record<string, string>;
   failed?: string;
   sending: boolean;
+  asking?: Asking | undefined;
 };
 
 /**
  * Запуск экшона — один путь для шапки, клетки раскладки, строки дисплея и компонента
  * (решение 0038): всё обязательное заполнено и `confirm` не просили — сразу, иначе форма с
- * переданными значениями. Сервер нашёл ошибки в полях — форма открывается с ними, даже если
- * запускали без неё. Escape закрывает форму, как клик мимо неё.
+ * переданными значениями. `confirm` текстом — вопрос отдельным окном перед самым запуском,
+ * после формы, если она была. Сервер нашёл ошибки в полях — форма открывается с ними, даже если
+ * запускали без неё. Escape закрывает форму и вопрос, как клик мимо них.
  */
 export class Launcher {
   opened: Open | undefined = undefined;
@@ -49,6 +55,7 @@ export class Launcher {
       launch: action,
       change: action,
       submit: action,
+      confirm: action,
       cancel: action,
     });
   }
@@ -64,7 +71,7 @@ export class Launcher {
     };
     if (needsForm(target, given)) this.opened = state;
     // Без формы — переданное как есть: умолчания подставит сервер, он же их и проверит.
-    else void this.send(state, given);
+    else this.ask(state, given);
   }
 
   change(name: string, value: FormValue): void {
@@ -75,19 +82,48 @@ export class Launcher {
   submit(): void {
     const open = this.opened;
     if (!open) return;
+    this.ask(open, formPayload(open.action.config.inputs, open.values, open.given));
+  }
+
+  /** «Да» на вопрос перед запуском: уходит то, о чём спрашивали. */
+  confirm(): void {
+    const open = this.opened;
+    if (!open?.asking) return;
     const sending = { ...open, sending: true };
     this.opened = sending;
-    void this.send(sending, formPayload(open.action.config.inputs, open.values, open.given));
+    void this.send(sending, open.asking.payload);
   }
 
   cancel(): void {
     this.opened = undefined;
   }
 
+  /** Есть вопрос — сначала он, с подставленными данными формы; нет — запуск сразу. */
+  private ask(state: Open, payload: Record<string, unknown>): void {
+    const question = confirmQuestion(state.action.config, payload);
+    if (question !== undefined) {
+      this.opened = { ...state, errors: {}, asking: { question, payload } };
+      return;
+    }
+    const sending = { ...state, sending: true };
+    // Из формы — она ждёт ответа сервера; без формы на экране ничего не открывалось.
+    if (this.opened === state) this.opened = sending;
+    void this.send(sending, payload);
+  }
+
   // То, что форма показывает, — готовым: подпись, описание, поля, ошибки.
 
   get title(): string {
     return this.opened ? actionLabel(this.opened.action) : "";
+  }
+
+  /** Вопрос перед запуском, если его задают сейчас. */
+  get question(): string | undefined {
+    return this.opened?.asking?.question;
+  }
+
+  get sending(): boolean {
+    return this.opened?.sending === true;
   }
 
   get description(): string | undefined {
@@ -136,6 +172,8 @@ export class Launcher {
             ...state,
             errors,
             sending: false,
+            // Сервер отказал — назад к форме с ошибками, а не снова к вопросу.
+            asking: undefined,
             ...(started.failed === undefined ? {} : { failed: started.failed }),
           },
     );

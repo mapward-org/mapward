@@ -139,8 +139,11 @@ export const ActionConfig = T.Object({
   label: T.Optional(T.String()),
   description: T.Optional(T.String()),
   extends: T.Optional(T.String()),
-  /** Спросить перед запуском, даже когда форма заполнена целиком. */
-  confirm: T.Optional(T.Boolean()),
+  /**
+   * `true` — открыть форму, даже когда она заполнена целиком. Текст — вопрос в отдельном окне перед
+   * запуском, с данными формы через `${{ inputs.<имя> }}`: «Удалить ${{ inputs.path }}?».
+   */
+  confirm: T.Optional(T.Union([T.Boolean(), T.String()])),
   /** Мс на весь прогон; вышло — прогон снимается и краснеет. */
   timeout: T.Optional(T.Number()),
   /** Шаги по порядку: `script`, `prompt` или вид, которого ещё нет. */

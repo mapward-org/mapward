@@ -1,5 +1,13 @@
 import { Check } from "typebox/value";
-import { findActionOwner, findMetric, findObject, groupMetrics, MapOp, trail } from "@mapward/core";
+import {
+  confirmQuestion,
+  findActionOwner,
+  findMetric,
+  findObject,
+  groupMetrics,
+  MapOp,
+  trail,
+} from "@mapward/core";
 import type { EditResult, MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
@@ -95,7 +103,9 @@ const actionOf = (action: MapAction) => ({
   label: action.config.label ?? action.key,
   ...(action.config.description === undefined ? {} : { description: action.config.description }),
   ...(action.config.inputs === undefined ? {} : { inputs: action.config.inputs }),
-  ...(action.config.confirm ? { confirm: true } : {}),
+  // Текст вопроса — как есть, с `${{ inputs.… }}`: данные формы агент подставит сам, а
+  // run_action без `confirmed` вернёт уже заполненный вопрос.
+  ...(action.config.confirm ? { confirm: action.config.confirm } : {}),
   runners: (action.config.runners ?? []).map((runner) => String(runner.kind)),
   ...(action.config.refreshes === undefined ? {} : { refreshes: action.config.refreshes }),
   configPath: action.configPath,
@@ -513,6 +523,11 @@ const TOOLS = [
           description:
             "по умолчанию true — дождаться конца. false — вернуть номер прогона сразу, прогон идёт у сервера",
         },
+        confirmed: {
+          type: "boolean",
+          description:
+            "человек ответил «да» на вопрос экшона (поле confirm). Без него экшон с вопросом не запускается, а в ответ приходит сам вопрос",
+        },
         map: { type: "string", description: "имя карты; без него первая" },
       },
       required: ["address"],
@@ -889,13 +904,27 @@ export function serveMcp(
     }
 
     if (name === "run_action") {
+      const address = String(args.address ?? "");
+      const given =
+        typeof args.inputs === "object" && args.inputs !== null
+          ? (args.inputs as Record<string, unknown>)
+          : {};
+      // Вопрос перед запуском человек видит окном, агент — ответом: без явного «да» прогона нет.
+      if (args.confirmed !== true) {
+        const map = await freshMap(server, ref, (tree) => !!findActionOwner(tree, address));
+        const action = findActionOwner(map, address)?.action;
+        const question = action && confirmQuestion(action.config, given);
+        if (question !== undefined) {
+          return text({
+            confirm: question,
+            hint: "Экшон просит подтверждения, прогона нет. Спроси человека и, если он согласен, позови run_action снова с confirmed: true.",
+          });
+        }
+      }
       const started = await server.runAction({
         ...ref,
-        action: String(args.address ?? ""),
-        inputs:
-          typeof args.inputs === "object" && args.inputs !== null
-            ? (args.inputs as Record<string, unknown>)
-            : {},
+        action: address,
+        inputs: given,
         source: "mcp",
       });
       if (started.errors) {

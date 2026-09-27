@@ -1,0 +1,15 @@
+{
+  "label": "Удалить",
+  "description": "Удалить файл или папку со всем содержимым насовсем, без корзины.",
+  "confirm": "Удалить ${{ inputs.path }} насовсем? Корзины нет: вернуть можно только то, что уже есть в git.",
+  "inputs": {
+    "path": { "type": "string", "required": true, "description": "что удалить" }
+  },
+  "runners": [
+    {
+      "kind": "script",
+      "name": "удалить",
+      "run": "node \"${{ mapward:// }}/shared-metrics/files/file-ops.mjs\" delete \"${{ mapward://~#props.fullPath }}\""
+    }
+  ]
+}

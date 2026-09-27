@@ -76,3 +76,28 @@ export function checkInputs(
  */
 export const complete = (declared: ActionConfig["inputs"], given: Record<string, unknown>) =>
   Object.keys(checkInputs(declared, given).errors).length === 0;
+
+/**
+ * Значения формы в тексте: `${{ inputs.<имя> }}`. Подстановка карты разрешает адреса и до данных
+ * формы не достаёт — они приходят в момент запуска, а не при чтении карты. Лежит здесь, потому что
+ * тем же путём заполняется и вопрос подтверждения: его показывает клиент, а агенту — MCP.
+ */
+export function fillInputs(text: string, values: Record<string, unknown>): string {
+  return text.replaceAll(/\$\{\{\s*inputs\.([\w-]+)\s*\}\}/g, (whole, name: string) => {
+    if (!(name in values)) return whole;
+    const value = values[name];
+    return typeof value === "string" ? value : JSON.stringify(value);
+  });
+}
+
+/**
+ * Вопрос перед запуском: `confirm` текстом, с данными формы. `true` вопроса не задаёт — он лишь
+ * открывает форму, и кнопка формы сама служит подтверждением.
+ */
+export function confirmQuestion(
+  config: ActionConfig,
+  given: Record<string, unknown>,
+): string | undefined {
+  if (typeof config.confirm !== "string") return undefined;
+  return fillInputs(config.confirm, checkInputs(config.inputs, given).values);
+}

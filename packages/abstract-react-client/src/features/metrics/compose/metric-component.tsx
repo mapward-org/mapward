@@ -50,6 +50,11 @@ export const MetricComponent = observer(function MetricComponent(props: {
         onOpen: (link: string) => port.open(link),
         ...(port.openObjectTab ? { onOpenTab: port.openObjectTab } : {}),
         renderRowAction: (action) => <port.actions.Row object={props.object} action={action} />,
+        renderRowMenu: (actions, row) => (
+          <port.actions.Menu object={props.object} actions={actions}>
+            {row}
+          </port.actions.Menu>
+        ),
         renderActionButton: (action, label) => (
           <port.actions.Button object={props.object} action={action} label={label} />
         ),

@@ -9,6 +9,9 @@
       "watch": true
     }
   ],
-  "transforms": [{ "kind": "git-status" }],
+  "transforms": [
+    { "kind": "script", "run": "node \"${{ mapward:// }}/shared-metrics/files/file-actions.mjs\"" },
+    { "kind": "git-status" }
+  ],
   "display": { "kind": "tree" }
 }

@@ -11,12 +11,13 @@ import type {
 import { isCard, placeholder } from "../pure-model/display.ts";
 import type { TreeOpen } from "../pure-model/tree-open.ts";
 import { Markdown, MarkdownLine } from "../../../lib/ui/markdown.tsx";
-import type { RenderRowAction } from "../ports.tsx";
+import type { RenderRowAction, RenderRowMenu } from "../ports.tsx";
 import { DisplayNote, PlainText, StatusLine, WrongShape } from "../ui/display-parts.tsx";
 import { GitMark } from "../ui/git-mark.tsx";
 import { LinkLine, LinkListCard, LinkListFrame, LinkListItem, LinkText } from "../ui/link.tsx";
 import { StatusDot } from "../ui/status-dot.tsx";
 import { FileTree } from "./file-tree.tsx";
+import { WithRowMenu } from "./row-menu.tsx";
 
 type OpenTab = ((link: string) => void) | undefined;
 /** Карточку объекта рисует её фича, а собирает `compose` вида (решение 0042). */
@@ -44,6 +45,8 @@ export const LinkList = observer(function LinkList(props: {
   onOpenTab?: OpenTab;
   /** Кнопка экшона строки — справа, отдельно от ссылки (решение 0038). */
   renderAction?: RenderRowAction | undefined;
+  /** Меню строки — экшоны из `actions` пункта, по «⋯» и правому клику. */
+  renderMenu?: RenderRowMenu | undefined;
   /** Пункт с `object` — карточка объекта вместо строки. */
   renderObject?: RenderObject;
 }) {
@@ -66,7 +69,9 @@ export const LinkList = observer(function LinkList(props: {
               )
             }
           >
-            <Link node={item} onOpen={props.onOpen} onOpenTab={props.onOpenTab} />
+            <WithRowMenu actions={item.actions} render={props.renderMenu}>
+              <Link node={item} onOpen={props.onOpen} onOpenTab={props.onOpenTab} />
+            </WithRowMenu>
           </LinkListItem>
         ),
       )}
@@ -96,6 +101,8 @@ export const Display = observer(function Display(props: {
   renderComponent: (data: unknown) => ReactNode;
   /** Кнопка экшона строки списка и узла дерева — решение 0038. */
   renderAction?: RenderRowAction | undefined;
+  /** Меню строки списка и узла дерева. */
+  renderMenu?: RenderRowMenu | undefined;
   /**
    * Карточка объекта: пункт с `object` в списке и дереве и дисплей `object`. Нет её — пункт
    * рисуется строкой, как раньше.
@@ -126,6 +133,7 @@ export const Display = observer(function Display(props: {
           onOpen={props.onOpen}
           onOpenTab={props.onOpenTab}
           renderAction={props.renderAction}
+          renderMenu={props.renderMenu}
           renderObject={props.renderObject}
         />
       ) : data.kind === "tree" ? (
@@ -134,6 +142,7 @@ export const Display = observer(function Display(props: {
           onOpen={props.onOpen}
           onOpenTab={props.onOpenTab}
           renderAction={props.renderAction}
+          renderMenu={props.renderMenu}
           renderObject={props.renderObject}
           open={props.treeOpen}
         />

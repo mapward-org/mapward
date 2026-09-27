@@ -1,14 +1,18 @@
 import { observer } from "mobx-react-lite";
+import type { ReactNode } from "react";
 import type { ActionRef, MapAction, MapObject } from "@mapward/core";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { Floating } from "../../../lib/ui/floating.tsx";
 import { MenuStore } from "../model/menu-store.ts";
+import { RowMenuStore } from "../model/row-menu-store.ts";
 import { useActions } from "../ports.tsx";
 import { ActionButton, ActionRunning, RowActionButton } from "../ui/action-button.tsx";
 import {
   ActionFormFrame,
   CheckboxControl,
   ChoiceControl,
+  ConfirmButtons,
+  ConfirmQuestion,
   FormButtons,
   FormField,
   FormHead,
@@ -22,6 +26,9 @@ import {
   ActionMenuButton,
   ActionMenuPanel,
   ActionSearch,
+  MissingActionItem,
+  RowMenuButton,
+  RowMenuFrame,
 } from "../ui/action-menu.tsx";
 
 /** Меню всех экшонов объекта в шапке, с поиском — решение 0038. */
@@ -72,7 +79,20 @@ export const ObjectActionMenu = observer(function ObjectActionMenu(props: { obje
 export const ActionFormHost = observer(function ActionFormHost() {
   const { launcher } = useActions();
 
-  return launcher.opened ? (
+  return launcher.question !== undefined ? (
+    <ActionFormFrame onSubmit={() => launcher.confirm()} onCancel={() => launcher.cancel()}>
+      <FormHead title={launcher.title} />
+      <ConfirmQuestion text={launcher.question} />
+      {launcher.notes.map((note) => (
+        <FormNote key={note} text={note} />
+      ))}
+      <ConfirmButtons
+        label={launcher.title}
+        sending={launcher.sending}
+        onCancel={() => launcher.cancel()}
+      />
+    </ActionFormFrame>
+  ) : launcher.opened ? (
     <ActionFormFrame onSubmit={() => launcher.submit()} onCancel={() => launcher.cancel()}>
       <FormHead title={launcher.title} description={launcher.description} />
       {launcher.notes.map((note) => (
@@ -135,6 +155,55 @@ export const RowActionButtonFor = observer(function RowActionButtonFor(props: {
       counter={<ActionRunning count={actions.runningFor(props.object, props.action)} />}
       onRun={() => actions.launchRef(props.object, props.action)}
     />
+  );
+});
+
+/**
+ * Меню строки списка или узла дерева — экшоны из `actions` строки: кнопкой «⋯» и правым кликом.
+ * Запуск тем же путём, что у кнопки строки; экшона нет — ошибка своего пункта, а не строки.
+ */
+export const RowActionMenuFor = observer(function RowActionMenuFor(props: {
+  object: MapObject;
+  actions: ActionRef[];
+  children: ReactNode;
+}) {
+  const actions = useActions();
+  const menu = useLocalStore(
+    () => new RowMenuStore((ref) => actions.launchRef(props.object, ref)),
+    [props.object],
+  );
+
+  return (
+    <RowMenuFrame
+      hold={menu.popup.hold}
+      onContextMenu={(x, y) => menu.openAt(x, y)}
+      button={<RowMenuButton open={menu.popup.open} onToggle={(button) => menu.toggle(button)} />}
+    >
+      {props.children}
+      {menu.popup.open && (
+        <Floating at={menu.anchor.at} hold={menu.popup.holdLayer}>
+          <ActionMenuPanel>
+            <ActionList empty={false}>
+              {actions
+                .menuFor(props.object, props.actions)
+                .map((entry) =>
+                  entry.action ? (
+                    <ActionItem
+                      key={entry.key}
+                      action={entry.action}
+                      running={actions.running(entry.action.address)}
+                      owner={false}
+                      onSelect={() => menu.select(entry.ref)}
+                    />
+                  ) : (
+                    <MissingActionItem key={entry.key} run={entry.ref.run} />
+                  ),
+                )}
+            </ActionList>
+          </ActionMenuPanel>
+        </Floating>
+      )}
+    </RowMenuFrame>
   );
 });
 

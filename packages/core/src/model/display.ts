@@ -31,7 +31,11 @@ export type GitMark = { git?: GitLetter };
  * и `link`: упавший тест нужно и открыть, и перезапустить.
  */
 export type ActionRef = { run: string; inputs?: Record<string, unknown> };
-export type ActionMark = { action?: ActionRef };
+/**
+ * `action` — одна кнопка прямо на строке, `actions` — меню строки: по «⋯» и по правому клику.
+ * Роли не пересекаются, поэтому данные с одним `action` остаются верными как есть.
+ */
+export type ActionMark = { action?: ActionRef; actions?: ActionRef[] };
 
 /**
  * Тот же `ActionRef` в JSON-схеме компонента (решение 0037): `{ "$ref": "mapward:action" }`.
@@ -112,6 +116,8 @@ export type DisplayShape =
  * Те же формы словами — их сервер кладёт в промпт, чтобы агент не угадывал (решение 0004).
  * Текст и типы лежат рядом нарочно: разъедутся — будет видно в одном файле.
  */
+const ACTION_FIELDS =
+  '"action"?: { "run": string, "inputs"?: object } — кнопка на строке, "actions"?: [{ "run": string, "inputs"?: object }] — меню строки';
 const OBJECT_FIELDS =
   '"object"?: "mapward://… — пункт станет карточкой объекта", "group"?: string, "width"?: string | number, "maxHeight"?: string | number';
 
@@ -120,8 +126,8 @@ export const SHAPES: Record<string, string> = {
   markdown: '{ "text": string }, где text — markdown: заголовки, списки, ссылки, код, **жирный**',
   link: '{ "label"?: string, "link"?: string, "description"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string }',
   status: '{ "ok": boolean, "summary"?: string }',
-  list: `{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string, "action"?: { "run": string, "inputs"?: object }, ${OBJECT_FIELDS} }] }`,
-  tree: `{ "children": [{ "label"?: string, "description"?: string, "link"?: string, "isDir"?: boolean, "status"?: "fail" | "success" | "pending" | "idle", "action"?: { "run": string, "inputs"?: object }, ${OBJECT_FIELDS}, "children"?: [...] }] }`,
+  list: `{ "items": [{ "label"?: string, "description"?: string, "link"?: string, "status"?: "fail" | "success" | "pending" | "idle", "color"?: string, "hint"?: string, ${ACTION_FIELDS}, ${OBJECT_FIELDS} }] }`,
+  tree: `{ "children": [{ "label"?: string, "description"?: string, "link"?: string, "isDir"?: boolean, "status"?: "fail" | "success" | "pending" | "idle", ${ACTION_FIELDS}, ${OBJECT_FIELDS}, "children"?: [...] }] }`,
   map: '{ "view": string, "nodes": [{ "id": "mapward://…", "kind": "object" | "ref", "label": string, "link": string, "object": string, "parent"?: string, "shape": "rect" | "round" | "ellipse" | "diamond" | "note", "color"?: string, "view": "simple" | "preview", "expanded": boolean, "position"?: { "x": number, "y": number } }], "relations": [{ "id": string, "from": string, "to": string, "label"?: string, "link"?: string, "count": number, "relations": [{ "label": string, "link": string }] }], "shapes": [...], "palette": { "objects": [...], "relations": [...] }, "canPlaceObjects": boolean, "canPlaceRelations": boolean } — собирает коллектор objects-map, руками не пишется',
   object:
     '{ "object": "mapward://…", "group"?: string, "width"?: string | number, "maxHeight"?: string | number }',

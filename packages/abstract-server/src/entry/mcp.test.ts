@@ -92,6 +92,13 @@ const tree = {
   "/map/prototypes/tabbed/_metrics/fast/config.json": JSON.stringify({ label: "Быстро" }),
   "/map/prototypes/tabbed/_metrics/heavy/config.json": JSON.stringify({ label: "Долго" }),
   "/map/prototypes/tabbed/_metrics/forgotten/config.json": JSON.stringify({ label: "Забытая" }),
+  // Экшон с вопросом: лежит у прототипа со вкладками, чтобы не менять перечни экшонов core.
+  "/map/prototypes/tabbed/_actions/wipe/config.json": JSON.stringify({
+    label: "Стереть",
+    confirm: "Стереть ${{ inputs.path }}?",
+    inputs: { path: { required: true } },
+    runners: [{ kind: "script", run: "wipe" }],
+  }),
 };
 
 const ports: ServerPorts = {
@@ -207,6 +214,18 @@ test("run_action checks the form, then waits for the run and returns it", async 
     status: "success",
     inputs: { level: "minor" },
   });
+});
+
+test("run_action with a question runs only after confirmed: true", async () => {
+  const address = "mapward://prototypes/tabbed/_actions/wipe";
+
+  const asked = await call("run_action", { address, inputs: { path: "src/a.ts" } });
+  // Окна агент не видит — вопрос приходит ответом, и прогона нет.
+  expect(asked.confirm).toBe("Стереть src/a.ts?");
+  expect(asked.id).toBeUndefined();
+
+  const run = await call("run_action", { address, inputs: { path: "src/a.ts" }, confirmed: true });
+  expect(run).toMatchObject({ kind: "action", status: "success", inputs: { path: "src/a.ts" } });
 });
 
 test("read_index reads an action by its address, like a metric", async () => {

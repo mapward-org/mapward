@@ -86,6 +86,37 @@ export function FormButtons(props: {
   );
 }
 
+/** Вопрос перед запуском — `confirm` текстом: окно отдельное от формы, после неё. */
+export function ConfirmQuestion(props: { text: string }) {
+  return <div className="whitespace-pre-wrap break-words">{props.text}</div>;
+}
+
+/**
+ * Кнопки вопроса: запуск подписан именем экшона — «Удалить», а не «Запустить», — а фокус стоит
+ * на «Отмене»: Enter по привычке не должен ничего удалять.
+ */
+export function ConfirmButtons(props: { label: string; sending: boolean; onCancel: () => void }) {
+  return (
+    <div className="flex justify-end gap-2 pt-1">
+      <button
+        type="button"
+        autoFocus
+        onClick={props.onCancel}
+        className="rounded-sm px-2 py-0.5 opacity-80 outline-none hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100 focus:ring-1 focus:ring-[var(--mw-focusBorder,#48f)]"
+      >
+        Отмена
+      </button>
+      <button
+        type="submit"
+        disabled={props.sending}
+        className="rounded-sm bg-[var(--mw-button-background,#0e639c)] px-2 py-0.5 text-[var(--mw-button-foreground,#fff)] hover:bg-[var(--mw-button-hoverBackground,#1177bb)] disabled:opacity-50"
+      >
+        {props.label}
+      </button>
+    </div>
+  );
+}
+
 /**
  * Поле формы: подписью служит имя, как в ручном запуске Actions, подсказка — `description`
  * поля. Флажок стоит в подписи, остальное — под ней.

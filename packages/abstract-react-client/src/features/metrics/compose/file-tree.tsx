@@ -6,7 +6,8 @@ import type { TreeOpen } from "../pure-model/tree-open.ts";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { MarkdownLine } from "../../../lib/ui/markdown.tsx";
 import { TreeStore, type TreeEntry } from "../model/tree-store.ts";
-import type { RenderRowAction } from "../ports.tsx";
+import type { RenderRowAction, RenderRowMenu } from "../ports.tsx";
+import { WithRowMenu } from "./row-menu.tsx";
 import { GitMark } from "../ui/git-mark.tsx";
 import { StatusDot } from "../ui/status-dot.tsx";
 import {
@@ -25,6 +26,7 @@ type Links = {
   /** Вниз по дереву жест едет так же: объект может лежать на любой глубине. */
   onOpenTab?: ((link: string) => void) | undefined;
   renderAction?: RenderRowAction | undefined;
+  renderMenu?: RenderRowMenu | undefined;
   /** Узел с `object` — карточка объекта вместо строки; дети раскрываются под ней. */
   renderObject?: ((item: ObjectRef) => ReactNode) | undefined;
 };
@@ -41,18 +43,20 @@ const FileTreeRow = observer(function FileTreeRow(props: {
       {isCard(entry.node) && links.renderObject ? (
         <TreeCard depth={entry.depth}>{links.renderObject(entry.node)}</TreeCard>
       ) : (
-        <TreeLine
-          depth={entry.depth}
-          tab={entry.tab}
-          onClick={(mods) => tree.click(entry, mods, links)}
-          action={entry.node.action && links.renderAction?.(entry.node.action)}
-        >
-          <TreeChevron open={tree.isOpen(entry)} visible={entry.folder} />
-          <TreeIcon label={entry.label} folder={entry.folder} />
-          <TreeLabel label={entry.node.label} color={entry.color} tab={entry.tab} />
-          <GitMark mark={entry.node} folder={entry.folder} />
-          <StatusDot mark={entry.node} />
-        </TreeLine>
+        <WithRowMenu actions={entry.node.actions} render={links.renderMenu}>
+          <TreeLine
+            depth={entry.depth}
+            tab={entry.tab}
+            onClick={(mods) => tree.click(entry, mods, links)}
+            action={entry.node.action && links.renderAction?.(entry.node.action)}
+          >
+            <TreeChevron open={tree.isOpen(entry)} visible={entry.folder} />
+            <TreeIcon label={entry.label} folder={entry.folder} />
+            <TreeLabel label={entry.node.label} color={entry.color} tab={entry.tab} />
+            <GitMark mark={entry.node} folder={entry.folder} />
+            <StatusDot mark={entry.node} />
+          </TreeLine>
+        </WithRowMenu>
       )}
       {entry.node.description && (
         <TreeDescription depth={entry.depth}>
@@ -80,6 +84,7 @@ export const FileTree = observer(function FileTree(props: {
   onOpen: (link: string) => void;
   onOpenTab?: ((link: string) => void) | undefined;
   renderAction?: RenderRowAction | undefined;
+  renderMenu?: RenderRowMenu | undefined;
   renderObject?: ((item: ObjectRef) => ReactNode) | undefined;
   /** Раскрытие, которое переживает уход с объекта и перезагрузку окна; без него — до ухода. */
   open?: TreeOpen | undefined;

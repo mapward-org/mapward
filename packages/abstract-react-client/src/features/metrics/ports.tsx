@@ -27,6 +27,8 @@ export type MetricsActions = {
   Cell: ComponentType<{ action: MapAction }>;
   /** Кнопка экшона на строке списка и узле дерева. */
   Row: ComponentType<{ object: MapObject; action: ActionRef }>;
+  /** Меню строки — экшоны из `actions` строки; строку оно оборачивает, ловя правый клик. */
+  Menu: ComponentType<{ object: MapObject; actions: ActionRef[]; children: ReactNode }>;
   /** `ActionButton` набора `@mapward/display`. */
   Button: ComponentType<{ object: MapObject; action: ActionRef; label?: string | undefined }>;
 };
@@ -70,6 +72,9 @@ export function useMetricsPort(): MetricsPort {
  */
 export type RenderRowAction = (action: ActionRef) => ReactNode;
 
+/** Меню строки: строка отдаёт себя и свои `actions`, меню оборачивает её. */
+export type RenderRowMenu = (actions: ActionRef[], row: ReactNode) => ReactNode;
+
 /**
  * Набор `@mapward/display` — решение 0037: ссылки открываются так же, как везде на карте, —
  * куда, говорит ячейка через контекст. Экшоны едут тем же контекстом (0038): кнопку строки и
@@ -79,6 +84,7 @@ export type KitLinks = {
   onOpen: (link: string) => void;
   onOpenTab?: ((link: string) => void) | undefined;
   renderRowAction?: RenderRowAction | undefined;
+  renderRowMenu?: RenderRowMenu | undefined;
   renderActionButton?: ((action: ActionRef, label?: string) => ReactNode) | undefined;
   /** Раскрытие дерева по его `id`: запоминает сетка, автору компонента передавать нечего. */
   treeOpen?: ((id: string) => TreeOpen) | undefined;

@@ -102,6 +102,11 @@ export const MetricGrid = observer(function MetricGrid(props: {
             onOpenTab={port.openObjectTab}
             renderMap={(map) => <port.ObjectsMap map={map} address={cell.metric.address} />}
             renderAction={(action) => <port.actions.Row object={props.object} action={action} />}
+            renderMenu={(actions, row) => (
+              <port.actions.Menu object={props.object} actions={actions}>
+                {row}
+              </port.actions.Menu>
+            )}
             renderObject={(item) => <port.Card item={item} />}
             treeOpen={cell.tree}
             renderComponent={(data) => (

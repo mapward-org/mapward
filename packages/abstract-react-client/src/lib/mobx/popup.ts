@@ -117,11 +117,16 @@ export class Anchor {
   at = { top: 0, right: 0 };
 
   constructor() {
-    makeObservable(this, { at: observableRef, measure: action });
+    makeObservable(this, { at: observableRef, measure: action, point: action });
   }
 
   measure(element: HTMLElement): void {
     const rect = element.getBoundingClientRect();
     this.at = { top: rect.bottom + 2, right: window.innerWidth - rect.right };
+  }
+
+  /** Меню по правому клику встаёт там, где курсор, а не под кнопкой. */
+  point(x: number, y: number): void {
+    this.at = { top: y, right: window.innerWidth - x };
   }
 }

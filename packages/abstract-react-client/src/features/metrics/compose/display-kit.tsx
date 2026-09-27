@@ -48,6 +48,7 @@ const List = observer(function List(props: { items: LinkItem[]; empty?: string }
       onOpen={kit.onOpen}
       onOpenTab={kit.onOpenTab}
       renderAction={kit.renderRowAction}
+      renderMenu={kit.renderRowMenu}
     />
   );
 });
@@ -61,6 +62,7 @@ const FileTree = observer(function FileTree(props: { items: TreeItem[]; id?: str
       onOpen={kit.onOpen}
       onOpenTab={kit.onOpenTab}
       renderAction={kit.renderRowAction}
+      renderMenu={kit.renderRowMenu}
       open={kit.treeOpen?.(props.id ?? DEFAULT_TREE)}
     />
   );

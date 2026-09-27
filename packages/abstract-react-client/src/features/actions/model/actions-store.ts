@@ -18,6 +18,9 @@ export type ButtonView = {
   missing?: string;
 };
 
+/** Пункт меню строки: ссылка из данных и экшон, если он есть. */
+export type RowMenuEntry = { key: string; ref: ActionRef; action?: MapAction };
+
 const described = (action: MapAction | undefined) =>
   action?.config.description === undefined ? {} : { description: action.config.description };
 
@@ -74,6 +77,17 @@ export class ActionsStore {
     const action = this.resolve(object, ref.run);
     if (!action) return { label: label ?? ref.run, missing: ref.run };
     return { ...this.button(action), ...(label === undefined ? {} : { label }) };
+  }
+
+  /**
+   * Пункты меню строки: экшон, если нашёлся, и ключ пункта. Ненайденный остаётся пунктом —
+   * ошибкой этого пункта, а не всей строки.
+   */
+  menuFor(object: MapObject, refs: ActionRef[]): RowMenuEntry[] {
+    return refs.map((ref, index) => {
+      const action = this.resolve(object, ref.run);
+      return { key: `${index}:${ref.run}`, ref, ...(action ? { action } : {}) };
+    });
   }
 
   /** Сколько прогонов идёт у экшона, названного строкой: не нашёлся — ни одного. */

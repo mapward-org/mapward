@@ -1,0 +1,16 @@
+{
+  "label": "Переименовать",
+  "description": "Переименовать файл или папку на месте, внутри папки объекта. Поверх существующего не пишет.",
+  "confirm": true,
+  "inputs": {
+    "path": { "type": "string", "required": true, "description": "что переименовать" },
+    "name": { "type": "string", "required": true, "description": "новое имя, без папок" }
+  },
+  "runners": [
+    {
+      "kind": "script",
+      "name": "переименовать",
+      "run": "node \"${{ mapward:// }}/shared-metrics/files/file-ops.mjs\" rename \"${{ mapward://~#props.fullPath }}\""
+    }
+  ]
+}

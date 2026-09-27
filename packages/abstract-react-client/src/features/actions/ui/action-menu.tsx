@@ -73,10 +73,64 @@ export function ActionList(props: { empty: boolean; children: ReactNode }) {
   );
 }
 
+/**
+ * Строка с меню экшонов: правый клик по ней открывает меню у курсора, «⋯» появляется при
+ * наведении. Сама строка остаётся как была — клик по имени по-прежнему открывает ссылку.
+ */
+export function RowMenuFrame(props: {
+  hold: (element: HTMLElement | null) => void;
+  onContextMenu: (x: number, y: number) => void;
+  button: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      ref={props.hold}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        props.onContextMenu(event.clientX, event.clientY);
+      }}
+      className="group/menu flex min-w-0 items-center"
+    >
+      <div className="min-w-0 flex-1">{props.children}</div>
+      {props.button}
+    </div>
+  );
+}
+
+export function RowMenuButton(props: { open: boolean; onToggle: (button: HTMLElement) => void }) {
+  return (
+    <button
+      type="button"
+      title="Экшоны строки"
+      onClick={(event) => props.onToggle(event.currentTarget)}
+      className={`shrink-0 rounded-sm px-1 leading-none hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100 ${
+        props.open ? "opacity-100" : "opacity-0 group-hover/menu:opacity-60"
+      }`}
+    >
+      ⋯
+    </button>
+  );
+}
+
+/** Строка назвала экшон, которого нет: пункт остаётся и говорит об этом, а не пропадает. */
+export function MissingActionItem(props: { run: string }) {
+  return (
+    <li
+      className="px-3 py-0.5 text-[var(--mw-errorForeground,#f85149)]"
+      title="экшона с таким ключом или адресом нет"
+    >
+      нет экшона {props.run}
+    </li>
+  );
+}
+
 export function ActionItem(props: {
   action: MapAction;
   running: number;
   onSelect: (action: MapAction) => void;
+  /** Откуда экшон — в шапке, где их много от прототипа; в меню строки это шум. */
+  owner?: boolean;
 }) {
   const { action, running } = props;
   return (
@@ -90,7 +144,7 @@ export function ActionItem(props: {
         <span className="truncate">{actionLabel(action)}</span>
         {running > 0 && <span className="shrink-0 animate-pulse text-[11px]">…{running}</span>}
         {/* Откуда экшон: от прототипа их много, и одноимённые различаются этим. */}
-        {action.owner && (
+        {action.owner && props.owner !== false && (
           <span className="ml-auto shrink-0 text-[11px] opacity-60">
             {action.owner.replace("mapward://", "")}
           </span>
