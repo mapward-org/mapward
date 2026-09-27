@@ -1,0 +1,4 @@
+{
+  "name": "Агрегат",
+  "extends": "mapward://prototypes/base"
+}

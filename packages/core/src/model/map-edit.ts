@@ -1,7 +1,7 @@
 import * as T from "typebox";
 import type { Static } from "typebox";
 import { childAddress, MAP_ROOT } from "./address.ts";
-import { findMetricOwner, findObject } from "./model.ts";
+import { findMetricOwner, findObject, trail } from "./model.ts";
 import type { MapObject } from "./model.ts";
 import {
   isRelation,
@@ -13,6 +13,8 @@ import {
   styleOf,
   VIEW_STATE,
   viewSpec,
+  ArrowStyle,
+  ViewShape,
   within,
 } from "./objects-map.ts";
 import type { ObjectsMapConfig, ViewState } from "./objects-map.ts";
@@ -26,17 +28,6 @@ import { basename, join } from "../lib/path.ts";
  */
 
 const Point = T.Object({ x: T.Number(), y: T.Number() });
-
-const Shape = T.Object({
-  id: T.String(),
-  kind: T.Union([T.Literal("rect"), T.Literal("ellipse"), T.Literal("text")]),
-  x: T.Number(),
-  y: T.Number(),
-  width: T.Optional(T.Number()),
-  height: T.Optional(T.Number()),
-  text: T.Optional(T.String()),
-  color: T.Optional(T.String()),
-});
 
 /** Операции холста — они же операции агента через MCP, с теми же аргументами. */
 export const MapOp = T.Union([
@@ -73,6 +64,13 @@ export const MapOp = T.Union([
     /** Вьюха, чья подпись правится: у неё подписью может быть поле `props`, а не имя. */
     view: T.Optional(T.String()),
   }),
+  T.Object({
+    op: T.Literal("set-folder"),
+    object: T.String(),
+    /** Новое имя папки, то есть последний шаг адреса; приводится к виду имени папки. */
+    folder: T.String(),
+    view: T.Optional(T.String()),
+  }),
   T.Object({ op: T.Literal("delete-object"), object: T.String() }),
   T.Object({
     op: T.Literal("add-ref"),
@@ -87,12 +85,34 @@ export const MapOp = T.Union([
     positions: T.Record(T.String(), Point),
   }),
   T.Object({
+    op: T.Literal("resize-nodes"),
+    view: T.String(),
+    sizes: T.Record(
+      T.String(),
+      T.Object({ width: T.Number(), height: T.Number(), scale: T.Optional(T.Number()) }),
+    ),
+  }),
+  T.Object({
+    op: T.Literal("set-bends"),
+    view: T.String(),
+    /** `id` стрелки из значения вьюхи; пустой список выпрямляет её. */
+    arrow: T.String(),
+    bends: T.Array(Point),
+  }),
+  T.Object({
+    op: T.Literal("style-arrow"),
+    view: T.String(),
+    arrow: T.String(),
+    /** Поля стиля целиком: так отмена возвращает прежний стиль, а не его кусок. */
+    style: ArrowStyle,
+  }),
+  T.Object({
     op: T.Literal("set-expanded"),
     view: T.String(),
     object: T.String(),
     expanded: T.Boolean(),
   }),
-  T.Object({ op: T.Literal("put-shape"), view: T.String(), shape: Shape }),
+  T.Object({ op: T.Literal("put-shape"), view: T.String(), shape: ViewShape }),
   T.Object({ op: T.Literal("remove-shape"), view: T.String(), id: T.String() }),
 ]);
 export type MapOp = Static<typeof MapOp>;
@@ -279,6 +299,9 @@ function forget(draft: Draft, address: string): void {
       ...(state.expanded
         ? { expanded: Object.fromEntries(Object.entries(state.expanded).filter(([k]) => keep(k))) }
         : {}),
+      ...(state.sizes
+        ? { sizes: Object.fromEntries(Object.entries(state.sizes).filter(([k]) => keep(k))) }
+        : {}),
     }));
   }
 }
@@ -288,6 +311,31 @@ function nameOf(root: MapObject, address: string | undefined): string | undefine
 }
 
 const fail = (error: string): EditPlan => ({ error });
+
+/**
+ * Перенос папки под нового родителя и, может быть, под новым именем — общее у переноса и смены
+ * адреса. Переписывает адрес объекта и его потомков во всех файлах контекста; тексты директив в
+ * контекст не входят и не трогаются (решение 0044). Отдаёт новый адрес или отказ.
+ */
+function relocate(
+  draft: Draft,
+  object: MapObject,
+  parent: MapObject,
+  folder: string,
+): string | EditPlan {
+  const address = childAddress(parent.address, folder);
+  if (address === object.address) return address;
+  if (parent.children.some((child) => child !== object && basename(child.path) === folder)) {
+    return fail(`В ${parent.name} уже есть ${folder}`);
+  }
+  draft.move(object.path, join(parent.path, folder));
+  for (const path of draft.paths()) {
+    const text = draft.read(path) ?? "";
+    const next = replaceAddress(text, object.address, address);
+    if (next !== text) draft.write(path, next);
+  }
+  return address;
+}
 
 /** Одна операция — полный список правок или отказ с причиной. */
 export function planEdit(context: EditContext, op: MapOp): EditPlan {
@@ -371,19 +419,9 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
       if (within(parent.address, object.address)) {
         return fail("Объект нельзя перенести внутрь самого себя");
       }
-      const folder = basename(object.path);
-      const address = childAddress(parent.address, folder);
-      if (address !== object.address) {
-        if (parent.children.some((child) => basename(child.path) === folder)) {
-          return fail(`В ${parent.name} уже есть ${folder}`);
-        }
-        draft.move(object.path, join(parent.path, folder));
-        for (const path of draft.paths()) {
-          const text = draft.read(path) ?? "";
-          const next = replaceAddress(text, object.address, address);
-          if (next !== text) draft.write(path, next);
-        }
-      }
+      const moved = relocate(draft, object, parent, basename(object.path));
+      if (typeof moved !== "string") return moved;
+      const address = moved;
       if (view) {
         // Вынесенный на холст, но вьюхой не выбранный, пропал бы с неё сразу после переноса:
         // такой встаёт ссылкой. В видимую развёрнутую группу он попадает жильцом и так.
@@ -409,6 +447,18 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
         );
       }
       return { changes: draft.changes() };
+    }
+
+    case "set-folder": {
+      const object = findObject(root, op.object);
+      if (!object || object.address === MAP_ROOT || object.isGroup) {
+        return fail(`Нет объекта ${op.object}`);
+      }
+      const chain = trail(root, object.address);
+      const parent = chain.at(-2);
+      if (!parent) return fail(`Нет родителя у ${op.object}`);
+      const moved = relocate(draft, object, parent, slug(op.folder));
+      return typeof moved === "string" ? { changes: draft.changes() } : moved;
     }
 
     case "rename": {
@@ -476,6 +526,35 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
       editState(draft, view.statePath, (state) => ({
         ...state,
         positions: { ...state.positions, ...op.positions },
+      }));
+      return { changes: draft.changes() };
+    }
+
+    case "resize-nodes": {
+      if (!view) return fail("Нужна вьюха");
+      editState(draft, view.statePath, (state) => ({
+        ...state,
+        sizes: { ...state.sizes, ...op.sizes },
+      }));
+      return { changes: draft.changes() };
+    }
+
+    case "set-bends": {
+      if (!view) return fail("Нужна вьюха");
+      editState(draft, view.statePath, (state) => {
+        const bends = { ...state.bends };
+        if (op.bends.length === 0) delete bends[op.arrow];
+        else bends[op.arrow] = op.bends;
+        return { ...state, bends };
+      });
+      return { changes: draft.changes() };
+    }
+
+    case "style-arrow": {
+      if (!view) return fail("Нужна вьюха");
+      editState(draft, view.statePath, (state) => ({
+        ...state,
+        arrows: { ...state.arrows, [op.arrow]: op.style },
       }));
       return { changes: draft.changes() };
     }

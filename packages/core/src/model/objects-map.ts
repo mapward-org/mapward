@@ -1,3 +1,5 @@
+import * as T from "typebox";
+import type { Static } from "typebox";
 import type { MapObject } from "./model.ts";
 
 /**
@@ -21,6 +23,8 @@ export type NodeView = "simple" | "preview";
 export type NodeStyle = {
   shape?: NodeShape;
   color?: string;
+  /** Цвет подписи; не задан — тёмный или светлый, смотря по цвету карточки. */
+  textColor?: string;
   /** Поле `props`, которое идёт подписью; не задано или пусто — имя объекта. */
   label?: string;
   view?: NodeView;
@@ -54,17 +58,69 @@ export type ObjectsMapConfig = {
 
 export type Point = { x: number; y: number };
 
-/** Фигура — пометка на холсте, не объект карты: ни папки, ни метрик. */
-export type ViewShape = {
-  id: string;
-  kind: "rect" | "ellipse" | "text";
-  x: number;
-  y: number;
-  width?: number;
-  height?: number;
-  text?: string;
-  color?: string;
-};
+/** Как стрелка идёт через изломы: ломаной, скруглённо или прямыми углами. */
+export const Route = T.Union([
+  T.Literal("straight"),
+  T.Literal("rounded"),
+  T.Literal("orthogonal"),
+]);
+export type Route = Static<typeof Route>;
+
+const Anchor = T.Object({ x: T.Number(), y: T.Number() });
+
+/** Стиль стрелки-связи на этой вьюхе: толщина, цвет, подпись и путь. */
+export const ArrowStyle = T.Object({
+  stroke: T.Optional(T.String()),
+  strokeWidth: T.Optional(T.Number()),
+  textColor: T.Optional(T.String()),
+  fontSize: T.Optional(T.Number()),
+  route: T.Optional(Route),
+  /**
+   * Где конец цепляется за объект: точка в долях его рамки, `{ x: 1, y: 0.5 }` — середина
+   * правого края. Не задана — конец плавающий и выходит из ближайшей к другому концу точки.
+   */
+  fromAnchor: T.Optional(Anchor),
+  toAnchor: T.Optional(Anchor),
+});
+export type ArrowStyle = Static<typeof ArrowStyle>;
+
+/**
+ * Конец линии — точка на холсте или узел и фигура, к которым линия прицеплена и за которыми
+ * едет. Прицепленный конец, чей узел исчез с холста, линия не рисует.
+ */
+export const LineEnd = T.Union([
+  T.Object({ x: T.Number(), y: T.Number() }),
+  T.Object({ node: T.String() }),
+]);
+export type LineEnd = Static<typeof LineEnd>;
+
+/**
+ * Фигура — пометка на холсте, не объект карты: ни папки, ни метрик. Линия — тоже пометка, а не
+ * связь: связь ставится стрелкой из палитры и заводит объект.
+ */
+export const ViewShape = T.Object({
+  id: T.String(),
+  kind: T.Union([T.Literal("rect"), T.Literal("ellipse"), T.Literal("text"), T.Literal("line")]),
+  x: T.Number(),
+  y: T.Number(),
+  width: T.Optional(T.Number()),
+  height: T.Optional(T.Number()),
+  text: T.Optional(T.String()),
+  /** Заливка. Старое имя поля — файлы вьюх, написанные до стиля, читаются как раньше. */
+  color: T.Optional(T.String()),
+  stroke: T.Optional(T.String()),
+  textColor: T.Optional(T.String()),
+  fontSize: T.Optional(T.Number()),
+  /** Только у линии: её концы и стрелки на них. */
+  from: T.Optional(LineEnd),
+  to: T.Optional(LineEnd),
+  arrow: T.Optional(T.Union([T.Literal("none"), T.Literal("end"), T.Literal("both")])),
+  /** Толщина обводки или линии, в пикселях. */
+  strokeWidth: T.Optional(T.Number()),
+  /** Только у линии: как идёт путь через изломы. */
+  route: T.Optional(Route),
+});
+export type ViewShape = Static<typeof ViewShape>;
 
 /**
  * То, что меняется на холсте. Позиция узла внутри группы — относительно группы, поэтому группа
@@ -77,7 +133,22 @@ export type ViewState = {
   /** Ссылки на чужие объекты: удалить ссылку не значит удалить объект. */
   refs?: string[];
   shapes?: ViewShape[];
+  /**
+   * Размер узла, растянутого руками, — у полного превью: карточка с метриками бывает нужна
+   * крупнее, чем задал стиль. Перекрывает `width` и `maxHeight` стиля у этого узла.
+   */
+  sizes?: Record<string, Size>;
+  /** Изломы стрелки: точки, через которые она идёт, по `id` стрелки на этой вьюхе. */
+  bends?: Record<string, Point[]>;
+  /** Стиль стрелок по их `id`: связь на разных вьюхах рисуется по-разному. */
+  arrows?: Record<string, ArrowStyle>;
 };
+
+/**
+ * Размер узла на холсте. `scale` — масштаб содержимого: растяжение даёт карточке больше места,
+ * а масштаб увеличивает или уменьшает её целиком, вместе с текстом и метриками.
+ */
+export type Size = { width: number; height: number; scale?: number };
 
 export type ViewNode = {
   id: string;
@@ -91,6 +162,7 @@ export type ViewNode = {
   parent?: string;
   shape: NodeShape;
   color?: string;
+  textColor?: string;
   view: NodeView;
   group?: string;
   width?: string | number;
@@ -99,6 +171,8 @@ export type ViewNode = {
   expandable: boolean;
   expanded: boolean;
   position?: Point;
+  /** Размер, растянутый руками; нет — размер из стиля. */
+  size?: Size;
 };
 
 /**
@@ -114,9 +188,29 @@ export type ViewRelation = {
   link?: string;
   count: number;
   relations: { label: string; link: string }[];
+  /** Точки излома, если стрелку ломали руками; нет — прямой путь. */
+  bends?: Point[];
+  style?: ArrowStyle;
 };
 
-export type PaletteItem = { prototype: string; label: string };
+/** Кнопка боковой панели: прототип и его цвета — чтобы кнопку было видно по цвету стикера. */
+export type PaletteItem = { prototype: string; label: string; color?: string; textColor?: string };
+
+/** Канал цвета в линейную яркость — по WCAG. */
+const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
+/**
+ * Подпись, читаемая на карточке: тёмная на светлом и светлая на тёмном. Понимает `#rgb` и
+ * `#rrggbb`; остальное (имена, переменные темы) — не знает, и цвет подписи остаётся за темой.
+ */
+export function readableText(color: string | undefined): string | undefined {
+  const hex = color?.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+  if (!hex) return undefined;
+  const full = hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex;
+  const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(full.slice(at, at + 2), 16) / 255);
+  const luminance = 0.2126 * lin(r ?? 0) + 0.7152 * lin(g ?? 0) + 0.0722 * lin(b ?? 0);
+  return luminance > 0.4 ? "#1f1f1f" : "#ffffff";
+}
 
 /** Значение метрики `objects-map` — данные дисплея `map`. */
 export type ObjectsMap = {
@@ -251,12 +345,20 @@ export function labelOf(object: MapObject, style: NodeStyle): string {
   return typeof field === "string" && field !== "" ? field : object.name;
 }
 
-function paletteItem(root: MapObject, address: string): PaletteItem {
+function paletteItem(root: MapObject, config: ObjectsMapConfig, address: string): PaletteItem {
   let label = address;
   walk(root, (object) => {
     if (object.address === address) label = object.name;
   });
-  return { prototype: address, label };
+  const own = config.style.prototypes?.[address] ?? config.style.prototypes?.[label];
+  const color = own?.color ?? config.style.all?.color;
+  const textColor = own?.textColor ?? config.style.all?.textColor ?? readableText(color);
+  return {
+    prototype: address,
+    label,
+    ...(color === undefined ? {} : { color }),
+    ...(textColor === undefined ? {} : { textColor }),
+  };
 }
 
 /**
@@ -317,6 +419,7 @@ export function objectsMap(
       ofPrototype(object, config.expand.prototypes);
     const expanded = inside.length > 0 && (state.expanded?.[object.address] ?? configured);
     const position = state.positions?.[object.address];
+    const size = state.sizes?.[object.address];
 
     nodes.push({
       id: object.address,
@@ -328,6 +431,9 @@ export function objectsMap(
       ...(parent === undefined ? {} : { parent }),
       shape: style.shape ?? "rect",
       ...(style.color === undefined ? {} : { color: style.color }),
+      ...((style.textColor ?? readableText(style.color)) === undefined
+        ? {}
+        : { textColor: style.textColor ?? readableText(style.color) }),
       view: style.view ?? "simple",
       ...(style.group === undefined ? {} : { group: style.group }),
       ...(style.width === undefined ? {} : { width: style.width }),
@@ -335,6 +441,7 @@ export function objectsMap(
       expandable: inside.length > 0,
       expanded,
       ...(position === undefined ? {} : { position }),
+      ...(size === undefined ? {} : { size }),
     });
     if (expanded) for (const child of inside) place(child, "object", object.address);
   };
@@ -372,14 +479,21 @@ export function objectsMap(
     });
   }
 
+  for (const arrow of arrows.values()) {
+    const bends = state.bends?.[arrow.id];
+    if (bends && bends.length > 0) arrow.bends = bends;
+    const style = state.arrows?.[arrow.id];
+    if (style) arrow.style = style;
+  }
+
   return {
     view,
     nodes,
     relations: [...arrows.values()],
     shapes: state.shapes ?? [],
     palette: {
-      objects: config.palette.objects.map((address) => paletteItem(root, address)),
-      relations: config.palette.relations.map((address) => paletteItem(root, address)),
+      objects: config.palette.objects.map((address) => paletteItem(root, config, address)),
+      relations: config.palette.relations.map((address) => paletteItem(root, config, address)),
     },
     canPlaceObjects: config.placeObjects !== undefined,
     canPlaceRelations: config.placeRelations !== undefined,

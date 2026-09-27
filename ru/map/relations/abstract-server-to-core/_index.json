@@ -1,5 +1,6 @@
 {
   "name": "использует",
+  "extends": "mapward://prototypes/relation",
   "props": {
     "from": "mapward://packages/abstract-server",
     "to": "mapward://packages/core"

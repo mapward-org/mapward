@@ -1,0 +1,4 @@
+{
+  "name": "Оформить заказ",
+  "extends": "mapward://тест-карты/event-storming/prototypes/команда"
+}

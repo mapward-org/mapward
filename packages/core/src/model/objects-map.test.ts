@@ -172,3 +172,30 @@ test("an arrow whose end is off the canvas is not drawn", () => {
   const value = objectsMap(map, "v", config({ show: ["systems/shop"] }), {});
   expect(value.relations).toHaveLength(0);
 });
+
+test("hand sizes and bends from the state reach the nodes and arrows", () => {
+  const value = objectsMap(map, "v", config({ show: ["systems/*"] }), {
+    sizes: { "mapward://systems/shop": { width: 500, height: 320 } },
+    bends: { "mapward://systems/shop→mapward://systems/bank": [{ x: 3, y: 4 }] },
+  });
+  expect(value.nodes.find((node) => node.id === "mapward://systems/shop")?.size).toEqual({
+    width: 500,
+    height: 320,
+  });
+  expect(value.relations[0]?.bends).toEqual([{ x: 3, y: 4 }]);
+});
+
+test("a label reads on its card, and a palette button wears its prototype's colour", () => {
+  const value = objectsMap(
+    map,
+    "v",
+    config({
+      prototypes: ["Сервис"],
+      style: { prototypes: { "mapward://prototypes/service": { color: "#ff9f43" } } },
+      palette: { objects: ["mapward://prototypes/service"] },
+    }),
+    {},
+  );
+  expect(value.nodes[0]?.textColor).toBe("#1f1f1f");
+  expect(value.palette.objects[0]).toMatchObject({ color: "#ff9f43", textColor: "#1f1f1f" });
+});

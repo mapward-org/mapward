@@ -1,0 +1,37 @@
+{
+  "positions": {
+    "mapward://тест-карты/event-storming/покупатель": {
+      "x": 183.84882278852467,
+      "y": -247.99345976666748
+    },
+    "mapward://тест-карты/event-storming/оформить-заказ": {
+      "x": 391.945021171517,
+      "y": -245.90099942926605
+    },
+    "mapward://тест-карты/event-storming/заказ": {
+      "x": 463.9683688705038,
+      "y": -104.86886738203226
+    },
+    "mapward://тест-карты/event-storming/заказ-создан": {
+      "x": 784.1560263037553,
+      "y": -104.12782327735238
+    }
+  },
+  "sizes": {
+    "mapward://тест-карты/event-storming/заказ": {
+      "width": 141,
+      "height": 49,
+      "scale": 0.921
+    },
+    "mapward://тест-карты/event-storming/покупатель": {
+      "width": 98,
+      "height": 48
+    }
+  },
+  "bends": {},
+  "arrows": {
+    "mapward://тест-карты/event-storming/заказ→mapward://тест-карты/event-storming/заказ-оформлен": {
+      "route": "orthogonal"
+    }
+  }
+}

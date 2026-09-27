@@ -23,6 +23,8 @@ const pixels = (size: string | number | undefined, fallback: number): number => 
 };
 
 function ownSize(node: ViewNode): { width: number; height: number } {
+  // Растянутое руками перекрывает стиль вьюхи.
+  if (node.size) return node.size;
   return node.view === "preview"
     ? { width: pixels(node.width, PREVIEW.width), height: pixels(node.maxHeight, PREVIEW.height) }
     : SIMPLE;

@@ -2,7 +2,7 @@
   "label": "Дети",
   "refresh": "on-display",
   "collectors": [
-    { "kind": "objects-map", "show": ["apps/*", "packages/*"] }
+    { "kind": "objects-map", "show": ["apps/*", "packages/*", "тест-карты/*"] }
   ],
   "transforms": [
     { "kind": "script", "run": "node \"${{ mapward:// }}/_metrics/children-list/list.mjs\"" }

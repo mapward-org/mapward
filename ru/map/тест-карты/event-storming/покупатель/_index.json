@@ -1,0 +1,4 @@
+{
+  "name": "Покупатель",
+  "extends": "mapward://тест-карты/event-storming/prototypes/актор"
+}

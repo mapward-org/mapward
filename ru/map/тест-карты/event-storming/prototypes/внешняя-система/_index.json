@@ -1,0 +1,4 @@
+{
+  "name": "Внешняя система",
+  "extends": "mapward://prototypes/base"
+}

@@ -1,0 +1,4 @@
+{
+  "name": "Политика",
+  "extends": "mapward://prototypes/base"
+}

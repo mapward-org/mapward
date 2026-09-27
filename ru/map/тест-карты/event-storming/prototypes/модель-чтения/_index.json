@@ -1,0 +1,4 @@
+{
+  "name": "Модель чтения",
+  "extends": "mapward://prototypes/base"
+}

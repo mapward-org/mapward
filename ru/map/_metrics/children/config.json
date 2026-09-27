@@ -7,12 +7,18 @@
       "show": ["apps/*", "packages/*"],
       "palette": {
         "objects": ["mapward://prototypes/package", "mapward://prototypes/system"],
-        "relations": []
+        "relations": ["mapward://prototypes/relation"]
       },
       "placeObjects": "mapward://packages",
       "placeRelations": "mapward://relations",
-      "style": { "all": { "view": "preview" } }
+      "style": {
+        "all": {
+          "view": "preview"
+        }
+      }
     }
   ],
-  "display": { "kind": "map" }
+  "display": {
+    "kind": "map"
+  }
 }

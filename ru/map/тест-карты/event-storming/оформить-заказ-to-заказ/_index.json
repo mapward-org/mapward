@@ -1,0 +1,8 @@
+{
+  "name": "вызывает",
+  "extends": "mapward://тест-карты/event-storming/prototypes/вызывает",
+  "props": {
+    "from": "mapward://тест-карты/event-storming/оформить-заказ",
+    "to": "mapward://тест-карты/event-storming/заказ"
+  }
+}

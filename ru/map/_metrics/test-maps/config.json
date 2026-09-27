@@ -1,0 +1,19 @@
+{
+  "label": "Тестовые карты",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "static",
+      "value": {
+        "items": [
+          {
+            "label": "Event storming",
+            "link": "mapward://тест-карты/event-storming",
+            "description": "Холст со стикерами event storming — на нём проверяется правка карты (директива «управление картой как Miro»)"
+          }
+        ]
+      }
+    }
+  ],
+  "display": { "kind": "list" }
+}

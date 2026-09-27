@@ -4,13 +4,16 @@ import type { MapOp, PaletteItem } from "@mapward/core";
 export type Tool =
   | { kind: "select" }
   | { kind: "shape"; shape: "rect" | "ellipse" | "text" }
+  /** Линия: первый клик — начало, второй — конец; над узлом конец к нему прицепляется. */
+  | { kind: "line" }
   | { kind: "object"; prototype: string }
   | { kind: "relation"; prototype: string };
 
 /** Что открыто поверх холста по клику: превью объекта или список склеенных связей. */
 export type Popover =
-  | { kind: "object"; address: string }
-  | { kind: "relations"; items: { label: string; link: string }[] };
+  /** `edge` — стрелка, у которой поповер встаёт, когда объекта нет на холсте узлом. */
+  | { kind: "object"; address: string; edge?: string }
+  | { kind: "relations"; items: { label: string; link: string }[]; edge?: string };
 
 /** Выделенное на холсте, что можно удалить клавишей: у каждого вида своя операция. */
 export type Deletable = { kind: "object" | "ref" | "shape"; id: string; label: string };
@@ -20,7 +23,15 @@ export const sameTool = (a: Tool, b: Tool): boolean => JSON.stringify(a) === JSO
 /** Пункт боковой панели: заголовок раздела или инструмент с подписью и подсказкой. */
 export type ToolItem =
   | { key: string; heading: string }
-  | { key: string; tool: Tool; title: string; label: string };
+  | {
+      key: string;
+      tool: Tool;
+      title: string;
+      label: string;
+      /** Цвет прототипа из палитры: кнопка помечена им, подпись — читаемым на нём. */
+      color?: string | undefined;
+      textColor?: string | undefined;
+    };
 
 /** Боковая панель целиком: выбор, фигуры, прототипы объектов и связей из палитры вьюхи. */
 export function toolItems(palette: {
@@ -48,6 +59,12 @@ export function toolItems(palette: {
       title: "Текст — пометка, не объект",
       label: "T текст",
     },
+    {
+      key: "line",
+      tool: { kind: "line" },
+      title: "Линия — пометка, не связь: клик в начало, клик в конец; над узлом конец цепляется",
+      label: "╱ линия",
+    },
   ];
   if (palette.objects.length > 0) items.push({ key: "h-objects", heading: "объекты" });
   for (const item of palette.objects) {
@@ -56,6 +73,8 @@ export function toolItems(palette: {
       tool: { kind: "object", prototype: item.prototype },
       title: `Новый объект прототипа «${item.label}»`,
       label: `▢ ${item.label}`,
+      color: item.color,
+      textColor: item.textColor,
     });
   }
   if (palette.relations.length > 0) items.push({ key: "h-relations", heading: "связи" });
@@ -63,8 +82,10 @@ export function toolItems(palette: {
     items.push({
       key: `r:${item.prototype}`,
       tool: { kind: "relation", prototype: item.prototype },
-      title: `Связь «${item.label}»: тяни от нижней точки узла к верхней`,
+      title: `Связь «${item.label}»: тяни от любой стороны узла к другому узлу`,
       label: `→ ${item.label}`,
+      color: item.color,
+      textColor: item.textColor,
     });
   }
   return items;

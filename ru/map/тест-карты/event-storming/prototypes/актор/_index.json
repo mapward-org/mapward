@@ -1,0 +1,4 @@
+{
+  "name": "Актор",
+  "extends": "mapward://prototypes/base"
+}

@@ -73,9 +73,9 @@
         "key": "дисплеи",
         "label": "Тестовые дисплеи",
         "description": "Метрики, нарисованные своими React-компонентами (решение 0037): образцы, на которых проверяется дисплей `component`.",
-        "metrics": ["demo-directives", "demo-decisions", "demo-kit"],
+        "metrics": ["test-maps", "demo-directives", "demo-decisions", "demo-kit"],
         "details-metrics-layout": {
-          "areas": [["demo-directives"], ["demo-decisions"], ["demo-kit"]],
+          "areas": [["test-maps"], ["demo-directives"], ["demo-decisions"], ["demo-kit"]],
           "style": {
             "gap": "8px"
           }

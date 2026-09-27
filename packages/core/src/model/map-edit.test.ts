@@ -229,3 +229,92 @@ test("an object carried out onto the canvas stays on it as a ref when the view d
   const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
   expect(state.refs).toEqual(["mapward://cart"]);
 });
+
+test("a new address renames the folder in place and rewrites the addresses", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "set-folder",
+      object: "mapward://systems/bank",
+      folder: "Банк партнёр",
+    }),
+  );
+  expect(list[0]).toEqual({
+    kind: "move",
+    from: "/map/systems/bank",
+    to: "/map/systems/банк-партнёр",
+  });
+  expect(written(list, "/map/relations/cart-to-bank/_index.json")).toContain(
+    '"to": "mapward://systems/банк-партнёр"',
+  );
+});
+
+test("a new address cannot take a sibling's name", () => {
+  const plan = planEdit(context, {
+    op: "set-folder",
+    object: "mapward://systems/bank",
+    folder: "shop",
+  });
+  expect(plan).toEqual({ error: "В systems уже есть shop" });
+});
+
+test("a line is a shape with ends, and its style rides in the view state", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "put-shape",
+      view: "mapward://_metrics/canvas",
+      shape: {
+        id: "l1",
+        kind: "line",
+        x: 0,
+        y: 0,
+        from: { node: "mapward://systems/bank" },
+        to: { x: 10, y: 20 },
+        arrow: "end",
+        stroke: "#333",
+      },
+    }),
+  );
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.shapes[0]).toMatchObject({ kind: "line", from: { node: "mapward://systems/bank" } });
+});
+
+test("a stretched preview and a bent arrow are remembered by the view", () => {
+  const sized = changes(
+    planEdit(context, {
+      op: "resize-nodes",
+      view: "mapward://_metrics/canvas",
+      sizes: { "mapward://systems/bank": { width: 400, height: 300 } },
+    }),
+  );
+  const state = JSON.parse(written(sized, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.sizes["mapward://systems/bank"]).toEqual({ width: 400, height: 300 });
+
+  const bent = changes(
+    planEdit(context, {
+      op: "set-bends",
+      view: "mapward://_metrics/canvas",
+      arrow: "a→b",
+      bends: [{ x: 1, y: 2 }],
+    }),
+  );
+  const next = JSON.parse(written(bent, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(next.bends["a→b"]).toEqual([{ x: 1, y: 2 }]);
+});
+
+test("an arrow keeps its own style on this view", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "style-arrow",
+      view: "mapward://_metrics/canvas",
+      arrow: "a→b",
+      style: { stroke: "#f00", strokeWidth: 3, fontSize: 16, route: "orthogonal" },
+    }),
+  );
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.arrows["a→b"]).toEqual({
+    stroke: "#f00",
+    strokeWidth: 3,
+    fontSize: 16,
+    route: "orthogonal",
+  });
+});

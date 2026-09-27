@@ -1,0 +1,4 @@
+{
+  "name": "Событие",
+  "extends": "mapward://prototypes/base"
+}

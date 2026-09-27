@@ -1,0 +1,4 @@
+{
+  "name": "Команда",
+  "extends": "mapward://prototypes/base"
+}

@@ -19,6 +19,8 @@ export function CardFrame(props: {
   const maxHeight = cssSize(props.maxHeight);
   return (
     <div
+      // Метка для места показа: холст растягивает карточку на весь узел, находя её по ней.
+      data-card-frame=""
       style={{ ...(width ? { width } : {}), ...(maxHeight ? { maxHeight } : {}) }}
       className="flex min-w-0 flex-col overflow-hidden rounded-sm border border-[var(--mw-panel-border,#8884)] bg-[var(--mw-editor-background)] text-[var(--mw-foreground)]"
     >
@@ -55,24 +57,34 @@ export function CardHead(props: { children: ReactNode; buttons?: ReactNode }) {
 export function CardName(props: {
   name: string;
   prototypeName?: string | undefined;
+  /** Адрес под именем, мелко: видно, где объект лежит и что правится как «адрес». */
+  address: string;
   onOpen: () => void;
   /** Ctrl + клик — отдельным табом; без табов — просто переход. */
   onOpenTab?: (() => void) | undefined;
 }) {
   return (
-    <button
-      type="button"
-      onClick={(event) =>
-        props.onOpenTab && (event.ctrlKey || event.metaKey) ? props.onOpenTab() : props.onOpen()
-      }
-      title={props.onOpenTab ? "Ctrl + клик — открыть отдельным табом" : undefined}
-      className={`min-w-0 truncate text-left font-medium ${props.onOpenTab ? tabHover.tabLink : "hover:underline"}`}
-    >
-      {props.prototypeName && (
-        <span className="font-normal opacity-60">{props.prototypeName}: </span>
-      )}
-      {props.name}
-    </button>
+    <span className="flex min-w-0 flex-col">
+      <button
+        type="button"
+        onClick={(event) =>
+          props.onOpenTab && (event.ctrlKey || event.metaKey) ? props.onOpenTab() : props.onOpen()
+        }
+        title={props.onOpenTab ? "Ctrl + клик — открыть отдельным табом" : undefined}
+        className={`min-w-0 truncate text-left font-medium ${props.onOpenTab ? tabHover.tabLink : "hover:underline"}`}
+      >
+        {props.prototypeName && (
+          <span className="font-normal opacity-60">{props.prototypeName}: </span>
+        )}
+        {props.name}
+      </button>
+      <span
+        className="truncate font-mono text-[9px] leading-tight opacity-50"
+        title={props.address}
+      >
+        {props.address.replace("mapward://", "") || "корень"}
+      </span>
+    </span>
   );
 }
 

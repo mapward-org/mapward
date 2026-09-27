@@ -1,0 +1,65 @@
+{
+  "label": "Холст",
+  "refresh": "on-display",
+  "collectors": [
+    {
+      "kind": "objects-map",
+      "show": ["тест-карты/event-storming/*"],
+      "palette": {
+        "objects": [
+          "mapward://тест-карты/event-storming/prototypes/событие",
+          "mapward://тест-карты/event-storming/prototypes/команда",
+          "mapward://тест-карты/event-storming/prototypes/агрегат",
+          "mapward://тест-карты/event-storming/prototypes/актор",
+          "mapward://тест-карты/event-storming/prototypes/политика",
+          "mapward://тест-карты/event-storming/prototypes/внешняя-система",
+          "mapward://тест-карты/event-storming/prototypes/модель-чтения"
+        ],
+        "relations": [
+          "mapward://тест-карты/event-storming/prototypes/вызывает",
+          "mapward://тест-карты/event-storming/prototypes/порождает"
+        ]
+      },
+      "placeObjects": "mapward://тест-карты/event-storming",
+      "placeRelations": "mapward://тест-карты/event-storming",
+      "style": {
+        "all": {
+          "view": "simple"
+        },
+        "prototypes": {
+          "mapward://тест-карты/event-storming/prototypes/событие": {
+            "color": "#ff9f43",
+            "shape": "note"
+          },
+          "mapward://тест-карты/event-storming/prototypes/команда": {
+            "color": "#54a0ff",
+            "shape": "note"
+          },
+          "mapward://тест-карты/event-storming/prototypes/агрегат": {
+            "color": "#feca57",
+            "shape": "rect"
+          },
+          "mapward://тест-карты/event-storming/prototypes/актор": {
+            "color": "#fff3a0",
+            "shape": "round"
+          },
+          "mapward://тест-карты/event-storming/prototypes/политика": {
+            "color": "#c56cf0",
+            "shape": "note"
+          },
+          "mapward://тест-карты/event-storming/prototypes/внешняя-система": {
+            "color": "#ff6b9a",
+            "shape": "rect"
+          },
+          "mapward://тест-карты/event-storming/prototypes/модель-чтения": {
+            "color": "#1dd1a1",
+            "shape": "note"
+          }
+        }
+      }
+    }
+  ],
+  "display": {
+    "kind": "map"
+  }
+}

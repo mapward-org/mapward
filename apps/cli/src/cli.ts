@@ -183,7 +183,9 @@ async function main(): Promise<void> {
         2,
       ),
     );
-    return;
+    // Живая модель карты держит вотчер диска, пока жив сервер (решение 0041): разовая команда
+    // выходит сама, иначе процесс не завершится никогда.
+    exit(0);
   }
 
   if (command === "metric") {
@@ -204,7 +206,8 @@ async function main(): Promise<void> {
     const server = createMapServer(ports, await settingsOf(ports, map.configPath));
     const value = await server.runMetric({ ...map, metric: address });
     console.log(JSON.stringify(value, null, 2));
-    return;
+    // Как у `object`: вотчер живой модели держит процесс.
+    exit(0);
   }
 
   if (command === "action") {
