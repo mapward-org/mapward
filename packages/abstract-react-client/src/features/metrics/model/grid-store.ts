@@ -1,4 +1,4 @@
-import { computed, makeObservable } from "mobx";
+import { action as mobxAction, computed, makeObservable, observable } from "mobx";
 import type { Layout, MapAction, MapMetric, MapObject } from "@mapward/core";
 import { ago, toDisplay, type DisplayData } from "../pure-model/display.ts";
 import { planGrid, soloGrid, type GridPlan } from "../pure-model/grid.ts";
@@ -44,7 +44,6 @@ export type GridCell = {
   metric: MapMetric;
   label: string;
   value: MetricValue | undefined;
-  freshness: string | undefined;
   busy: boolean;
   /** Последний прогон упал — красная точка ведёт на него (решение 0038). */
   failed: boolean;
@@ -74,6 +73,13 @@ export class GridStore {
   readonly scope = `mw-grid-${++grids}`;
   private readonly folded: GridSlot<Record<string, boolean>>;
   private readonly folders: GridSlot<Record<string, OpenFolders>>;
+  /**
+   * Часы для надписей о времени сбора: «сколько назад» меняется без всякого события метрики,
+   * и без часов метрика, простоявшая порог, так и не показала бы время (решение 0045).
+   * Тикают раз в минуту, пока сетка на экране; от них пересчитываются только надписи.
+   */
+  now = Date.now();
+  private clock: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     private readonly input: GridInput,
@@ -84,6 +90,8 @@ export class GridStore {
     this.folded = views.slot<Record<string, boolean>>(`folded:${address}`, {});
     this.folders = views.slot<Record<string, OpenFolders>>(`tree-open:${address}`, {});
     makeObservable(this, {
+      now: observable,
+      tick: mobxAction,
       plan: computed,
       solo: computed,
       metrics: computed,
@@ -147,16 +155,12 @@ export class GridStore {
 
   get cells(): GridCell[] {
     const values = this.source.values;
-    // `updatedAt` — время получения содержимого, а не чтения (0013): значение живёт в сторе и
-    // переживает уход с объекта. Нет значения — `ago` сам вернёт ничего.
-    const now = Date.now();
     return this.metrics.map((metric) => {
       const value = values[metric.address];
       return {
         metric,
         label: metric.config.label ?? metric.key,
         value,
-        freshness: ago(value?.updatedAt, now),
         busy: value?.busy === true,
         failed: value?.busy !== true && value?.ok === false,
         hidden: this.isFolded(metric),
@@ -169,6 +173,28 @@ export class GridStore {
         component: metric.config.display?.kind === "component",
       };
     });
+  }
+
+  /**
+   * Надпись о времени сбора — отдельно от клеток: часы тикают, а клетки пересобирать незачем.
+   * `updatedAt` — время получения содержимого, а не чтения (0013): значение живёт в сторе и
+   * переживает уход с объекта. Нет значения или оно свежее порога — надписи нет.
+   */
+  freshness(cell: GridCell): string | undefined {
+    return ago(cell.value?.updatedAt, this.now);
+  }
+
+  tick(): void {
+    this.now = Date.now();
+  }
+
+  mount(): void {
+    this.tick();
+    this.clock = setInterval(() => this.tick(), 60_000);
+  }
+
+  unmount(): void {
+    clearInterval(this.clock);
   }
 
   /** В табе одной метрики свёрнутость не спрашивается: таб открыт ради того, чтобы её видеть. */

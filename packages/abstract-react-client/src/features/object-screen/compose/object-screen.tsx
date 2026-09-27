@@ -4,13 +4,20 @@ import { TabIcon } from "../../../lib/ui/icons.tsx";
 import type { Terminals } from "../adapters/terminals.ts";
 import type { ScreenStore } from "../model/screen.ts";
 import { TabModifier } from "../model/tab-modifier.ts";
+import { TabsRow } from "../model/tabs-row.ts";
 import { useScreenSlots } from "../ports.tsx";
-import { Crumb, CrumbsBar, CrumbsGroup, HistoryArrow, ReloadButton } from "../ui/breadcrumbs.tsx";
-import { GroupTabs } from "../ui/group-tabs.tsx";
-import { HeaderButton, ObjectHeader } from "../ui/object-header.tsx";
+import {
+  Crumb,
+  CrumbsBar,
+  CrumbsGroup,
+  CrumbsPath,
+  HistoryArrow,
+  ReloadButton,
+} from "../ui/breadcrumbs.tsx";
+import { GroupTab, GroupTabs } from "../ui/group-tabs.tsx";
+import { HeaderTabButton, ObjectHeader } from "../ui/object-header.tsx";
 import {
   ClashNote,
-  DirectivesBar,
   GroupDescription,
   Reading,
   ScreenBody,
@@ -38,6 +45,7 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
   const slots = useScreenSlots();
   // Под ctrl подсвечивается то, что откроется табом: иконок у ссылок нет — решение 0035.
   useLocalStore(() => new TabModifier(() => screen.tabs), [screen]);
+  const tabsRow = useLocalStore(() => new TabsRow(() => screen.groupKey), [screen]);
 
   return !props.map.ready ? (
     <Reading />
@@ -61,8 +69,8 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
     <ScreenFrame>
       <slots.ActionForm />
       {/*
-        Виды объекта — мини-вкладками в строке истории, за стрелками: сразу видно, где ты, и
-        переход из любого вида в любой — один клик. Вид шагом истории не считается (0036).
+        Верх экрана — три строки (решение 0045): навигация с видами иконками, путь из предков,
+        имя с кнопками. Вид шагом истории не считается (0036).
       */}
       <CrumbsBar>
         <CrumbsGroup>
@@ -75,35 +83,40 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
           />
           <ReloadButton reloading={props.map.reloading} onReload={() => props.map.reload()} />
         </CrumbsGroup>
-        <CrumbsGroup>
-          <ViewTabs active={screen.view} onSelect={(view) => screen.setView(view)} />
-        </CrumbsGroup>
-        {screen.crumbs.map((step, index) => (
-          <Crumb
-            key={step.address}
-            step={step}
-            first={index === 0}
-            onGo={(address) => screen.go(address)}
-            onOpenTab={screen.objectTab}
-          />
-        ))}
+        <ViewTabs active={screen.view} onSelect={(view) => screen.setView(view)} />
       </CrumbsBar>
+      {screen.crumbs.length > 0 && (
+        <CrumbsPath>
+          {screen.crumbs.map((step) => (
+            <Crumb
+              key={step.address}
+              step={step}
+              onGo={(address) => screen.go(address)}
+              onOpenTab={screen.objectTab}
+            />
+          ))}
+        </CrumbsPath>
+      )}
 
       <ObjectHeader
         name={screen.object.name}
         prototypeName={screen.object.prototypeName}
+        aside={
+          // Таб — рядом с именем и по наведению на строку: кнопка про этот объект и не шумит (0045).
+          screen.tabs && (
+            <HeaderTabButton title="Открыть отдельным табом" onClick={() => screen.openGroupTab()}>
+              {TabIcon}
+            </HeaderTabButton>
+          )
+        }
         actions={
           <>
+            {/* Незакрытые директивы — кнопкой с числом, списком не висят (решение 0045). */}
+            <slots.Directives object={screen.object} />
             {/* Все экшоны объекта списком с поиском — решение 0038. Нет экшонов — нет кнопки. */}
             {screen.hasActions && <slots.ActionMenu object={screen.object} />}
             {screen.can.terminals && (
               <ObjectTerminalMenu object={screen.object} terminals={terminals} />
-            )}
-            {/* Шапка держит только то, что делают, а не то, что смотрят (решение 0024). */}
-            {screen.tabs && (
-              <HeaderButton title="Открыть отдельным табом" onClick={() => screen.openGroupTab()}>
-                {TabIcon}
-              </HeaderButton>
             )}
           </>
         }
@@ -111,20 +124,19 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
 
       <ClashNote keys={screen.clashes} />
 
-      {screen.plain && (
-        <DirectivesBar>
-          <slots.Directives object={screen.object} />
-        </DirectivesBar>
-      )}
-
       {/* Вкладки объекта и описание открытой — решение 0025. */}
       {screen.hasGroups && (
-        <GroupTabs
-          groups={screen.object.metricGroups}
-          active={screen.groupKey ?? ""}
-          onSelect={(key) => screen.setGroup(key)}
-          {...(screen.tabs ? { onOpenTab: (key: string) => screen.openGroupTab(key) } : {})}
-        />
+        <GroupTabs hold={tabsRow.hold} moreLeft={tabsRow.moreLeft} moreRight={tabsRow.moreRight}>
+          {screen.object.metricGroups.map((group) => (
+            <GroupTab
+              key={group.key}
+              group={group}
+              active={group.key === screen.groupKey}
+              onSelect={(key) => screen.setGroup(key)}
+              onOpenTab={screen.groupTab}
+            />
+          ))}
+        </GroupTabs>
       )}
       {screen.groupDescription && (
         <GroupDescription>

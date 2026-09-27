@@ -178,12 +178,20 @@ export function placeholder(
   return undefined;
 }
 
-/** «5 минут назад» rather than a timestamp: freshness is what the eye needs here. */
+/**
+ * How old a value may get before its age is worth showing (decision 0045): a fresh metric says
+ * nothing about time at all, which is most of them.
+ */
+export const STALE_AFTER_MINUTES = 10;
+
+/**
+ * «25 мин назад» rather than a timestamp: freshness is what the eye needs here. Younger than
+ * `STALE_AFTER_MINUTES` — nothing, the cell stays quiet.
+ */
 export function ago(iso: string | undefined, now: number): string | undefined {
   if (!iso) return undefined;
-  const seconds = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
-  if (seconds < 60) return "только что";
-  const minutes = Math.round(seconds / 60);
+  const minutes = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (minutes < STALE_AFTER_MINUTES) return undefined;
   if (minutes < 60) return `${minutes} мин назад`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours} ч назад`;

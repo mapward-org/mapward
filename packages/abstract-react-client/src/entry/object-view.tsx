@@ -31,7 +31,6 @@ import { ObjectRuns, ProvideRuns, RunsScreen } from "../features/runs/index.ts";
 import {
   DirectiveArchive,
   DirectiveMenu,
-  ObjectDirectives,
   ProvideDirectives,
 } from "../features/directives/index.ts";
 import { ObjectCard, ProvideObjectCard } from "../features/object-card/index.ts";
@@ -44,7 +43,7 @@ type Ref = { mapPath: string; basePath: string; name: string };
 /** Что где стоит на экране объекта: какие фичи экран расставляет по своим местам. */
 const Slots: ScreenSlots = {
   Metrics: MetricGrid,
-  Directives: ObjectDirectives,
+  Directives: DirectiveMenu,
   Meta: MetaScreen,
   Runs: RunsScreen,
   ActionMenu: ObjectActionMenu,

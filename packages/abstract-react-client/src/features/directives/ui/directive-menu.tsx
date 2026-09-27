@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { DirectivesIcon } from "../../../lib/ui/icons.tsx";
+import { DirectivesIcon, NewDirectiveIcon } from "../../../lib/ui/icons.tsx";
 
 /**
- * Директивы объекта кнопкой с поиском — в шапке карточки. Выглядит как меню экшонов рядом:
- * две кнопки одной шапки, и различаться им незачем, кроме иконки.
+ * Директивы объекта кнопкой с поиском — в шапке экрана и карточки. Выглядит как меню экшонов
+ * рядом: две кнопки одной шапки, и различаться им незачем, кроме иконки.
  */
 export function DirectiveMenuBox(props: {
   hold: (element: HTMLElement | null) => void;
@@ -16,15 +16,23 @@ export function DirectiveMenuBox(props: {
   );
 }
 
-export function DirectiveMenuButton(props: { onToggle: (button: HTMLElement) => void }) {
+/**
+ * Кнопка меню. Число — незакрытые директивы: списком на экране они больше не висят, и счёт на
+ * кнопке не даёт о них забыть (решение 0045). Нет незакрытых — нет и числа.
+ */
+export function DirectiveMenuButton(props: {
+  count: number;
+  onToggle: (button: HTMLElement) => void;
+}) {
   return (
     <button
       type="button"
-      title="Директивы"
+      title={props.count > 0 ? `Директивы: незакрытых ${props.count}` : "Директивы"}
       onClick={(event) => props.onToggle(event.currentTarget)}
-      className="rounded-sm px-1 opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
+      className="flex items-center gap-0.5 rounded-sm px-1 opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100"
     >
       {DirectivesIcon}
+      {props.count > 0 && <span className="text-[10px] leading-none">{props.count}</span>}
     </button>
   );
 }
@@ -37,7 +45,7 @@ export function DirectiveMenuPanel(props: { children: ReactNode }) {
   );
 }
 
-/** Поиск стоит сразу; Enter запускает первый найденный этап, Escape закрывает меню. */
+/** Поиск стоит сразу; Enter открывает первую найденную директиву, Escape закрывает меню. */
 export function DirectiveSearch(props: {
   query: string;
   onQuery: (query: string) => void;
@@ -60,7 +68,21 @@ export function DirectiveSearch(props: {
   );
 }
 
-export function StageList(props: { empty: string | undefined; children: ReactNode }) {
+/** «Новая директива» — над поиском: хост спросит имя (решение 0028). */
+export function NewDirectiveItem(props: { onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onSelect}
+      className="flex items-center gap-1.5 px-3 py-0.5 text-left hover:bg-[var(--mw-list-hoverBackground)]"
+    >
+      <span className="flex size-4 items-center justify-center">{NewDirectiveIcon}</span>
+      новая директива
+    </button>
+  );
+}
+
+export function DirectiveItems(props: { empty: string | undefined; children: ReactNode }) {
   return (
     <ul className="min-h-0 overflow-y-auto">
       {props.empty && <li className="px-3 py-0.5 opacity-60">{props.empty}</li>}
@@ -69,24 +91,36 @@ export function StageList(props: { empty: string | undefined; children: ReactNod
   );
 }
 
-/** Пункт «директива · этап»; многоточие — этот этап идёт сейчас. */
-export function StageItem(props: {
+/**
+ * Пункт — директива: имя открывает её файл, этапы запускают уже оттуда (решение 0045). Хост не
+ * умеет открыть — имя просто подпись.
+ */
+export function DirectiveItem(props: {
   label: string;
   title: string;
-  busy: boolean;
-  onSelect: () => void;
+  hint: string;
+  hintClass: string;
+  onOpen?: (() => void) | undefined;
 }) {
   return (
-    <li>
-      <button
-        type="button"
-        title={props.title}
-        onClick={props.onSelect}
-        className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-[var(--mw-list-hoverBackground)]"
-      >
-        <span className="truncate">{props.label}</span>
-        {props.busy && <span className="shrink-0 animate-pulse text-[11px]">…</span>}
-      </button>
+    <li className="px-3 py-0.5">
+      <div className="flex items-baseline gap-2">
+        {props.onOpen ? (
+          <button
+            type="button"
+            title={props.title}
+            onClick={props.onOpen}
+            className="min-w-0 truncate text-left hover:underline"
+          >
+            {props.label}
+          </button>
+        ) : (
+          <span title={props.title} className="min-w-0 truncate">
+            {props.label}
+          </span>
+        )}
+        <span className={`ml-auto shrink-0 text-[10px] ${props.hintClass}`}>{props.hint}</span>
+      </div>
     </li>
   );
 }

@@ -5,7 +5,7 @@ import { useViewStates } from "../../../services/state/ports.tsx";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { DisplayBuilds } from "../adapters/display-builds.ts";
 import { MetricValues } from "../adapters/metric-values.ts";
-import { GridStore } from "../model/grid-store.ts";
+import { GridStore, type GridCell } from "../model/grid-store.ts";
 import { useMetricsPort } from "../ports.tsx";
 import { ActionCell, GridFrame } from "../ui/grid-frame.tsx";
 import {
@@ -89,7 +89,7 @@ export const MetricGrid = observer(function MetricGrid(props: {
               {cell.busy && <CellBusy />}
               {cell.failed && <CellFailed onRuns={() => port.openRuns(cell.metric)} />}
               <CellRefresh onRefresh={() => grid.refresh(cell.metric)} />
-              <CellFreshness text={cell.freshness} />
+              <Freshness grid={grid} cell={cell} />
             </CellHeader>
           }
         >
@@ -124,4 +124,12 @@ export const MetricGrid = observer(function MetricGrid(props: {
       ))}
     </GridFrame>
   );
+});
+
+/**
+ * Время сбора — своим наблюдателем: часы сетки тикают раз в минуту, и перерисоваться от них
+ * должна надпись, а не вся сетка (решение 0045).
+ */
+const Freshness = observer(function Freshness(props: { grid: GridStore; cell: GridCell }) {
+  return <CellFreshness text={props.grid.freshness(props.cell)} />;
 });

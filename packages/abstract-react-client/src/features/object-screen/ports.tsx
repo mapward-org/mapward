@@ -15,7 +15,7 @@ export type ScreenSlots = {
     group?: string | undefined;
     solo?: string | undefined;
   }>;
-  /** Незакрытые директивы под названием объекта. */
+  /** Директивы кнопкой с меню в шапке — число на ней считает незакрытые (решение 0045). */
   Directives: ComponentType<{ object: MapObject }>;
   /** Мета-экран: всё, что объект о себе знает. */
   Meta: ComponentType<{ object: MapObject }>;

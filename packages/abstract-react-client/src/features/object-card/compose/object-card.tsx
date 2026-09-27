@@ -39,9 +39,10 @@ export const ObjectCard = observer(function ObjectCard(props: {
           buttons={
             <>
               {props.actions}
-              {port.Terminal && <port.Terminal object={card.object} />}
-              {card.hasActions && <port.Actions object={card.object} />}
+              {/* Тот же набор и порядок, что в шапке экрана объекта (решение 0045). */}
               <port.Directives object={card.object} />
+              {card.hasActions && <port.Actions object={card.object} />}
+              {port.Terminal && <port.Terminal object={card.object} />}
             </>
           }
         >

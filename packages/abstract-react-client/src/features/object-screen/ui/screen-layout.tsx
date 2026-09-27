@@ -49,18 +49,6 @@ export function ClashNote(props: { keys: string[] }) {
   );
 }
 
-/**
- * Незакрытые директивы — на первом экране, под названием и до метрик: с ними работают
- * постоянно, а выполненные лежат в мета-экране (решение 0024). Граница отделяет их от метрик.
- */
-export function DirectivesBar(props: { children: ReactNode }) {
-  return (
-    <div className="shrink-0 border-b border-[var(--mw-menu-border,#8884)] pb-1">
-      {props.children}
-    </div>
-  );
-}
-
 /** Описание открытой вкладки — над сеткой, разметкой (решение 0025). */
 export function GroupDescription(props: { children: ReactNode }) {
   return <div className="shrink-0 px-2 pb-1 text-[11px] opacity-70">{props.children}</div>;

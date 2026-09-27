@@ -283,6 +283,11 @@ export class ScreenStore {
     this.openTab({ address: link });
   }
 
+  /** Ctrl + клик по вкладке — она отдельным табом; хост без табов жеста не даёт. */
+  get groupTab(): ((key: string) => void) | undefined {
+    return this.tabs ? (key) => this.openGroupTab(key) : undefined;
+  }
+
   /** Открытая вкладка — отдельным табом. */
   openGroupTab(key?: string): void {
     this.openTab({ group: key ?? this.groupKey });

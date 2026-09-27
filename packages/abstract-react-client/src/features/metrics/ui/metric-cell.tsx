@@ -31,11 +31,12 @@ export function MetricCell(props: {
 
 /**
  * Buttons appear on hover so a still sidebar stays quiet. The chevron sits outside the flow:
- * appearing on hover must not shift the label sideways.
+ * appearing on hover must not shift the label sideways. The label is the loudest thing in the
+ * cell — plain case, semibold, full contrast (decision 0045); the rest is quieter on its own.
  */
 export function CellHeader(props: { children: ReactNode }) {
   return (
-    <div className="relative flex shrink-0 items-center gap-1 text-[11px] uppercase opacity-70">
+    <div className="relative flex shrink-0 items-center gap-1 text-[12px] font-semibold">
       {props.children}
     </div>
   );
@@ -70,7 +71,7 @@ export function CellLabel(props: { label: string; onOpenTab?: (() => void) | und
       type="button"
       title="Ctrl + клик — открыть отдельным табом"
       onClick={(event) => (event.ctrlKey || event.metaKey ? props.onOpenTab?.() : undefined)}
-      className={`truncate text-left uppercase ${tabHover.tabOnly}`}
+      className={`truncate text-left ${tabHover.tabOnly}`}
     >
       {props.label}
     </button>
@@ -129,6 +130,9 @@ export function CellRefresh(props: { onRefresh: () => void }) {
   );
 }
 
+/** Time of collection — small and muted, and only once the value is stale (decision 0045). */
 export function CellFreshness(props: { text: string | undefined }) {
-  return props.text ? <span className="ml-auto shrink-0 opacity-60">{props.text}</span> : null;
+  return props.text ? (
+    <span className="ml-auto shrink-0 text-[10px] font-normal opacity-50">{props.text}</span>
+  ) : null;
 }

@@ -1,16 +1,30 @@
 import { action, makeObservable, observable } from "mobx";
 import type { MapFile, MapObject } from "@mapward/core";
-import { activeDirectives, directiveLabel } from "../../../kernel/directives.ts";
+import {
+  activeDirectives,
+  directiveHint,
+  directiveHintClass,
+  directiveLabel,
+} from "../../../kernel/directives.ts";
 import { matches } from "../../../kernel/search.ts";
 import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
 
-/** Пункт меню: одна директива и один этап. */
-export type StageItem = { key: string; file: MapFile; stage: string; label: string; busy: boolean };
+/**
+ * Пункт меню — одна незакрытая директива. Этапов в меню нет: их запускают из файла директивы,
+ * за ним в меню и идут (решение 0045).
+ */
+export type DirectiveItem = { file: MapFile; label: string; hint: string; hintClass: string };
 
 /**
- * Директивы объекта в шапке карточки — списком с поиском, пункт на пару «директива · этап».
- * Только незакрытые: закрытых у старых объектов десятки, их смотрят на самом объекте. Запрос
- * никуда не сохраняется — закрыли меню, и он пуст, как у меню экшонов.
+ * Что меню умеет, решает хост: нет действия — нет и его кнопки (решение 0014). Форма — порта
+ * директив: спросить имя новой и открыть файл.
+ */
+export type DirectiveMenuHost = { ask: boolean; open?: ((file: MapFile) => void) | undefined };
+
+/**
+ * Директивы объекта кнопкой с поиском — одна и та же в шапке экрана и карточки (решение 0045).
+ * Только незакрытые: закрытых у старых объектов десятки, их смотрят на экране «об объекте».
+ * Запрос никуда не сохраняется — закрыли меню, и он пуст, как у меню экшонов.
  */
 export class DirectiveMenuStore {
   query = "";
@@ -20,7 +34,8 @@ export class DirectiveMenuStore {
 
   constructor(
     private readonly object: () => MapObject,
-    private readonly run: (file: MapFile, stage: string) => void,
+    private readonly host: () => DirectiveMenuHost,
+    private readonly createNew: () => void,
   ) {
     makeObservable<DirectiveMenuStore, "clear">(this, {
       query: observable,
@@ -29,21 +44,30 @@ export class DirectiveMenuStore {
     });
   }
 
-  get items(): StageItem[] {
-    const object = this.object();
-    return activeDirectives(object.directives).flatMap((file) =>
-      object.workflow.map((stage) => ({
-        key: `${file.path}#${stage.name}`,
-        file,
-        stage: stage.name,
-        label: `${directiveLabel(file)} · ${stage.name}`,
-        busy: file.run?.stage === stage.name && file.run.finishedAt === undefined,
-      })),
-    );
+  /** Число на кнопке: незакрытые не лежат на виду, и счёт не даёт о них забыть. */
+  get count(): number {
+    return activeDirectives(this.object().directives).length;
   }
 
-  get found(): StageItem[] {
-    return this.items.filter((item) => matches(this.query, item.label, item.file.name));
+  get canOpen(): boolean {
+    return this.host().open !== undefined;
+  }
+
+  get canCreate(): boolean {
+    return this.host().ask;
+  }
+
+  get items(): DirectiveItem[] {
+    return activeDirectives(this.object().directives).map((file) => ({
+      file,
+      label: directiveLabel(file),
+      hint: directiveHint(file),
+      hintClass: directiveHintClass(file),
+    }));
+  }
+
+  get found(): DirectiveItem[] {
+    return this.items.filter((item) => matches(this.query, item.file.name));
   }
 
   /** Что сказать, когда пунктов нет: незакрытых нет вовсе или ничего не нашлось. */
@@ -66,15 +90,20 @@ export class DirectiveMenuStore {
     this.query = "";
   }
 
-  select(item: StageItem): void {
+  open(item: DirectiveItem): void {
     this.popup.close();
-    this.run(item.file, item.stage);
+    this.host().open?.(item.file);
   }
 
-  /** Enter запускает первый найденный — как у меню экшонов. */
-  runFirst(): void {
+  create(): void {
+    this.popup.close();
+    if (this.canCreate) this.createNew();
+  }
+
+  /** Enter открывает первую найденную — за этим директиву и ищут. */
+  openFirst(): void {
     const first = this.found[0];
-    if (first) this.select(first);
+    if (first && this.canOpen) this.open(first);
   }
 
   mount(): void {

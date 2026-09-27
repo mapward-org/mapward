@@ -11,18 +11,27 @@ const BUTTON =
   "rounded-sm px-1 leading-none opacity-70 hover:bg-[var(--mw-list-hoverBackground)] hover:opacity-100 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent";
 
 /**
- * Строка истории: стрелки, «перечитать», вкладки видов и крошки — их кладут внутрь готовыми.
+ * Строка истории: стрелки, «перечитать» и виды объекта иконками — их кладут внутрь готовыми.
+ * Крошки стоят своей строкой ниже, имя объекта — ещё ниже (решение 0045): одной строкой всё
+ * это не влезает в сайдбар.
  *
  * Стрелки — назад и вперёд по истории вида, а не к родителю: к родителю ведёт последняя крошка
- * (решение 0036). Видны всегда, даже на корне: пропадая, они сдвигали бы крошки при каждом
+ * (решение 0036). Видны всегда, даже на корне: пропадая, они сдвигали бы виды при каждом
  * переходе, поэтому когда идти некуда, стрелка гаснет.
- *
- * Вкладки видов — сразу за стрелками и до крошек: так они стоят на одном месте на любом
- * объекте, а длинные крошки переносятся после них.
  */
 export function CrumbsBar(props: { children: ReactNode }) {
   return (
-    <nav className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1 text-[11px]">
+    <nav className="flex shrink-0 items-center gap-1 px-2 pt-1 text-[11px]">{props.children}</nav>
+  );
+}
+
+/**
+ * Путь к объекту: предки от корня, после каждого — косая черта, как путь к папке. Самого
+ * объекта в пути нет — он строкой ниже; у корня предков нет, и строки нет.
+ */
+export function CrumbsPath(props: { children: ReactNode }) {
+  return (
+    <nav className="flex shrink-0 flex-wrap items-center gap-x-1 px-2 text-[11px]">
       {props.children}
     </nav>
   );
@@ -74,20 +83,18 @@ export function ReloadButton(props: { reloading: boolean; onReload: () => void }
 }
 
 /**
- * Крошка — предок-объект текущего объекта, от корня и без него самого: он написан заголовком
- * рядом. Групп в крошках не бывает — их отсеивает `breadcrumbTrail`. Приглушены только крошки:
- * открытая вкладка вида не должна выглядеть погасшей.
+ * Крошка — предок-объект текущего объекта. Групп в крошках не бывает — их отсеивает
+ * `breadcrumbTrail`. Косая черта идёт после каждой крошки: путь кончается на ней, а имя
+ * объекта стоит строкой ниже.
  */
 export function Crumb(props: {
   step: { address: string; name: string };
-  first: boolean;
   onGo: (address: string) => void;
   onOpenTab: ((address: string) => void) | undefined;
 }) {
   const { step, onOpenTab } = props;
   return (
     <span className="flex items-center gap-1 opacity-70">
-      {!props.first && <span className="opacity-50">/</span>}
       <button
         type="button"
         onClick={(event) =>
@@ -98,6 +105,7 @@ export function Crumb(props: {
       >
         {step.name}
       </button>
+      <span className="opacity-50">/</span>
     </span>
   );
 }

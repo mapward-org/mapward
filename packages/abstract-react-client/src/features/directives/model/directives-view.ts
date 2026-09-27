@@ -1,5 +1,5 @@
 import type { MapFile, MapObject, MapStage } from "@mapward/core";
-import { activeDirectives, newestFirst } from "../../../kernel/directives.ts";
+import { newestFirst } from "../../../kernel/directives.ts";
 
 /** Как директивы удаляются и заводятся: через хост. */
 export type DirectiveWrites = {
@@ -8,19 +8,14 @@ export type DirectiveWrites = {
 };
 
 /**
- * Директивы объекта в двух местах — решение 0024: незакрытые под названием объекта и все в
- * мета-экране. Что где показывать, решает этот стор; как выглядит список, — `ui`.
+ * Директивы объекта списком мета-экрана и заведение новой: незакрытые живут в меню на кнопке
+ * (решение 0045), а все — здесь. Что показывать, решает этот стор; как выглядит список, — `ui`.
  */
 export class DirectivesView {
   constructor(
     private readonly object: () => MapObject,
     private readonly writes: DirectiveWrites,
   ) {}
-
-  /** Незакрытые — на первом экране, в порядке файлов. */
-  get active(): MapFile[] {
-    return activeDirectives(this.object().directives);
-  }
 
   /** Архив мета-экрана — свежие сверху. */
   archive(files: MapFile[]): MapFile[] {
