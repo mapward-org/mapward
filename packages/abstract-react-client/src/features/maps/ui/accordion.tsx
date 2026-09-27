@@ -29,7 +29,7 @@ export function AccordionSection(props: {
         <span className="truncate">{props.title}</span>
       </button>
       {props.mounted && (
-        <div hidden={!props.open} className="min-h-0 flex-1 overflow-auto pb-1 pl-5">
+        <div hidden={!props.open} className="min-h-0 flex-1 overflow-auto pb-1">
           {props.children}
         </div>
       )}
