@@ -5,10 +5,10 @@ import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { Turns, type RunFocus } from "../adapters/turns.ts";
 import { TurnsPanel } from "../model/turns-panel.ts";
 import { turnKey } from "../pure-model/turns.ts";
-import { TurnItem, TurnsBadge, TurnsDock, TurnsList } from "../ui/turns-button.tsx";
+import { TurnItem, TurnsBadge, TurnsDock, TurnsGroup, TurnsList } from "../ui/turns-button.tsx";
 
 /**
- * Лента в кружке сайдбара — решение 0034: что идёт и где ход у человека. Пустая — кнопки нет:
+ * Лента в кружке сайдбара — решение 0046: что идёт и где ход у человека. Пустая — кнопки нет:
  * иначе она висела бы поверх карты всегда.
  *
  * `focus` ведёт пункт экшона на экран прогонов его объекта — той же просьбой «перейди к
@@ -24,14 +24,30 @@ export const DirectiveTurns = observer(function DirectiveTurns(props: { focus?: 
     <TurnsDock hold={panel.popup.hold}>
       {panel.popup.open && (
         <TurnsList>
-          {turns.list.map((turn) => (
-            <TurnItem
-              key={turnKey(turn)}
-              turn={turn}
-              now={panel.now}
-              onTake={(one) => panel.take(one, turns)}
-            />
-          ))}
+          {turns.groups.running.length > 0 && (
+            <TurnsGroup title="Идут">
+              {turns.groups.running.map((turn) => (
+                <TurnItem
+                  key={turnKey(turn)}
+                  turn={turn}
+                  now={panel.now}
+                  onTake={(one) => panel.take(one, turns)}
+                />
+              ))}
+            </TurnsGroup>
+          )}
+          {turns.groups.waiting.length > 0 && (
+            <TurnsGroup title="Ждут ответа">
+              {turns.groups.waiting.map((turn) => (
+                <TurnItem
+                  key={turnKey(turn)}
+                  turn={turn}
+                  now={panel.now}
+                  onTake={(one) => panel.take(one, turns)}
+                />
+              ))}
+            </TurnsGroup>
+          )}
         </TurnsList>
       )}
       <TurnsBadge

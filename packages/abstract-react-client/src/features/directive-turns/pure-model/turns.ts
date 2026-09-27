@@ -19,9 +19,28 @@ export const turnKey = (turn: Turn): string =>
     ? `${turn.mapPath}\n${turn.address}\n${turn.directive}`
     : `${turn.mapPath}\n${turn.run}`;
 
-/** Что с пунктом, словом рядом со временем: ждущее молчит, остальное называется. */
+/**
+ * Что с пунктом, словом рядом со временем: ждущее молчит, упавшее называется. Идущее слова не
+ * несёт — у него крутится кружок, как на кнопке: серое «идёт» глаз пропускал.
+ */
 export const stateLabel = (turn: Turn): string | undefined =>
-  turn.state === "running" ? "идёт" : turn.state === "failed" ? "упал" : undefined;
+  turn.state === "failed" ? "упал" : undefined;
+
+/**
+ * Лента группами, как она стоит над кнопкой (решение 0046): сверху «Идут», снизу, у самой
+ * кнопки, «Ждут ответа» вместе с упавшими — это тоже ход человека. Взгляд падает туда, где
+ * кнопка, поэтому и в каждой группе свежие снизу. Сервер отдаёт ленту свежими первыми; под
+ * кнопку её раскладывает вид, а не сервер.
+ */
+export const arrange = (
+  turns: readonly Turn[],
+): { running: readonly Turn[]; waiting: readonly Turn[] } => {
+  const oldestFirst = turns.toReversed();
+  return {
+    running: oldestFirst.filter((turn) => turn.state === "running"),
+    waiting: oldestFirst.filter((turn) => turn.state !== "running"),
+  };
+};
 
 /**
  * Сколько ждёт: точные часы не нужны, нужно видеть, кто ждёт дольше. Будущее (часы хоста

@@ -1,6 +1,6 @@
 import { Resource } from "@mapward/core";
 import type { AppBridge, BridgeClient, Turn } from "@mapward/core";
-import { buttonState } from "../pure-model/turns.ts";
+import { arrange, buttonState } from "../pure-model/turns.ts";
 
 const NONE: Turn[] = [];
 
@@ -9,7 +9,7 @@ export type RunFocus = {
   receive(request: { mapPath: string; address: string; run: string }): void;
 };
 
-/** Ленту держит сервер, в памяти (решение 0034): клиент только подписывается. */
+/** Ленту держит сервер, в памяти (решение 0046): клиент только подписывается. */
 export class Turns {
   private readonly turns: Resource<Turn[]>;
 
@@ -32,6 +32,11 @@ export class Turns {
   /** Число и лоадер на кнопке: число — что ждёт человека, лоадер — что идёт. */
   get button(): { count: number; busy: boolean } {
     return buttonState(this.list);
+  }
+
+  /** Лента группами над кнопкой: идущие сверху, ждущие у кнопки, свежие снизу. */
+  get groups(): { running: readonly Turn[]; waiting: readonly Turn[] } {
+    return arrange(this.list);
   }
 
   /**

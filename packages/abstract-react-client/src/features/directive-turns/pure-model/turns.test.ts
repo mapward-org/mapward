@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Turn } from "@mapward/core";
-import { badge, buttonState, stateLabel, turnLabel, waited } from "./turns.ts";
+import { arrange, badge, buttonState, stateLabel, turnLabel, waited } from "./turns.ts";
 
 const turn: Turn = {
   kind: "directive",
@@ -29,11 +29,22 @@ const action: Turn = {
   at: "2026-09-23T01:00:00.000Z",
 };
 
-test("подпись экшона — объект и экшон, со словом о том, что с ним", () => {
+test("подпись экшона — объект и экшон; словом называется только упавшее", () => {
   expect(turnLabel(action)).toBe("Mapward (ru) · Релиз");
-  expect(stateLabel(action)).toBe("идёт");
+  expect(stateLabel(action)).toBeUndefined();
   expect(stateLabel({ ...action, state: "failed" })).toBe("упал");
   expect(stateLabel(turn)).toBeUndefined();
+});
+
+test("группы — идущие отдельно, упавшие к ждущим, в каждой свежие снизу", () => {
+  // Сервер отдаёт ленту свежими первыми.
+  const fresh = { ...action, run: "r3", at: "2026-09-23T03:00:00.000Z" };
+  const failed = { ...action, run: "r2", state: "failed" as const };
+  const later = { ...turn, directive: "b.md", at: "2026-09-23T02:00:00.000Z" };
+  const { running, waiting } = arrange([fresh, later, failed, action, turn]);
+  expect(running).toEqual([action, fresh]);
+  expect(waiting).toEqual([turn, failed, later]);
+  expect(arrange([turn])).toEqual({ running: [], waiting: [turn] });
 });
 
 test("число — то, что ждёт человека; одно идущее — лоадер без числа", () => {
