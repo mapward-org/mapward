@@ -22,6 +22,7 @@ import {
   MenuFrame,
   MenuLabel,
   Message,
+  PopoverCorner,
   PopoverFrame,
   PopoverHead,
   Presets,
@@ -447,14 +448,12 @@ export const ObjectsMapView = observer(function ObjectsMapView(props: {
             side: "top",
             content: <ContextBar store={store} map={props.map} />,
           },
-          {
-            ...store.popoverAt(props.map),
-            side: "right",
-            content: <PopoverContent store={store} map={props.map} />,
-          },
         ]}
         renderCard={(item) => <port.Card item={item} />}
       />
+      <PopoverCorner>
+        <PopoverContent store={store} map={props.map} />
+      </PopoverCorner>
       {editing && <Backdrop onClose={() => store.closeEdit()} />}
       {editing && (
         <EditDialog

@@ -202,18 +202,6 @@ export class ObjectsMapStore {
     return value;
   }
 
-  /**
-   * К какому узлу холста пристёгнут поповер — меню стоит рядом с объектом и едет за зумом.
-   * Объекта на холсте нет (список склеенных связей) — `undefined`, меню встаёт в угол.
-   */
-  popoverNode(map: ObjectsMap): string | undefined {
-    const popover = this.popover;
-    if (popover?.kind !== "object") return undefined;
-    return this.picture(map).nodes.some((node) => node.id === popover.address)
-      ? popover.address
-      : undefined;
-  }
-
   /** Узел холста под панелью стиля; у линии узла нет — панель встаёт в угол. */
   styleNode(map: ObjectsMap): string | undefined {
     const shape = this.selectedShape(map);
@@ -364,15 +352,6 @@ export class ObjectsMapStore {
       stepField(field, field === "fontSize" ? look.fontSize : look.width, delta),
       map,
     );
-  }
-
-  /** Где стоит поповер: у узла объекта справа; нет узла — у середины стрелки, по которой кликнули. */
-  popoverAt(map: ObjectsMap): { node?: string; edge?: string } | undefined {
-    const popover = this.popover;
-    if (!popover) return undefined;
-    const node = this.popoverNode(map);
-    if (node) return { node };
-    return popover.edge === undefined ? undefined : { edge: popover.edge };
   }
 
   /** Строка списка склеенных связей: поповер той же стрелки, но уже с этой связью. */

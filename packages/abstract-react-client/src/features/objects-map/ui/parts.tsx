@@ -420,11 +420,23 @@ export function Segmented(props: {
 
 // ── Поповер объекта ───────────────────────────────────────────────────────────────────────
 
-/** Поповер 320px: карточка объекта или список склеенных связей. */
+/**
+ * Угол для поповера — правый верхний угол холста: превью не закрывает объект, по которому
+ * кликнули, и не едет за зумом. Контекстное меню остаётся у объекта.
+ */
+export function PopoverCorner(props: { children: ReactNode }) {
+  return (
+    <div className="pointer-events-none absolute top-2 right-2 bottom-2 z-10 flex flex-col items-end">
+      {props.children}
+    </div>
+  );
+}
+
+/** Поповер 320px: карточка объекта или список склеенных связей; высотой не больше угла. */
 export function PopoverFrame(props: { children: ReactNode }) {
   return (
     <div
-      className="nodrag nopan flex max-h-[60vh] w-80 flex-col gap-1 overflow-auto rounded-lg border p-1"
+      className="nodrag nopan pointer-events-auto flex max-h-full min-h-0 w-80 flex-col gap-1 overflow-auto rounded-lg border p-1"
       style={surface}
       onPointerDown={(event) => event.stopPropagation()}
     >
