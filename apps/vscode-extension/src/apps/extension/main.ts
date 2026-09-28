@@ -68,6 +68,9 @@ async function createServer(): Promise<{ server: MapServer; mcpPort?: number }> 
     ...(transforms === undefined ? {} : { transformsStaleTime: transforms }),
     ...(watchDebounce === undefined ? {} : { watchDebounce }),
   });
+  // Подключения карта ищет по этому списку. Читается он при открытии окна: живая карта
+  // запоминает ответ, поэтому новое подключение в `mapward.json` видно после перезагрузки.
+  if (state.kind === "maps") server.setMaps([...state.maps, ...(state.mounted ?? [])]);
   return { server, ...(mcpPorts[0] === undefined ? {} : { mcpPort: mcpPorts[0] }) };
 }
 

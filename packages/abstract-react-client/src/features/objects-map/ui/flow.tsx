@@ -246,7 +246,10 @@ function ScaleHandle(props: {
   );
 }
 
-/** Простая карточка — фигура нужной формы и цвета с подписью. Ссылка обведена пунктиром. */
+/**
+ * Простая карточка — фигура нужной формы и цвета с подписью. Ссылка обведена пунктиром; объект
+ * подключённой карты помечен её именем, а ссылка без объекта — красной рамкой с причиной.
+ */
 function SimpleNode(props: NodeProps<Node<ObjectData>>) {
   const { node, handlers } = props.data;
   const [live, setLive] = useState<number | undefined>(undefined);
@@ -254,12 +257,17 @@ function SimpleNode(props: NodeProps<Node<ObjectData>>) {
   return (
     <div
       className="relative h-full w-full"
+      title={node.missing}
       style={{
         ...SHAPES[node.shape],
         background: node.color ?? "var(--mw-editor-background)",
         color: "var(--mw-foreground)",
         border: `1px ${node.kind === "ref" ? "dashed" : "solid"} ${
-          props.selected ? "var(--mw-focus-border, #3794ff)" : frame
+          props.selected
+            ? "var(--mw-focus-border, #3794ff)"
+            : node.missing === undefined
+              ? frame
+              : "var(--mw-error-foreground, #f14c4c)"
         }`,
         outline: props.selected ? "1px solid var(--mw-focus-border, #3794ff)" : "none",
       }}
@@ -278,6 +286,11 @@ function SimpleNode(props: NodeProps<Node<ObjectData>>) {
           style={node.textColor ? { color: node.textColor } : {}}
         >
           {node.kind === "ref" && <span title="Ссылка на чужой объект">↗</span>}
+          {node.map !== undefined && (
+            <span className="opacity-70" title={`Объект подключённой карты «${node.map}»`}>
+              {node.map}:
+            </span>
+          )}
           <div className={`min-w-0 flex-1 text-center ${tabHover.tabOnly}`}>
             <Label
               text={node.label}

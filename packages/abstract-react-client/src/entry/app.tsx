@@ -7,13 +7,22 @@ import { Host } from "../services/host/adapters/host.ts";
 import { ProvideHost, useHost } from "../services/host/ports.tsx";
 import { ViewStates } from "../services/state/index.ts";
 import { ProvideViewStates, useViewStates } from "../services/state/ports.tsx";
+import { LiveFiles } from "@mapward/core";
+import { bridgeFiles, MapView, MapViews, reloadMap } from "../services/map/index.ts";
+import { ProvideMapViews, useMapViews } from "../services/map/ports.tsx";
 import { useLocalStore } from "../lib/mobx/use-local-store.ts";
 import { Loading } from "../lib/ui/loading.tsx";
 import { Maps } from "../features/maps/index.ts";
-import { SavedHistory, TabHistory, type History } from "../features/object-screen/index.ts";
+import {
+  MapFrames,
+  SavedHistory,
+  TabHistory,
+  type History,
+} from "../features/object-screen/index.ts";
 import { DirectiveTurns } from "../features/directive-turns/index.ts";
 import { FocusInbox } from "../features/focus/index.ts";
 import { ObjectView } from "./object-view.tsx";
+import type { StartAt } from "../features/object-screen/index.ts";
 
 /**
  * На чём открыт таб — решение 0026: карта названа целиком, потому что таб живёт сам по себе и
@@ -44,14 +53,45 @@ const SidebarObject = observer(function SidebarObject(props: { map: MapRef; focu
   );
 
   return saved.ready ? (
-    <ObjectView
-      mapConfig={props.map}
-      history={saved.history}
-      onHistory={(history) => saved.save(history)}
-      focus={props.focus}
-    />
+    <FramedObject map={props.map} history={saved.history} persist={saved} focus={props.focus} />
   ) : (
     <Loading text="Читаем карту…" />
+  );
+});
+
+/**
+ * Вид объекта кадрами — переход в подключённую карту на месте (решение о подключённых картах):
+ * объект проекта открывается новым кадром со своей картой, «назад» с его начала возвращает в
+ * прежний. Хранится история только нижнего кадра — карты, на которой вид открыт.
+ */
+const FramedObject = observer(function FramedObject(props: {
+  map: MapRef;
+  start?: StartAt;
+  history: History | undefined;
+  persist: { save(history: History): void };
+  focus?: FocusInbox;
+}) {
+  const maps = useMapViews();
+  const frames = useLocalStore(
+    () =>
+      new MapFrames(
+        { map: props.map, history: props.history, ...(props.start ? { start: props.start } : {}) },
+        (from, mount) => maps.mounted(from, mount),
+        (history) => props.persist.save(history),
+      ),
+    [props.map.mapPath, maps],
+  );
+
+  return (
+    <ObjectView
+      key={frames.key}
+      mapConfig={frames.top.map}
+      start={frames.top.start}
+      history={frames.top.history}
+      onHistory={(history) => frames.save(history)}
+      focus={props.focus}
+      frames={frames}
+    />
   );
 });
 
@@ -71,15 +111,15 @@ const TabObject = observer(function TabObject(props: {
   );
 
   return (
-    <ObjectView
-      mapConfig={{ mapPath: target.mapPath, basePath: target.basePath, name: target.name }}
+    <FramedObject
+      map={{ mapPath: target.mapPath, basePath: target.basePath, name: target.name }}
       start={{
         address: target.address,
         ...(target.group === undefined ? {} : { group: target.group }),
         ...(target.metric === undefined ? {} : { metric: target.metric }),
       }}
       history={target.history}
-      onHistory={(history) => tab.save(history)}
+      persist={tab}
     />
   );
 });
@@ -101,6 +141,21 @@ export const MapwardApp = observer(function MapwardApp(props: {
 }) {
   const host = useLocalStore(() => new Host(props.client), [props.client]);
   const views = useLocalStore(() => new ViewStates(props.client), [props.client]);
+  // Живая карта собирается здесь: у фич есть только мост, а файлы по нему — у сервиса карты.
+  const maps = useLocalStore(
+    () =>
+      new MapViews(
+        props.client,
+        (ref, mounts) =>
+          new MapView(
+            new LiveFiles(bridgeFiles(props.client, ref)),
+            ref,
+            () => reloadMap(props.client, ref),
+            mounts,
+          ),
+      ),
+    [props.client],
+  );
   const { target, onTarget } = props;
   // Просьбы «перейди к объекту» слушает только сайдбар: таб хост поднимает сам.
   const focus = useLocalStore(() => new FocusInbox(props.client), [props.client]);
@@ -110,20 +165,22 @@ export const MapwardApp = observer(function MapwardApp(props: {
       <ProviderIcons render={props.icon}>
         <ProvideHost host={host}>
           <ProvideViewStates states={views}>
-            {target ? (
-              <TabObject target={target} {...(onTarget ? { onTarget } : {})} />
-            ) : (
-              // Лента — поверх всех карт, а не внутри одной: она общая на окно, а карт в
-              // сайдбаре бывает несколько. В табе её нет (решение 0034). Пункт экшона ведёт
-              // той же просьбой «перейди к объекту», что кнопка в файле директивы.
-              <>
-                <Maps
-                  renderMap={(map) => <SidebarObject map={map} focus={focus} />}
-                  focus={focus}
-                />
-                <DirectiveTurns focus={focus} />
-              </>
-            )}
+            <ProvideMapViews views={maps}>
+              {target ? (
+                <TabObject target={target} {...(onTarget ? { onTarget } : {})} />
+              ) : (
+                // Лента — поверх всех карт, а не внутри одной: она общая на окно, а карт в
+                // сайдбаре бывает несколько. В табе её нет (решение 0034). Пункт экшона ведёт
+                // той же просьбой «перейди к объекту», что кнопка в файле директивы.
+                <>
+                  <Maps
+                    renderMap={(map) => <SidebarObject map={map} focus={focus} />}
+                    focus={focus}
+                  />
+                  <DirectiveTurns focus={focus} />
+                </>
+              )}
+            </ProvideMapViews>
           </ProvideViewStates>
         </ProvideHost>
       </ProviderIcons>

@@ -1,7 +1,14 @@
 import { Observable } from "rxjs";
 import * as vscode from "vscode";
 import type { MapsState, ResolvedMap } from "@mapward/core";
-import { CONFIG_FILE, INDEX_FILE, mapName, parseConfig } from "@mapward/abstract-server";
+import {
+  CONFIG_FILE,
+  INDEX_FILE,
+  mapName,
+  mountedMaps,
+  parseConfig,
+  resolveMounts,
+} from "@mapward/abstract-server";
 
 async function readText(uri: vscode.Uri): Promise<string | undefined> {
   try {
@@ -10,6 +17,9 @@ async function readText(uri: vscode.Uri): Promise<string | undefined> {
     return undefined;
   }
 }
+
+/** Текст по пути — так читают подключения: их пути сервер считает строками, не `Uri`. */
+const readPath = (path: string) => readText(vscode.Uri.file(path));
 
 /** Up from a folder to the file system root, first hit wins — the same way git looks. */
 async function findConfig(from: vscode.Uri): Promise<vscode.Uri | undefined> {
@@ -34,11 +44,13 @@ async function mapsOfConfig(configUri: vscode.Uri): Promise<ResolvedMap[]> {
     parseConfig(text).map(async (entry) => {
       const mapUri = vscode.Uri.joinPath(configDir, entry.mapUrl);
       const index = await readText(vscode.Uri.joinPath(mapUri, INDEX_FILE));
+      const mounts = await resolveMounts(readPath, configUri.fsPath, entry.mounts);
       return {
         name: mapName(index, mapUri.fsPath),
         mapPath: mapUri.fsPath,
         basePath: vscode.Uri.joinPath(configDir, entry.baseUrl).fsPath,
         configPath: configUri.fsPath,
+        ...(mounts === undefined ? {} : { mounts }),
       };
     }),
   );
@@ -80,7 +92,11 @@ export async function readMaps(): Promise<MapsState> {
   // sidebar spinning forever. Reported only when nothing else was found — one bad file in
   // a multi-root workspace should not hide the maps that do work.
   if (maps.length === 0 && failure) return { kind: "error", ...failure };
-  return maps.length === 0 ? { kind: "no-config" } : { kind: "maps", maps };
+  if (maps.length === 0) return { kind: "no-config" };
+  // Карты, до которых дотягиваются только подключениями: секций у них нет, но объект такой
+  // карты открывается переходом, и серверу по ним искать подключения.
+  const mounted = await mountedMaps(readPath, maps);
+  return { kind: "maps", maps, ...(mounted.length === 0 ? {} : { mounted }) };
 }
 
 /**

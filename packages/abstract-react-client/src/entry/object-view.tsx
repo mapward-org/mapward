@@ -1,8 +1,7 @@
 import { observer } from "mobx-react-lite";
-import { LiveFiles } from "@mapward/core";
 import { useBridgeClient } from "../ports/bridge.tsx";
 import { useHost } from "../services/host/ports.tsx";
-import { bridgeFiles, MapView, reloadMap } from "../services/map/index.ts";
+import { useMapViews } from "../services/map/ports.tsx";
 import { useLocalStore } from "../lib/mobx/use-local-store.ts";
 import {
   CardTerminalMenu,
@@ -12,6 +11,7 @@ import {
   ScreenStore,
   Terminals,
   type History,
+  type ScreenFrames,
   type ScreenSlots,
   type StartAt,
 } from "../features/object-screen/index.ts";
@@ -66,15 +66,16 @@ export const ObjectView = observer(function ObjectView(props: {
   onHistory?: ((history: History) => void) | undefined;
   /** Просьбы хоста перейти к объекту — кнопка «к объекту» в файле директивы; только в сайдбаре. */
   focus?: { pendingFor(mapPath: string): FocusTarget | undefined; take(): void } | undefined;
+  /** Переходы в подключённые карты: объект проекта открывается кадром поверх этого. */
+  frames?: ScreenFrames | undefined;
 }) {
   const bridge = useBridgeClient();
   const host = useHost();
+  const views = useMapViews();
+  // Карта — из общих на клиент: её делят экраны, и подключённые карты находят через неё друг друга.
   const map = useLocalStore(
-    () =>
-      new MapView(new LiveFiles(bridgeFiles(bridge, props.mapConfig)), props.mapConfig, () =>
-        reloadMap(bridge, props.mapConfig),
-      ),
-    [props.mapConfig.mapPath, props.mapConfig.basePath, props.mapConfig.name],
+    () => views.view(props.mapConfig),
+    [views, props.mapConfig.mapPath, props.mapConfig.basePath, props.mapConfig.name],
   );
   const screen = useLocalStore(
     () =>
@@ -84,6 +85,7 @@ export const ObjectView = observer(function ObjectView(props: {
         props.mapConfig,
         { history: props.history, at: props.start },
         props.onHistory,
+        props.frames,
       ),
     [map],
   );

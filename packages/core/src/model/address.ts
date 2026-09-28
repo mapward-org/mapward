@@ -10,16 +10,52 @@ export type Address = {
   path: string[];
   /** Segments after the hash: steps through `_index.json` fields. Absent means a path. */
   field?: string[];
+  /**
+   * Имя подключённой карты перед двоеточием: `mapward://leafer:/arch`. Остальные поля — адрес
+   * уже внутри той карты, разбирается он по её правилам. Без имени — своя карта.
+   */
+  mount?: string;
 };
 
 const SCHEME = "mapward://";
+
+/** Имя подключения — до двоеточия, без знаков, которые что-то значат в адресе. */
+const MOUNT = /^([^/:#~@]+):(.*)$/s;
 
 export function isAddress(raw: string): boolean {
   return raw.startsWith(SCHEME);
 }
 
+/**
+ * Адрес с именем подключённой карты — на имя и адрес внутри неё: `mapward://leafer:/arch` →
+ * `leafer` и `mapward://arch`. Своя карта — `undefined`. Двоеточие в имени папки на Windows
+ * невозможно, поэтому с адресом своего объекта это не спутать.
+ */
+export function splitMount(raw: string): { mount: string; local: string } | undefined {
+  if (!isAddress(raw)) return undefined;
+  const match = MOUNT.exec(raw.slice(SCHEME.length));
+  if (!match) return undefined;
+  const [, mount = "", tail = ""] = match;
+  return { mount, local: SCHEME + (tail.startsWith("/") ? tail.slice(1) : tail) };
+}
+
+/** Обратно: адрес внутри подключённой карты — в форму записи родителя. */
+export function mountedAddress(mount: string, local: string): string {
+  const rest = local.slice(SCHEME.length);
+  const glued = rest === "" || rest.startsWith("#") || rest.startsWith("@");
+  return `${SCHEME}${mount}:${glued ? rest : `/${rest}`}`;
+}
+
 export function parseAddress(raw: string): Address | undefined {
   if (!isAddress(raw)) return undefined;
+
+  const mounted = splitMount(raw);
+  if (mounted) {
+    const inner = parseAddress(mounted.local);
+    // «Этот объект» в чужой карте смысла не имеет, а подключения не транзитивны: имя одно.
+    if (!inner || inner.mount !== undefined || inner.scope === "self") return undefined;
+    return { ...inner, mount: mounted.mount };
+  }
 
   const rest = raw.slice(SCHEME.length);
   const hash = rest.indexOf("#");

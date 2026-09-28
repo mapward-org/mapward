@@ -16,6 +16,13 @@ export type MetricsMapSource = {
    * неё они ставятся по карте на момент открытия объекта.
    */
   watch?(ref: MapRef): Observable<MapObject>;
+  /**
+   * Карта, подключённая под именем, или почему её нет: вьюха рисует объекты подключённых карт.
+   * Без него у карты подключений нет.
+   */
+  mounted?(ref: MapRef, name: string): MapRef | { error: string };
+  /** Папки всех подключённых карт — за ними следит вьюха. */
+  mountPaths?(ref: MapRef): string[];
 };
 
 type Display = MapMetric["config"]["display"];

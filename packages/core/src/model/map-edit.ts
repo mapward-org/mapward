@@ -1,6 +1,6 @@
 import * as T from "typebox";
 import type { Static } from "typebox";
-import { childAddress, MAP_ROOT } from "./address.ts";
+import { childAddress, MAP_ROOT, splitMount } from "./address.ts";
 import { findMetricOwner, findObject, trail } from "./model.ts";
 import type { MapObject } from "./model.ts";
 import {
@@ -131,7 +131,40 @@ export type EditContext = {
    * `map-state.json` вьюх — те, что назвала `editSources`. Нет файла — нет ключа.
    */
   files: ReadonlyMap<string, string>;
+  /**
+   * Корни подключённых карт по именам, или почему карты нет: на вьюху родителя их объекты
+   * кладутся ссылками и концами связей, адресом `mapward://leafer:/…`.
+   */
+  mounts?: Record<string, MapObject | string>;
 };
+
+/**
+ * Есть ли объект по адресу — своей карты или подключённой. Отвечает причиной, если нет:
+ * для подключённой она бывает двух видов — нет карты и нет объекта в ней.
+ */
+function lookup(context: EditContext, address: string): true | string {
+  const split = splitMount(address);
+  if (!split) return findObject(context.root, address) ? true : `Нет объекта ${address}`;
+  const mounted = context.mounts?.[split.mount];
+  if (mounted === undefined) return `У карты нет подключения «${split.mount}»`;
+  if (typeof mounted === "string") return mounted;
+  return findObject(mounted, split.local)
+    ? true
+    : `Нет объекта ${split.local} в карте «${split.mount}»`;
+}
+
+/**
+ * Сам объект подключённой карты через вьюху родителя не правится: перенос, переименование и
+ * удаление переписали бы файлы другого репозитория мимо его карты.
+ */
+function foreign(address: string): EditPlan | undefined {
+  const split = splitMount(address);
+  return split
+    ? fail(
+        `${address} — объект карты «${split.mount}»: переносят, переименовывают и удаляют его в ней самой, её вьюхой`,
+      )
+    : undefined;
+}
 
 function walk(object: MapObject, visit: (object: MapObject) => void): void {
   visit(object);
@@ -385,8 +418,11 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
       if (place === undefined) return fail("Место для новых связей в настройке вьюхи не названо");
       const parent = findObject(root, place);
       if (!parent) return fail(`Нет объекта ${place}, куда класть связь`);
-      if (!findObject(root, op.from)) return fail(`Нет объекта ${op.from}`);
-      if (!findObject(root, op.to)) return fail(`Нет объекта ${op.to}`);
+      // Концом связи бывает и объект подключённой карты: связь пишется в карту родителя.
+      for (const end of [op.from, op.to]) {
+        const found = lookup(context, end);
+        if (found !== true) return fail(found);
+      }
       if (op.from === op.to) return fail("Связь с самим собой не проводится");
       const prototype = op.prototype ?? view.config.palette.relations[0];
       if (prototype !== undefined && !findObject(root, prototype)) {
@@ -407,6 +443,8 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
     }
 
     case "move-object": {
+      const refused = foreign(op.object) ?? foreign(op.parent);
+      if (refused) return refused;
       const object = findObject(root, op.object);
       if (!object || object.address === MAP_ROOT) return fail(`Нет объекта ${op.object}`);
       const parent = findObject(root, op.parent);
@@ -445,6 +483,8 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
     }
 
     case "set-folder": {
+      const refused = foreign(op.object);
+      if (refused) return refused;
       const object = findObject(root, op.object);
       if (!object || object.address === MAP_ROOT || object.isGroup) {
         return fail(`Нет объекта ${op.object}`);
@@ -457,6 +497,8 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
     }
 
     case "rename": {
+      const refused = foreign(op.object);
+      if (refused) return refused;
       const object = findObject(root, op.object);
       if (!object || object.isGroup) return fail(`Нет объекта ${op.object}`);
       const label = op.label.trim();
@@ -474,6 +516,8 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
     }
 
     case "delete-object": {
+      const refused = foreign(op.object);
+      if (refused) return refused;
       const object = findObject(root, op.object);
       if (!object || object.address === MAP_ROOT || object.isGroup) {
         return fail(`Нет объекта ${op.object}`);
@@ -494,7 +538,8 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
 
     case "add-ref": {
       if (!view) return fail("Нужна вьюха");
-      if (!findObject(root, op.object)) return fail(`Нет объекта ${op.object}`);
+      const found = lookup(context, op.object);
+      if (found !== true) return fail(found);
       editState(draft, view.statePath, (state) =>
         withPosition(
           state.refs?.includes(op.object)

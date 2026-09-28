@@ -332,3 +332,66 @@ test("an arrow keeps its own style on this view", () => {
     route: "orthogonal",
   });
 });
+
+/** Карта проекта под именем `leafer`: на вьюху родителя её объекты кладутся ссылками. */
+const mounted: EditContext = {
+  ...context,
+  mounts: {
+    leafer: object("mapward://", "Leafer", { children: [object("mapward://api", "API")] }),
+    ed: "Нет карты по пути ../ed/mapward.json",
+  },
+};
+
+test("an object of a mounted map goes on the parent's view by a ref and ends a relation", () => {
+  const ref = changes(
+    planEdit(mounted, {
+      op: "add-ref",
+      view: "mapward://_metrics/canvas",
+      object: "mapward://leafer:/api",
+      position: { x: 3, y: 4 },
+    }),
+  );
+  expect(JSON.parse(written(ref, "/map/_metrics/canvas/map-state.json") ?? "{}")).toMatchObject({
+    refs: ["mapward://systems/shop/cart", "mapward://leafer:/api"],
+    positions: { "mapward://leafer:/api": { x: 3, y: 4 } },
+  });
+
+  const relation = changes(
+    planEdit(mounted, {
+      op: "create-relation",
+      view: "mapward://_metrics/canvas",
+      from: "mapward://systems/bank",
+      to: "mapward://leafer:/api",
+    }),
+  );
+  expect(JSON.parse(written(relation, "/map/relations/bank-to-api/_index.json") ?? "{}")).toEqual({
+    name: "связь",
+    props: { from: "mapward://systems/bank", to: "mapward://leafer:/api" },
+  });
+});
+
+test("a missing object of a mounted map, or a missing map, is refused with the reason", () => {
+  const view = "mapward://_metrics/canvas";
+  expect(planEdit(mounted, { op: "add-ref", view, object: "mapward://leafer:/gone" })).toEqual({
+    error: "Нет объекта mapward://gone в карте «leafer»",
+  });
+  expect(planEdit(mounted, { op: "add-ref", view, object: "mapward://ed:/core" })).toEqual({
+    error: "Нет карты по пути ../ed/mapward.json",
+  });
+  expect(planEdit(context, { op: "add-ref", view, object: "mapward://leafer:/api" })).toEqual({
+    error: "У карты нет подключения «leafer»",
+  });
+});
+
+test("the object of a mounted map itself is not moved, renamed or deleted from the parent", () => {
+  const api = "mapward://leafer:/api";
+  for (const op of [
+    { op: "delete-object", object: api },
+    { op: "rename", object: api, label: "x" },
+    { op: "set-folder", object: api, folder: "x" },
+    { op: "move-object", object: api, parent: "mapward://systems" },
+  ] as const) {
+    const plan = planEdit(mounted, op);
+    expect("error" in plan && plan.error).toContain("в ней самой");
+  }
+});

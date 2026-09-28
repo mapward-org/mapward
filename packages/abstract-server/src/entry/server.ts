@@ -1,5 +1,5 @@
 import type { Observable } from "rxjs";
-import type { MapMetric, MapObject, MapOp, RunSource } from "@mapward/core";
+import type { MapMetric, MapObject, MapOp, ResolvedMap, RunSource } from "@mapward/core";
 import type { ServerPorts } from "../ports/index.ts";
 import type { MapRef } from "../kernel/map-ref.ts";
 import { MapModel } from "../features/map/index.ts";
@@ -125,6 +125,15 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
   return {
     capabilities: () => ports.capabilities,
+
+    /**
+     * Какие карты есть в окне и что у каждой подключено — из `mapward.json`. Ставится до первого
+     * обращения к картам: по этому списку карта находит свои подключения.
+     */
+    setMaps: (maps: ResolvedMap[]) => map.setMaps(maps),
+
+    /** Карта, подключённая к `ref` под именем, или почему её нет. */
+    mounted: (ref: MapRef, name: string) => map.mounted(ref, name),
 
     getMap: (ref: MapRef): Promise<MapObject> => map.current(ref),
 

@@ -1,6 +1,7 @@
 import * as T from "typebox";
 import type { Static } from "typebox";
-import type { MapObject } from "./model.ts";
+import { mountedAddress, splitMount } from "./address.ts";
+import { findObject, type MapObject } from "./model.ts";
 
 /**
  * Вьюха карты — метрика с коллектором `objects-map` (решение 0044). Корня у вьюхи нет: на
@@ -180,6 +181,13 @@ export type ViewNode = {
   position?: Point;
   /** Размер, растянутый руками; нет — размер из стиля. */
   size?: Size;
+  /**
+   * Имя подключения, если объект из подключённой карты: `link` и `object` тогда — адрес с этим
+   * именем, а открывается объект той карты.
+   */
+  map?: string;
+  /** Ссылка есть, а объекта нет: пропал или карта не подключена. Узел остаётся, с причиной. */
+  missing?: string;
 };
 
 /**
@@ -326,6 +334,67 @@ export const isRelation = (object: MapObject): boolean => {
 /** Адрес прототипа — второй слой объекта (решение 0019). */
 export const prototypeOf = (object: MapObject): string | undefined => object.layers[1]?.address;
 
+/**
+ * Подключённые карты, которые нужны вьюхе: те, на чьи объекты ведут её ссылки и концы связей.
+ * Остальные подключения для неё не читаются.
+ */
+export function viewMounts(root: MapObject, state: ViewState): string[] {
+  const names = new Set<string>();
+  const note = (address: unknown) => {
+    const split = typeof address === "string" ? splitMount(address) : undefined;
+    if (split) names.add(split.mount);
+  };
+  for (const address of state.refs ?? []) note(address);
+  walk(root, (object) => {
+    if (!isRelation(object)) return;
+    note(object.props.from);
+    note(object.props.to);
+  });
+  return [...names];
+}
+
+/** Объект подключённой карты для вьюхи родителя: адрес с именем, один узел без жильцов. */
+function foreignObject(object: MapObject, mount: string): MapObject {
+  return { ...object, address: mountedAddress(mount, object.address), children: [] };
+}
+
+/** Ссылка, за которой объекта нет, — узлом с причиной: иначе вьюха потеряла бы его место. */
+function missingObject(address: string): MapObject {
+  return {
+    address,
+    path: "",
+    name: address,
+    isGroup: false,
+    props: {},
+    layers: [],
+    metrics: [],
+    directives: [],
+    actions: [],
+    workflow: [],
+    metricGroups: [],
+    children: [],
+  };
+}
+
+/**
+ * Связи самой подключённой карты — с её концами, переписанными в форму записи родителя. Их
+ * стрелки рисуются, когда оба конца лежат на холсте родителя.
+ */
+function foreignRelations(root: MapObject, mount: string): MapObject[] {
+  const found: MapObject[] = [];
+  walk(root, (object) => {
+    if (!isRelation(object)) return;
+    const { from, to } = object.props as { from: string; to: string };
+    if (splitMount(from) || splitMount(to)) return;
+    found.push({
+      ...object,
+      address: mountedAddress(mount, object.address),
+      props: { ...object.props, from: mountedAddress(mount, from), to: mountedAddress(mount, to) },
+    });
+  });
+  return found;
+}
+
 function walk(object: MapObject, visit: (object: MapObject) => void): void {
   visit(object);
   for (const child of object.children) walk(child, visit);
@@ -412,6 +481,8 @@ export function objectsMap(
   view: string,
   config: ObjectsMapConfig,
   state: ViewState,
+  /** Корни подключённых карт, нужных вьюхе (`viewMounts`), или почему карты нет. */
+  mounts: Record<string, MapObject | string> = {},
 ): ObjectsMap {
   const excluded = (object: MapObject) =>
     config.exclude.some((pattern) => matchesAddress(object.address, pattern));
@@ -435,7 +506,7 @@ export function objectsMap(
     (config.show.some((pattern) => matchesAddress(object.address, pattern)) ||
       ofPrototype(object, config.prototypes));
 
-  const tops: { object: MapObject; kind: ViewNode["kind"] }[] = [];
+  const tops: { object: MapObject; kind: ViewNode["kind"]; map?: string; missing?: string }[] = [];
   const picked = new Set<string>();
   walk(root, (object) => {
     if (chosen(object)) picked.add(object.address);
@@ -447,18 +518,44 @@ export function objectsMap(
     if (!nested && object) tops.push({ object, kind: "object" });
   }
   for (const address of state.refs ?? []) {
+    const split = splitMount(address);
+    if (split) {
+      // Объект подключённой карты попадает на холст только ссылкой: отбор — про свою карту.
+      const mounted = mounts[split.mount];
+      const found = typeof mounted === "object" ? findObject(mounted, split.local) : undefined;
+      const missing =
+        typeof mounted === "string"
+          ? mounted
+          : found
+            ? undefined
+            : `Нет объекта ${split.local} в карте «${split.mount}»`;
+      tops.push({
+        object: found ? foreignObject(found, split.mount) : missingObject(address),
+        kind: "ref",
+        map: split.mount,
+        ...(missing === undefined ? {} : { missing }),
+      });
+      continue;
+    }
     const object = byAddress.get(address);
     if (!object || picked.has(address)) continue;
     tops.push({ object, kind: "ref" });
   }
 
   const nodes: ViewNode[] = [];
-  const place = (object: MapObject, kind: ViewNode["kind"], parent: string | undefined) => {
+  const place = (
+    object: MapObject,
+    kind: ViewNode["kind"],
+    parent: string | undefined,
+    foreign: { map?: string; missing?: string } = {},
+  ) => {
     const style = styleOf(object, config);
     const inside = residents(object).filter((child) => !cut.has(child.address));
+    // Чужой объект — всегда один узел: его устройство смотрят в его карте.
     const configured =
-      config.expand.objects.some((pattern) => matchesAddress(object.address, pattern)) ||
-      ofPrototype(object, config.expand.prototypes);
+      foreign.map === undefined &&
+      (config.expand.objects.some((pattern) => matchesAddress(object.address, pattern)) ||
+        ofPrototype(object, config.expand.prototypes));
     // Раскрытый конфигом — группа и без жильцов: ограниченный контекст ставят пустой рамкой и
     // бросают в него стикеры. Не раскрытый — один узел, стрелки к жильцам подняты к нему (C4).
     const expanded = configured;
@@ -478,21 +575,28 @@ export function objectsMap(
       ...((style.textColor ?? readableText(style.color)) === undefined
         ? {}
         : { textColor: style.textColor ?? readableText(style.color) }),
-      view: style.view ?? "simple",
+      // Превью чужого объекта собрало бы его метрики по карте родителя — чужой рисуется простым.
+      view: foreign.map === undefined ? (style.view ?? "simple") : "simple",
       ...(style.group === undefined ? {} : { group: style.group }),
       ...(style.width === undefined ? {} : { width: style.width }),
       ...(style.maxHeight === undefined ? {} : { maxHeight: style.maxHeight }),
       expanded,
       ...(position === undefined ? {} : { position }),
       ...(size === undefined ? {} : { size }),
+      ...(foreign.map === undefined ? {} : { map: foreign.map }),
+      ...(foreign.missing === undefined ? {} : { missing: foreign.missing }),
     });
     if (expanded) for (const child of inside) place(child, "object", object.address);
   };
-  for (const { object, kind } of tops) place(object, kind, undefined);
+  for (const { object, kind, ...foreign } of tops) place(object, kind, undefined, foreign);
 
   // Видимый узел для адреса — самый глубокий из показанных, внутри которого адрес лежит.
   const shown = nodes.map((node) => node.id).toSorted((a, b) => b.length - a.length);
   const visible = (address: string) => shown.find((id) => within(address, id));
+
+  for (const [mount, mounted] of Object.entries(mounts)) {
+    if (typeof mounted === "object") relations.push(...foreignRelations(mounted, mount));
+  }
 
   const arrows = new Map<string, ViewRelation>();
   for (const relation of relations) {

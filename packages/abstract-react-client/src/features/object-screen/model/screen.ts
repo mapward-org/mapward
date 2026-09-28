@@ -1,5 +1,5 @@
 import { action, computed, makeObservable, observableRef } from "mobx";
-import { groupLayout, groupMetrics, linkKind, pickGroup } from "@mapward/core";
+import { groupLayout, groupMetrics, linkKind, pickGroup, splitMount } from "@mapward/core";
 import type { Capabilities, Layout, MapMetric, MapObject, MetricGroup } from "@mapward/core";
 import { keyClashes } from "../../../kernel/clashes.ts";
 import { crumbsOf, type Crumb } from "../pure-model/breadcrumbs.ts";
@@ -13,6 +13,13 @@ import {
   type History,
   type Screen,
 } from "../pure-model/navigation.ts";
+import type { ScreenFrames } from "./map-frames.ts";
+
+/**
+ * Крошка, ведущая назад в карту, откуда пришли: у неё нет адреса в этой карте, поэтому она
+ * помечена этим знаком, а не адресом.
+ */
+export const ORIGIN = "mapward-origin:";
 
 /**
  * Что экрану нужно от карты: объект по адресу, есть ли он, и его предки для крошек. Объект —
@@ -74,6 +81,8 @@ export class ScreenStore {
     readonly ref: Ref,
     start: { history?: History | undefined; at?: StartAt | undefined },
     private readonly onHistory?: ((history: History) => void) | undefined,
+    /** Переходы в подключённые карты и обратно; без них ссылка с именем подключения молчит. */
+    private readonly frames?: ScreenFrames | undefined,
   ) {
     this.history = start.history ?? startHistory(startScreen(start.at));
     makeObservable<ScreenStore, "screen">(this, {
@@ -188,14 +197,27 @@ export class ScreenStore {
     return metric ? (metric.config.label ?? metric.key) : "";
   }
 
-  /** Крошки: предки-объекты, от корня и без самого объекта (решение 0036). */
+  /**
+   * Крошки: предки-объекты, от корня и без самого объекта (решение 0036). В подключённой карте
+   * первой стоит та, откуда пришли: видно, где ты и как вернуться.
+   */
   get crumbs(): Crumb[] {
-    return crumbsOf(this.map.ancestors(this.object.address));
+    const own = crumbsOf(this.map.ancestors(this.object.address));
+    const origin = this.frames?.leave;
+    return origin ? [{ address: ORIGIN, name: origin.name }, ...own] : own;
+  }
+
+  /** Крошка ведёт к объекту этой карты или назад, в карту, откуда пришли. */
+  goCrumb(address: string): void {
+    if (address === ORIGIN) this.frames?.leave?.go();
+    else this.go(address);
   }
 
   /** Стрелки — назад и вперёд по истории, к родителю ведут крошки (0036). */
   get back(): Arrow | undefined {
-    return this.arrow(-1);
+    const origin = this.frames?.leave;
+    // С начала истории в подключённой карте назад — это в карту, откуда пришли.
+    return this.arrow(-1) ?? (origin && { name: origin.name, address: ORIGIN, go: origin.go });
   }
 
   get forward(): Arrow | undefined {
@@ -245,7 +267,9 @@ export class ScreenStore {
    */
   open(link: string): void {
     const kind = linkKind(link);
-    if (kind === "object") this.go(link);
+    // Объект подключённой карты открывается её кадром: здесь всё привязано к этой карте.
+    if (kind === "object" && splitMount(link)) this.frames?.enter(link, this.history);
+    else if (kind === "object") this.go(link);
     else if (kind === "external") this.host.openExternal(link);
     else if (this.host.can.openFile) this.host.open(link);
   }
@@ -269,10 +293,12 @@ export class ScreenStore {
     group?: string | undefined;
     metric?: string | undefined;
   }): void {
-    if (!this.host.can.tabs) return;
+    if (!this.host.can.tabs || what.address === ORIGIN) return;
+    // Объект подключённой карты — таб на её карте, а не на этой.
+    const foreign = what.address === undefined ? undefined : this.frames?.target(what.address);
     this.host.openInTab({
-      ...this.ref,
-      address: what.address ?? this.object.address,
+      ...(foreign?.map ?? this.ref),
+      address: foreign?.address ?? what.address ?? this.object.address,
       ...(what.group === undefined ? {} : { group: what.group }),
       ...(what.metric === undefined ? {} : { metric: what.metric }),
     });

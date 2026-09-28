@@ -2,12 +2,23 @@ import * as T from "typebox";
 import type { Static } from "typebox";
 import { createBridgeMethod, createBridgeSubscription } from "./bridge.ts";
 
+/**
+ * Куда ведёт подключение: папка карты проекта — по ней она ищется среди поднятых — или что не
+ * так с настройкой. Ошибка остаётся у своего имени, остальные подключения работают.
+ */
+export const MountTarget = T.Union([
+  T.Object({ mapPath: T.String(), configPath: T.String(), index: T.Number() }),
+  T.Object({ error: T.String() }),
+]);
+
 /** One map, already resolved to absolute paths — the webview never touches the file system. */
 export const ResolvedMap = T.Object({
   name: T.String(),
   mapPath: T.String(),
   basePath: T.String(),
   configPath: T.String(),
+  /** Подключённые карты по именам — `mapward://leafer:/…` ищется здесь, у карты со ссылкой. */
+  mounts: T.Optional(T.Record(T.String(), MountTarget)),
 });
 
 /**
@@ -16,7 +27,15 @@ export const ResolvedMap = T.Object({
  * config, so only `no-config` can offer to create one.
  */
 export const MapsState = T.Union([
-  T.Object({ kind: T.Literal("maps"), maps: T.Array(ResolvedMap) }),
+  T.Object({
+    kind: T.Literal("maps"),
+    maps: T.Array(ResolvedMap),
+    /**
+     * Карты, до которых дотягиваются только подключениями. Секций в панели у них нет, но
+     * объект такой карты открывается переходом по ссылке, и описание её нужно клиенту.
+     */
+    mounted: T.Optional(T.Array(ResolvedMap)),
+  }),
   T.Object({ kind: T.Literal("no-config") }),
   T.Object({ kind: T.Literal("no-workspace") }),
   T.Object({ kind: T.Literal("error"), message: T.String(), configPath: T.Optional(T.String()) }),
@@ -42,4 +61,25 @@ export const configBridge = {
 };
 
 export type ResolvedMap = Static<typeof ResolvedMap>;
+export type MountTarget = Static<typeof MountTarget>;
 export type MapsState = Static<typeof MapsState>;
+
+/**
+ * Карта, подключённая к карте `from` под именем `name`: описание или что не так. Ищется по
+ * папке среди всех поднятых — видимых и доступных только подключением.
+ */
+export function mountedMap(
+  maps: ResolvedMap[],
+  from: string,
+  name: string,
+): ResolvedMap | { error: string } {
+  const owner = maps.find((map) => samePath(map.mapPath, from));
+  const target = owner?.mounts?.[name];
+  if (!target) return { error: `У карты нет подключения «${name}»` };
+  if ("error" in target) return target;
+  const found = maps.find((map) => samePath(map.mapPath, target.mapPath));
+  return found ?? { error: `Карта подключения «${name}» не поднята: ${target.mapPath}` };
+}
+
+const samePath = (a: string, b: string) =>
+  a.replaceAll("\\", "/").toLowerCase() === b.replaceAll("\\", "/").toLowerCase();

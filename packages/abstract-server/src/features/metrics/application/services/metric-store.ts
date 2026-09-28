@@ -345,7 +345,8 @@ export class MetricStore {
       });
     }
 
-    for (const target of watchPlan(metric.config, ref.mapPath).targets) {
+    const mounted = this.map.mountPaths?.(ref) ?? [];
+    for (const target of watchPlan(metric.config, ref.mapPath, mounted).targets) {
       wanted.set(`${metric.address}|${target.key}`, () =>
         this.watchStep(target, () => {
           const fresh = now();
@@ -355,6 +356,22 @@ export class MetricStore {
     }
 
     return wanted;
+  }
+
+  /** Корни подключённых карт по именам — или почему карты нет: их объекты рисует вьюха. */
+  private async mountsOf(
+    ref: MapRef,
+    names: string[],
+  ): Promise<Record<string, MapObject | string>> {
+    const pairs = await Promise.all(
+      names.map(async (name): Promise<[string, MapObject | string]> => {
+        const found = this.map.mounted?.(ref, name) ?? {
+          error: `У карты нет подключения «${name}»`,
+        };
+        return [name, "error" in found ? found.error : await this.map.current(found)];
+      }),
+    );
+    return Object.fromEntries(pairs);
   }
 
   /** Вотчер одного шага: порт следит за папками, изменение сверяется с глобами шага. */
@@ -592,7 +609,7 @@ export class MetricStore {
     const live: LiveRun = { steps: new Map(), again: new Set(), transformAgain: false };
     entry.live = live;
     const step = this.restartable(live, token);
-    const problems = watchPlan(config, ref.mapPath).problems;
+    const problems = watchPlan(config, ref.mapPath, this.map.mountPaths?.(ref)).problems;
 
     try {
       let only = watched?.watch === "collect" ? [watched.index] : undefined;
@@ -607,6 +624,7 @@ export class MetricStore {
             problems,
             output,
             root: () => this.map.current(ref),
+            mounts: (names: string[]) => this.mountsOf(ref, names),
           };
           // oxlint-disable-next-line no-await-in-loop
           const collected = await this.limited(() => {
