@@ -70,7 +70,6 @@ function targetOf(
   index: number,
   spec: Record<string, unknown>,
   cwd: string,
-  mounted: string[],
 ): WatchTarget | string | undefined {
   // Вьюха следит за картой сама, без поля (решение 0044): её значение — это `_index.json`
   // объектов и её `map-state.json`, и протухает оно от любой правки карты.
@@ -100,11 +99,7 @@ function targetOf(
     return `watch у шага «${where}»: не сказано, за чем следить, — нужен include`;
   }
 
-  // Вьюха рисует и объекты подключённых карт — их правка тоже её правка.
-  const fullInclude = [
-    ...include.map((pattern) => full(base, pattern)),
-    ...(view && !own.include ? mounted.map((root) => full(root, "**/_index.json")) : []),
-  ];
+  const fullInclude = include.map((pattern) => full(base, pattern));
   const fullExclude = exclude.map((pattern) => full(base, pattern));
   const roots = fullInclude.map(rootOf);
   const debounce = typeof own.debounce === "number" ? own.debounce : undefined;
@@ -120,11 +115,8 @@ function targetOf(
   };
 }
 
-/**
- * Вотчеры шагов метрики по её конфигу — уже после подстановок, как он пришёл из карты.
- * `mounted` — папки подключённых карт: за ними следит вьюха.
- */
-export function watchPlan(config: MetricConfig, cwd: string, mounted: string[] = []): WatchPlan {
+/** Вотчеры шагов метрики по её конфигу — уже после подстановок, как он пришёл из карты. */
+export function watchPlan(config: MetricConfig, cwd: string): WatchPlan {
   const targets: WatchTarget[] = [];
   const problems: string[] = [];
 
@@ -134,7 +126,7 @@ export function watchPlan(config: MetricConfig, cwd: string, mounted: string[] =
   ];
   for (const [stage, specs] of stages) {
     for (const [index, spec] of specs.entries()) {
-      const target = targetOf(stage, index, spec, cwd, mounted);
+      const target = targetOf(stage, index, spec, cwd);
       if (typeof target === "string") problems.push(target);
       else if (target) targets.push(target);
     }

@@ -12,9 +12,4 @@ import type { MapRef } from "../../kernel/map-ref.ts";
 export type ObjectsMapSource = {
   current(ref: MapRef): Promise<MapObject>;
   refresh(paths: string[]): Promise<void>;
-  /**
-   * Карта, подключённая под именем, или почему её нет: на вьюху родителя её объекты кладутся
-   * ссылками и концами связей.
-   */
-  mounted?(ref: MapRef, name: string): MapRef | { error: string };
 };

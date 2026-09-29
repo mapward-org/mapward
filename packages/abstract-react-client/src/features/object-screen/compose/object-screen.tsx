@@ -91,7 +91,7 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
             <Crumb
               key={step.address}
               step={step}
-              onGo={(address) => screen.goCrumb(address)}
+              onGo={(address) => screen.go(address)}
               onOpenTab={screen.objectTab}
             />
           ))}

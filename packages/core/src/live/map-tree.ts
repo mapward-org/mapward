@@ -1,12 +1,6 @@
 import { computed, reaction, when, type IComputedValue } from "mobx";
 import { Check } from "typebox/value";
-import {
-  childAddress,
-  MAP_ROOT,
-  mountedAddress,
-  parseAddress,
-  splitMount,
-} from "../model/address.ts";
+import { childAddress, MAP_ROOT, parseAddress } from "../model/address.ts";
 import { anchorDisplay } from "../model/anchor-display.ts";
 import {
   inheritActions,
@@ -19,8 +13,8 @@ import {
   resolveMetrics,
   resolver,
   resolveWorkflow,
-  type Found,
   type IndexPart,
+  type Named,
 } from "../model/inherit.ts";
 import { mergeAction, mergeMetric } from "../model/merge.ts";
 import type {
@@ -59,24 +53,6 @@ import { PENDING, type LiveFiles } from "./files.ts";
 /** Какая карта: папка, корень проекта для `@` и имя корня. */
 export type LiveMapRef = { mapPath: string; basePath: string; name: string };
 
-/** Подключённая карта по имени — или текст, почему её нет. */
-export type Mounts = (name: string) => LiveMap | string;
-
-/** Адреса слоёв прототипа из подключённой карты — в форме записи наследника. */
-const rehomeLayers = (layers: ConfigLayer[], to: (address: string) => string): ConfigLayer[] =>
-  layers.map((layer) => ({ ...layer, address: to(layer.address) }));
-
-/** Владелец унаследованного файла — объект подключённой карты, адрес с её именем. */
-const rehomeOwners = <T extends { owner?: string }>(items: T[], to: (a: string) => string): T[] =>
-  items.map((item) => (item.owner === undefined ? item : { ...item, owner: to(item.owner) }));
-
-/** У метрик и экшонов прототипа — и владелец, и слои конфига. */
-const rehomeConfigs = <T extends { owner?: string; layers: ConfigLayer[] }>(
-  items: T[],
-  to: (address: string) => string,
-): T[] =>
-  rehomeOwners(items, to).map((item) => ({ ...item, layers: rehomeLayers(item.layers, to) }));
-
 /**
  * Чтение внутри одного вычисления. Пришедшее ещё не всё — вычисление досчитывается до конца,
  * чтобы все нужные файлы запросились разом, а результатом отдаёт «ещё не готово». Иначе файлы
@@ -85,26 +61,12 @@ const rehomeConfigs = <T extends { owner?: string; layers: ConfigLayer[] }>(
 class Reads {
   pending = false;
 
-  constructor(
-    private readonly files: LiveFiles,
-    /** Чтение из файлов другой карты внутри того же вычисления: «ещё не всё» — общее. */
-    private readonly parent?: Reads,
-  ) {}
-
-  /** Те же чтения, но из файлов другой карты: у каждой карты свой источник. */
-  of(files: LiveFiles): Reads {
-    return files === this.files ? this : new Reads(files, this);
-  }
-
-  private wait(): void {
-    this.pending = true;
-    this.parent?.wait();
-  }
+  constructor(private readonly files: LiveFiles) {}
 
   text(path: string): string | undefined {
     const value = this.files.text(path);
     if (value === PENDING) {
-      this.wait();
+      this.pending = true;
       return undefined;
     }
     return value;
@@ -123,7 +85,7 @@ class Reads {
   list(path: string): FolderEntry[] {
     const value = this.files.list(path);
     if (value === PENDING) {
-      this.wait();
+      this.pending = true;
       return [];
     }
     return value;
@@ -258,7 +220,6 @@ export class LiveObject implements MapObject {
       mine: Settled<T>,
       theirs: (prototype: LiveObject) => Settled<P>,
       combine: (own: T, prototype: { address: string; value: P } | undefined) => unknown,
-      rehome: (value: P, to: (address: string) => string) => P,
     ) =>
       settled(() => {
         const value = mine.value.get();
@@ -269,17 +230,7 @@ export class LiveObject implements MapObject {
         if (!at.node || !base) return { value: combine(value, undefined), pending };
         const prototype = base.value.get();
         if (prototype === undefined) return { value: undefined, pending: true };
-        // Прототип из подключённой карты пишет адреса слоёв и владельцев по-своему; у нас они
-        // должны вести туда же, поэтому получают имя подключения.
-        const { map } = at.node;
-        const to = (target: string) => tree.addressIn(map, target);
-        return {
-          value: combine(value, {
-            address: to(at.node.address),
-            value: map === tree ? prototype : rehome(prototype, to),
-          }),
-          pending,
-        };
+        return { value: combine(value, { address: at.node.address, value: prototype }), pending };
       });
 
     const place = { address, path };
@@ -289,7 +240,6 @@ export class LiveObject implements MapObject {
         (node) => node.inherited.index,
         (index: OwnIndex, prototype: { value: IndexPart } | undefined) =>
           inheritIndex(index, prototype?.value),
-        (index, to) => ({ ...index, layers: rehomeLayers(index.layers, to) }),
       ) as Settled<IndexPart>,
       metrics: inherit(
         this.own.metrics,
@@ -300,7 +250,6 @@ export class LiveObject implements MapObject {
             metrics,
             prototype && { address: prototype.address, metrics: prototype.value },
           ),
-        rehomeConfigs,
       ) as Settled<MapMetric[]>,
       actions: inherit(
         this.own.actions,
@@ -311,7 +260,6 @@ export class LiveObject implements MapObject {
             actions,
             prototype && { address: prototype.address, actions: prototype.value },
           ),
-        rehomeConfigs,
       ) as Settled<MapAction[]>,
       directives: inherit(
         this.own.directives,
@@ -321,7 +269,6 @@ export class LiveObject implements MapObject {
             directives,
             prototype && { address: prototype.address, directives: prototype.value },
           ),
-        rehomeOwners,
       ) as Settled<MapFile[]>,
       workflow: inherit(
         this.own.workflow,
@@ -334,7 +281,6 @@ export class LiveObject implements MapObject {
             this.own.index.value.get()?.workflowMode,
             prototype && { address: prototype.address, workflow: prototype.value },
           ),
-        rehomeOwners,
       ) as Settled<MapStage[]>,
     };
 
@@ -348,23 +294,15 @@ export class LiveObject implements MapObject {
         const self = this.inherited.index.value.get();
         let pending = part.pending.get() || this.inherited.index.pending.get();
         if (value === undefined || self === undefined) return { value: undefined, pending: true };
-        const find = (target: string): Found | undefined => {
+        const find = (target: string): Named | undefined => {
           const at = this.tree.locate(target);
-          if (at.pending) pending = true;
-          if (!at.node) return undefined;
-          // Объект подключённой карты отдаёт поля после её подстановок — со своим `@`.
-          const foreign = at.node.map !== this.tree;
-          const index = foreign ? at.node.resolved.index : at.node.inherited.index;
-          if (index.pending.get()) pending = true;
-          const found = index.value.get();
-          return found && foreign ? { ...found, final: true } : found;
-        };
-        const baseOf = (mount: string) => {
-          const map = this.tree.mount(mount);
-          return typeof map === "string" ? undefined : map.ref.basePath;
+          if (at.pending || (at.node !== undefined && at.node.inherited.index.pending.get())) {
+            pending = true;
+          }
+          return at.node?.inherited.index.value.get();
         };
         return {
-          value: apply(value, resolver(find, self, this.tree.ref.basePath, 0, baseOf)),
+          value: apply(value, resolver(find, self, this.tree.ref.basePath)),
           pending,
         };
       });
@@ -411,11 +349,6 @@ export class LiveObject implements MapObject {
         pending,
       };
     }, sameSnapshot);
-  }
-
-  /** Карта, которой объект принадлежит: у объекта подключённой карты она своя. */
-  get map(): LiveMap {
-    return this.tree;
   }
 
   // Поля объекта карты — геттеры частей. Пока часть не пришла, поле пустое, а не падает: так
@@ -523,22 +456,18 @@ export class LiveObject implements MapObject {
 
   /** Прототип — объект карты по `extends`; не нашёлся или ведёт по кругу — его нет. */
   private findPrototype(): Located {
-    // Цепочка может уйти в подключённую карту, и дальше её `extends` пишутся по-тамошнему:
-    // поэтому ищется от карты последнего найденного, а круг узнаётся по папке, а не адресу.
-    const seen = new Set([this.path]);
+    const seen = new Set([this.address]);
     let pending = this.own.index.pending.get();
     let address = this.own.index.value.get()?.extends;
-    let map: LiveMap = this.tree;
     let first: LiveObject | undefined;
     while (address) {
-      const at = map.locate(address);
+      if (seen.has(address)) return { node: undefined, pending };
+      seen.add(address);
+      const at = this.tree.locate(address);
       pending ||= at.pending;
       if (!at.node) return { node: first, pending };
-      if (seen.has(at.node.path)) return { node: undefined, pending };
-      seen.add(at.node.path);
       first ??= at.node;
       pending ||= at.node.own.index.pending.get();
-      map = at.node.map;
       address = at.node.own.index.value.get()?.extends;
     }
     return { node: first, pending };
@@ -557,7 +486,7 @@ export class LiveObject implements MapObject {
       );
       if (!metric) continue;
       // Цепочка у каждой метрики своя, поэтому и защита от циклов своя.
-      const chain = this.metricChain(reads, metric.config, metric.address, new Set(), this.tree);
+      const chain = this.metricChain(reads, metric.config, metric.address, new Set());
       metrics.push({
         ...metric,
         config: chain.config,
@@ -580,7 +509,7 @@ export class LiveObject implements MapObject {
       );
       if (!action) continue;
       // Экшон переиспользуется так же, как метрика: `extends` на общий (решение 0038).
-      const chain = this.actionChain(reads, action.config, action.address, new Set(), this.tree);
+      const chain = this.actionChain(reads, action.config, action.address, new Set());
       actions.push({
         ...action,
         config: chain.config,
@@ -600,16 +529,14 @@ export class LiveObject implements MapObject {
     config: MetricConfig,
     self: string,
     seen: Set<string>,
-    from: LiveMap,
   ): Chain<MetricConfig> {
-    const next = this.nextLayer(reads, config.extends, self, seen, from);
+    const next = this.nextLayer(reads, config.extends, self, seen);
     if (!next || !Check(MetricConfig, next.raw)) return { config, layers: [] };
     const parent = this.metricChain(
       reads,
       anchorDisplay(next.raw, next.layer.path),
       next.layer.address,
       new Set(seen).add(self),
-      next.map,
     );
     return { config: mergeMetric(parent.config, config), layers: [next.layer, ...parent.layers] };
   }
@@ -620,43 +547,25 @@ export class LiveObject implements MapObject {
     config: ActionConfig,
     self: string,
     seen: Set<string>,
-    from: LiveMap,
   ): Chain<ActionConfig> {
-    const next = this.nextLayer(reads, config.extends, self, seen, from);
+    const next = this.nextLayer(reads, config.extends, self, seen);
     if (!next || !Check(ActionConfig, next.raw)) return { config, layers: [] };
-    const parent = this.actionChain(
-      reads,
-      next.raw,
-      next.layer.address,
-      new Set(seen).add(self),
-      next.map,
-    );
+    const parent = this.actionChain(reads, next.raw, next.layer.address, new Set(seen).add(self));
     return { config: mergeAction(parent.config, config), layers: [next.layer, ...parent.layers] };
   }
 
-  /**
-   * Куда ведёт `extends`: слой и его `config.json`. Ведёт по кругу или мимо карты — никуда.
-   * Адрес пишется по правилам карты, где лежит конфиг: `extends` слоя из подключённой карты —
-   * её адреса, поэтому разбирается он от неё, а читается из её файлов.
-   */
+  /** Куда ведёт `extends`: слой и его `config.json`. Ведёт по кругу или мимо карты — никуда. */
   private nextLayer(
     reads: Reads,
     address: string | undefined,
     self: string,
     seen: Set<string>,
-    from: LiveMap,
-  ): { layer: ConfigLayer; raw: unknown; map: LiveMap } | undefined {
+  ): { layer: ConfigLayer; raw: unknown } | undefined {
     if (!address || seen.has(self)) return undefined;
-    const at = from.resolve(address);
-    if (!at) return undefined;
-    const parsed = parseAddress(at.address);
+    const parsed = parseAddress(address);
     if (!parsed || parsed.scope !== "map") return undefined;
-    const path = join(at.map.ref.mapPath, ...parsed.path, CONFIG);
-    return {
-      layer: { address: this.tree.addressIn(at.map, at.address), path, from: "extends" },
-      raw: reads.of(at.map.files).json(path),
-      map: at.map,
-    };
+    const path = join(this.tree.ref.mapPath, ...parsed.path, CONFIG);
+    return { layer: { address, path, from: "extends" }, raw: reads.json(path) };
   }
 
   private readDirectives(reads: Reads): MapFile[] {
@@ -688,53 +597,12 @@ export class LiveObject implements MapObject {
  */
 export class LiveMap {
   readonly root: LiveObject;
-  /** Подключения, к которым уже обращались: по ним же адрес чужого объекта пишется у нас. */
-  private readonly mounted = new Map<string, LiveMap>();
 
   constructor(
     readonly files: LiveFiles,
     readonly ref: LiveMapRef,
-    /**
-     * Подключённая карта по имени — или почему её нет. Деревья не сливаются: у каждой карты
-     * своя модель, а здесь только таблица «имя → карта».
-     */
-    private readonly mounts?: Mounts,
   ) {
     this.root = new LiveObject(this, ref.mapPath, MAP_ROOT, ref.name);
-  }
-
-  /** Карта, подключённая под именем, или почему её нет. */
-  mount(name: string): LiveMap | string {
-    const known = this.mounted.get(name);
-    if (known !== undefined) return known;
-    const found = this.mounts?.(name) ?? `У карты нет подключения «${name}»`;
-    // Причина не запоминается: список карт у клиента приходит позже первого чтения, и
-    // запомненный отказ пережил бы его приход.
-    if (typeof found !== "string") this.mounted.set(name, found);
-    return found;
-  }
-
-  /**
-   * Где адрес, написанный в этой карте: какая карта и какой адрес в ней. Без имени подключения —
-   * эта же; с именем — подключённая и адрес уже без имени. Подключения нет — `undefined`.
-   */
-  resolve(address: string): { map: LiveMap; address: string } | undefined {
-    const split = splitMount(address);
-    if (!split) return { map: this, address };
-    const map = this.mount(split.mount);
-    return typeof map === "string" ? undefined : { map, address: split.local };
-  }
-
-  /**
-   * Адрес объекта карты `map` в форме записи этой карты: своей — как есть, подключённой — с
-   * именем подключения. Карта, до которой отсюда не дотянуться, остаётся со своим адресом.
-   */
-  addressIn(map: LiveMap, address: string): string {
-    if (map === this) return address;
-    for (const [name, known] of this.mounted) {
-      if (known === map) return mountedAddress(name, address);
-    }
-    return address;
   }
 
   /** Объект по адресу `mapward://`; нет такого — `undefined`. Ищется по папкам, а не обходом. */
@@ -744,13 +612,6 @@ export class LiveMap {
 
   /** Объект по адресу и то, дочитаны ли папки на пути к нему. */
   locate(address: string): Located {
-    const split = splitMount(address);
-    if (split) {
-      const map = this.mount(split.mount);
-      return typeof map === "string"
-        ? { node: undefined, pending: false }
-        : map.locate(split.local);
-    }
     if (address === MAP_ROOT) return { node: this.root, pending: false };
     const parsed = parseAddress(address);
     if (!parsed || parsed.scope !== "map" || parsed.field) {

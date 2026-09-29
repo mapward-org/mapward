@@ -5,9 +5,6 @@ import { Check } from "typebox/value";
 export const RawMapEntry = T.Object({
   mapUrl: T.String(),
   baseUrl: T.Optional(T.String()),
-  // Подключённые карты этой карты: имя → конфиг проекта и номер карты в его `maps`,
-  // `./leafer/mapward.json[0]`. Свойство карты, а не конфига: у соседней свои.
-  mounts: T.Optional(T.Record(T.String(), T.String())),
 });
 
 export const RawConfig = T.Object({
@@ -36,20 +33,7 @@ export type Settings = {
   mcpPort?: number;
 };
 
-export type MapEntry = { mapUrl: string; baseUrl: string; mounts?: Record<string, string> };
-
-/**
- * Значение подключения: путь к `mapward.json` проекта и номер карты в его `maps` — по позиции,
- * а не по имени, чтобы не зависеть от того, как карта назвала себя. Без номера — первая.
- */
-export function parseMount(value: string): { config: string; index: number } | string {
-  const match = /^(.*?)(?:\[(\d+)\])?$/s.exec(value.trim());
-  const config = match?.[1] ?? "";
-  if (!config.endsWith(CONFIG_FILE)) {
-    return `Подключение «${value}» должно вести на ${CONFIG_FILE}, с номером карты: ./leafer/${CONFIG_FILE}[0]`;
-  }
-  return { config, index: Number(match?.[2] ?? 0) };
-}
+export type MapEntry = { mapUrl: string; baseUrl: string };
 
 export class ConfigError extends Error {}
 
@@ -66,13 +50,12 @@ export function parseConfig(text: string): MapEntry[] {
   }
 
   if (!Check(RawConfig, parsed)) {
-    throw new ConfigError("mapward.json must be { maps: [{ mapUrl, baseUrl?, mounts? }] }");
+    throw new ConfigError("mapward.json must be { maps: [{ mapUrl, baseUrl? }] }");
   }
 
   return parsed.maps.map((entry) => ({
     mapUrl: entry.mapUrl,
     baseUrl: entry.baseUrl ?? ".",
-    ...(entry.mounts === undefined ? {} : { mounts: entry.mounts }),
   }));
 }
 

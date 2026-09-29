@@ -1,6 +1,6 @@
 import { Observable, ReplaySubject } from "rxjs";
-import { LiveFiles, LiveMap, mountedMap } from "@mapward/core";
-import type { FolderEntry, MapObject, ResolvedMap } from "@mapward/core";
+import { LiveFiles, LiveMap } from "@mapward/core";
+import type { FolderEntry, MapObject } from "@mapward/core";
 import type {
   ClockPort,
   FileReader,
@@ -27,11 +27,6 @@ const keyOf = (ref: MapRef) => `${pathKey(ref.mapPath)}|${pathKey(ref.basePath)}
 export class MapModel {
   private readonly maps = new Map<string, Entry>();
   private readonly disks = new Map<string, DiskFiles>();
-  /**
-   * Все карты окна — видимые и доступные только подключением: по ним карта находит свои
-   * подключения. Ставится до первого обращения к картам — живая карта запоминает ответ.
-   */
-  private known: ResolvedMap[] = [];
 
   constructor(
     private readonly reader: FileReader,
@@ -39,24 +34,6 @@ export class MapModel {
     private readonly timers: TimersPort,
     private readonly clock: ClockPort,
   ) {}
-
-  /** Какие карты есть и что у каждой подключено — из `mapward.json`. */
-  setMaps(maps: ResolvedMap[]): void {
-    this.known = maps;
-  }
-
-  /** Описание карты, подключённой к `ref` под именем, или почему её нет. */
-  mounted(ref: MapRef, name: string): ResolvedMap | { error: string } {
-    return mountedMap(this.known, ref.mapPath, name);
-  }
-
-  /** Папки карт, подключённых к `ref`: за ними следит вьюха, рисующая их объекты. */
-  mountPaths(ref: MapRef): string[] {
-    const own = this.known.find((map) => pathKey(map.mapPath) === pathKey(ref.mapPath));
-    return Object.values(own?.mounts ?? {}).flatMap((target) =>
-      "mapPath" in target ? [target.mapPath] : [],
-    );
-  }
 
   /** Текущая карта. Пока она читается впервые, одновременные вызовы ждут одно чтение. */
   current(ref: MapRef): Promise<MapObject> {
@@ -144,11 +121,7 @@ export class MapModel {
     if (existing) return existing;
 
     const disk = this.diskOf(ref.mapPath);
-    // Подключённая карта — такая же запись здесь: одна на папку, сколько бы её ни подключали.
-    const live = new LiveMap(new LiveFiles(disk), ref, (name) => {
-      const found = this.mounted(ref, name);
-      return "error" in found ? found.error : this.entryOf(found).live;
-    });
+    const live = new LiveMap(new LiveFiles(disk), ref);
     const map$ = new ReplaySubject<MapObject>(1);
     // Подписка на всю карту держит её прочитанной и под вотчером; наружу карта уходит, когда
     // пачка изменений разложена, — промежуточной сборки модель не отдаёт.

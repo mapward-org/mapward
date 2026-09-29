@@ -1,4 +1,4 @@
-import { childAddress, mapAddress, mountedAddress, parseAddress, readField } from "./address.ts";
+import { childAddress, mapAddress, parseAddress, readField } from "./address.ts";
 import { defaultStages } from "./default-workflow.ts";
 import { mergeAction, mergeIndex, mergeMetric } from "./merge.ts";
 import { adoptAction, adoptMetric, fromPrototype } from "./model.ts";
@@ -199,47 +199,26 @@ export const inheritWorkflow = (
 ): MapStage[] =>
   !prototype || mode === "replace" ? own : byStage(prototype.workflow, own, prototype.address);
 
-/**
- * Где искать цели подстановок: собранные объекты по адресу, до своих подстановок. Объект
- * подключённой карты приходит уже с её подстановками — `final`: его поля считаются от его
- * карты, со своим `@`, и второй раз от нашей их не разворачивают.
- */
-export type Found = Named & { final?: boolean };
-export type Lookup = (address: string) => Found | undefined;
-
-/** Корень проекта подключённой карты по имени подключения — для `mapward://leafer:@/…`. */
-export type BaseOf = (mount: string) => string | undefined;
+/** Где искать цели подстановок: собранные объекты по адресу, до своих подстановок. */
+export type Lookup = (address: string) => Named | undefined;
 
 /**
  * Substitution runs after inheritance, so `~` means the concrete object rather than the
  * prototype it borrowed the expression from — decision 0006.
  */
-export function resolver(
-  find: Lookup,
-  self: Named,
-  basePath: string,
-  depth = 0,
-  baseOf?: BaseOf,
-): Resolve {
+export function resolver(find: Lookup, self: Named, basePath: string, depth = 0): Resolve {
   return (raw: string): string | undefined => {
     const address = parseAddress(raw);
     if (!address || depth > 10) return undefined;
 
-    if (address.scope === "base") {
-      const base = address.mount === undefined ? basePath : baseOf?.(address.mount);
-      return base === undefined ? undefined : [base, ...address.path].join("/");
-    }
+    if (address.scope === "base") return [basePath, ...address.path].join("/");
 
     const target =
       address.scope === "self"
         ? address.path.length === 0
           ? self
           : find(address.path.reduce(childAddress, self.address))
-        : find(
-            address.mount === undefined
-              ? mapAddress(address.path)
-              : mountedAddress(address.mount, mapAddress(address.path)),
-          );
+        : find(mapAddress(address.path));
 
     if (!target) return undefined;
     // Without a hash an address gives an absolute file path — decision 0005.
@@ -247,11 +226,10 @@ export function resolver(
 
     const value = readField({ name: target.name, props: target.props }, address.field);
     if (value === undefined) return undefined;
-    if (typeof value !== "string") return String(value);
     // A prop may itself be an expression: resolve it before handing it on.
-    return "final" in target && target.final
-      ? value
-      : substituteDeep(value, resolver(find, target, basePath, depth + 1, baseOf));
+    return typeof value === "string"
+      ? substituteDeep(value, resolver(find, target, basePath, depth + 1))
+      : String(value);
   };
 }
 

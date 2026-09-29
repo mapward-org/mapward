@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { objectsMap, objectsMapConfig, viewMounts } from "./objects-map.ts";
+import { objectsMap, objectsMapConfig } from "./objects-map.ts";
 import type { MapObject } from "./model.ts";
 
 const object = (address: string, name: string, extra: Partial<MapObject> = {}): MapObject =>
@@ -262,69 +262,4 @@ test("a palette button knows its prototype draws frames", () => {
     {},
   );
   expect(value.palette.objects.map((item) => item.frame)).toEqual([true, undefined]);
-});
-
-/** Карта проекта, подключённая к родителю под именем `leafer`: у неё свои адреса. */
-const leafer = object("mapward://", "Leafer", {
-  children: [
-    service("mapward://api", "API"),
-    object("mapward://db", "База", { children: [object("mapward://db/users", "Пользователи")] }),
-    relation("mapward://api-to-db", "mapward://api", "mapward://db"),
-  ],
-});
-
-const withMounted = object("mapward://", "Карта", {
-  children: [
-    ...map.children,
-    relation("mapward://relations/x", "mapward://systems/shop", "mapward://leafer:/api"),
-  ],
-});
-
-test("an object of a mounted map joins the canvas by a ref, as one node that links there", () => {
-  const value = objectsMap(
-    withMounted,
-    "v",
-    config({ show: ["systems/shop"] }),
-    {
-      refs: ["mapward://leafer:/api", "mapward://leafer:/db"],
-      positions: { "mapward://leafer:/api": { x: 1, y: 2 } },
-    },
-    { leafer },
-  );
-  const api = value.nodes.find((node) => node.id === "mapward://leafer:/api");
-  expect(api).toMatchObject({
-    kind: "ref",
-    map: "leafer",
-    link: "mapward://leafer:/api",
-    label: "API",
-    prototype: "Сервис",
-    position: { x: 1, y: 2 },
-  });
-  // Детей чужого объекта родитель не раскрывает.
-  expect(value.nodes.some((node) => node.id.startsWith("mapward://leafer:/db/"))).toBe(false);
-  // Своя связь к объекту проекта и связь самого проекта между двумя его объектами на холсте.
-  expect(value.relations.map((arrow) => `${arrow.from} ${arrow.to}`).toSorted()).toEqual([
-    "mapward://leafer:/api mapward://leafer:/db",
-    "mapward://systems/shop mapward://leafer:/api",
-  ]);
-});
-
-test("a ref to a missing object or an absent map stays a node with the reason", () => {
-  const value = objectsMap(
-    withMounted,
-    "v",
-    config({}),
-    { refs: ["mapward://leafer:/gone", "mapward://ed:/core"] },
-    { leafer, ed: "Нет карты по пути ../ed/mapward.json" },
-  );
-  expect(value.nodes.map((node) => [node.id, node.missing])).toEqual([
-    ["mapward://leafer:/gone", "Нет объекта mapward://gone в карте «leafer»"],
-    ["mapward://ed:/core", "Нет карты по пути ../ed/mapward.json"],
-  ]);
-});
-
-test("a view asks only for the mounted maps its refs and relations lead to", () => {
-  expect(
-    viewMounts(withMounted, { refs: ["mapward://ed:/core", "mapward://systems/shop"] }),
-  ).toEqual(["ed", "leafer"]);
 });

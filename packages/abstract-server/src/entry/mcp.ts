@@ -6,17 +6,9 @@ import {
   findObject,
   groupMetrics,
   MapOp,
-  splitMount,
   trail,
 } from "@mapward/core";
-import type {
-  EditResult,
-  MapAction,
-  MapFile,
-  MapMetric,
-  MapObject,
-  ResolvedMap,
-} from "@mapward/core";
+import type { EditResult, MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
@@ -310,7 +302,6 @@ const TOOLS = [
     name: "list_maps",
     description:
       "Карты, которые отдаёт этот сервер. Имя карты указывается в остальных вызовах. " +
-      "Поле mounts — подключённые к карте карты по именам: адрес mapward://имя:/… ведёт в них из любого инструмента. " +
       "Поле build — из какой сборки отвечает сервер; stale: true — пересобрали, а окно не перезагрузили.",
     inputSchema: { type: "object", properties: {} },
   },
@@ -651,7 +642,7 @@ const text = (value: unknown) => ({
  */
 export function serveMcp(
   server: MapServer,
-  maps: (MapRef & Pick<ResolvedMap, "mounts">)[],
+  maps: MapRef[],
   transport: McpTransport,
   build?: () => McpBuild,
 ): () => void {
@@ -691,22 +682,7 @@ export function serveMcp(
     }
 
     if (name === "list_maps") {
-      // Подключённые карты — у своего родителя, а не в общем списке: так агент узнаёт имена
-      // подключений, не читая `mapward.json`, и видит, что у какой карты подключено.
-      const listed = maps.map((entry) => ({
-        name: entry.name,
-        mapPath: entry.mapPath,
-        ...(entry.mounts === undefined
-          ? {}
-          : {
-              mounts: Object.fromEntries(
-                Object.entries(entry.mounts).map(([mount, target]) => [
-                  mount,
-                  "error" in target ? { error: target.error } : { mapPath: target.mapPath },
-                ]),
-              ),
-            }),
-      }));
+      const listed = maps.map((entry) => ({ name: entry.name, mapPath: entry.mapPath }));
       return text(build ? { maps: listed, build: build() } : listed);
     }
 
@@ -727,29 +703,7 @@ export function serveMcp(
       return text(found);
     }
 
-    let ref: MapRef = mapOf(args.map);
-    // Адрес с именем подключения ведёт в подключённую карту: дальше вызов работает с ней, как
-    // если бы назвали её саму и её адрес. Правка карты адресов не переводит — её операции пишут
-    // объекты подключённых карт на вьюху родителя именно так, с именем.
-    let mount: string | undefined;
-    const split =
-      name !== "edit_map" && typeof args.address === "string"
-        ? splitMount(args.address)
-        : undefined;
-    if (split) {
-      const found = server.mounted(ref, split.mount);
-      if ("error" in found) throw new Error(`${args.address as string}: ${found.error}`);
-      mount = split.mount;
-      ref = found;
-      args = { ...args, address: split.local };
-    }
-    // Ответ говорит, из какой карты объект на самом деле: агент должен видеть, чьи файлы тронет.
-    const respond = (value: unknown) =>
-      text(
-        mount !== undefined && typeof value === "object" && value !== null && !Array.isArray(value)
-          ? { ...value, map: ref.name, mount }
-          : value,
-      );
+    const ref = mapOf(args.map);
 
     if (name === "read_object") {
       const address = typeof args.address === "string" ? args.address : undefined;
@@ -798,7 +752,7 @@ export function serveMcp(
       // делает ровно то, что велит дока — зовёт метрику поимённо, — и получает маркер вместо
       // значения, за которым звал. Отказаться от него нечем: ноль в `budget` снимает предел
       // и на соседних вызовах тоже.
-      return respond(picked?.length === 1 ? answer : fit(answer, budget(args)));
+      return text(picked?.length === 1 ? answer : fit(answer, budget(args)));
     }
 
     if (name === "read_index") {
@@ -826,7 +780,7 @@ export function serveMcp(
           }
           const raw = await server.readMapFile(action.configPath);
           const next = extendsOf(raw);
-          return respond({
+          return text({
             address: action.address,
             key: action.key,
             configPath: action.configPath,
@@ -846,7 +800,7 @@ export function serveMcp(
 
         const raw = await server.readMapFile(metric.configPath);
         const next = extendsOf(raw);
-        return respond({
+        return text({
           address: metric.address,
           key: metric.key,
           configPath: metric.configPath,
@@ -866,9 +820,7 @@ export function serveMcp(
       // Текст этапа без его запуска: запуск ставит отметку о прогоне, и читать соседний этап
       // им нельзя. У дефолтного этапа файла нет вовсе, и с диска он не достаётся никак.
       if (typeof args.stage === "string") {
-        return respond(
-          await server.readStage({ ...ref, address: object.address, stage: args.stage }),
-        );
+        return text(await server.readStage({ ...ref, address: object.address, stage: args.stage }));
       }
 
       // Файл берётся из модели, а не склейкой пути: так открывается и унаследованный от
@@ -889,7 +841,7 @@ export function serveMcp(
         const tail = typeof args.tail === "number" ? Math.floor(args.tail) : undefined;
         if (tail !== undefined && tail > 0 && body !== undefined) {
           const lines = body.split("\n");
-          return respond({
+          return text({
             ...head,
             lines: lines.length,
             ...(lines.length > tail ? { tail } : {}),
@@ -897,7 +849,7 @@ export function serveMcp(
           });
         }
 
-        return respond({ ...head, text: body ?? null });
+        return text({ ...head, text: body ?? null });
       }
 
       // Что в папке действительно лежит, то и отдаётся: у общих метрик это `config.json`
@@ -905,7 +857,7 @@ export function serveMcp(
       // данных, а не «смотри в соседнее поле».
       const raw = await server.readIndexFile(object.path);
       const config = await server.readMapFile(`${object.path}/config.json`);
-      return respond({
+      return text({
         address: object.address,
         path: object.path,
         index: raw ?? null,

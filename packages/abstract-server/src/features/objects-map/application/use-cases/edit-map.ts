@@ -1,5 +1,5 @@
-import { editSources, planEdit, splitMount } from "@mapward/core";
-import type { EditResult, MapObject, MapOp } from "@mapward/core";
+import { editSources, planEdit } from "@mapward/core";
+import type { EditResult, MapOp } from "@mapward/core";
 import type { FileReader } from "../../../../ports/index.ts";
 import type { MapRef } from "../../../../kernel/map-ref.ts";
 import type { ObjectsMapSource } from "../../ports.ts";
@@ -45,9 +45,7 @@ export class EditMap {
         }),
       );
 
-      // oxlint-disable-next-line no-await-in-loop
-      const mounts = await this.mounts(ref, op);
-      const plan = planEdit({ root, files, mounts }, op);
+      const plan = planEdit({ root, files }, op);
       // oxlint-disable-next-line no-await-in-loop
       if ("error" in plan) return rollback(`${where}${plan.error}`);
 
@@ -69,23 +67,5 @@ export class EditMap {
 
     this.history.save(ref.mapPath, { id, state: "done", back, after });
     return { ok: true, id, touched: [...touched] };
-  }
-
-  /** Корни подключённых карт, которые называет операция, — чтобы проверить их объекты. */
-  private async mounts(ref: MapRef, op: MapOp): Promise<Record<string, MapObject | string>> {
-    const names = new Set<string>();
-    for (const value of Object.values(op)) {
-      const split = typeof value === "string" ? splitMount(value) : undefined;
-      if (split) names.add(split.mount);
-    }
-    const pairs = await Promise.all(
-      [...names].map(async (name): Promise<[string, MapObject | string]> => {
-        const found = this.map.mounted?.(ref, name) ?? {
-          error: `У карты нет подключения «${name}»`,
-        };
-        return [name, "error" in found ? found.error : await this.map.current(found)];
-      }),
-    );
-    return Object.fromEntries(pairs);
   }
 }

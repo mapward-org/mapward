@@ -1,5 +1,5 @@
 import { action, makeObservable, observable } from "mobx";
-import { LiveMap, type LiveFiles, type LiveObject, type Mounts } from "@mapward/core";
+import { LiveMap, type LiveFiles, type LiveObject } from "@mapward/core";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
@@ -16,10 +16,8 @@ export class MapView {
     files: LiveFiles,
     readonly ref: Ref,
     private readonly reloadMap: () => Promise<void>,
-    /** Подключённые карты по имени: их объекты открываются и рисуются на холсте этой. */
-    mounts?: Mounts,
   ) {
-    this.live = new LiveMap(files, ref, mounts);
+    this.live = new LiveMap(files, ref);
     makeObservable(this, { reloading: observable, reload: action });
   }
 

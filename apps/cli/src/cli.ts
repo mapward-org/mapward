@@ -6,7 +6,6 @@ import {
   bundleBuild,
   createMapServer,
   findMaps,
-  mountedMaps,
   parseSettings,
   serveMcp,
 } from "@mapward/abstract-server";
@@ -44,19 +43,6 @@ async function settingsOf(
 ): Promise<Settings> {
   const text = await ports.files.read(configPath);
   return text ? parseSettings(text) : {};
-}
-
-/**
- * Все карты, до которых дотягивается конфиг, — видимые и подключённые: по ним карта находит
- * свои подключения. Ставится в `main`, до первого сервера.
- */
-let every: ResolvedMap[] = [];
-
-/** Сервер для карты: с её настройками и со списком карт, по которому ищутся подключения. */
-async function serverOf(ports: ReturnType<typeof createPorts>, map: ResolvedMap) {
-  const server = createMapServer(ports, await settingsOf(ports, map.configPath));
-  server.setMaps(every);
-  return server;
 }
 
 /** Карта по имени: без имени берётся первая, как и в остальных командах. */
@@ -112,7 +98,7 @@ async function runAction(
     return { exitCode: 1 };
   }
   const map = pick(maps, parsed.map);
-  const server = await serverOf(ports, map);
+  const server = createMapServer(ports, await settingsOf(ports, map.configPath));
   const started = await server.runAction({
     ...map,
     action: parsed.address,
@@ -153,7 +139,6 @@ async function main(): Promise<void> {
   const [command, first, second, third] = argv.slice(2);
   const ports = createPorts();
   const maps = await findMaps(ports.files, cwd().replaceAll("\\", "/"));
-  every = [...maps, ...(await mountedMaps((path) => ports.files.read(path), maps))];
 
   if (command === "maps") {
     if (maps.length === 0) {
@@ -168,7 +153,7 @@ async function main(): Promise<void> {
     // Объект таким, каким его видит человек: мердж, подстановки и уже собранные значения.
     // Прогонов здесь нет — за ними `metric`.
     const map = pick(maps, second ?? undefined);
-    const server = await serverOf(ports, map);
+    const server = createMapServer(ports, await settingsOf(ports, map.configPath));
     const tree = await server.getMap(map);
     const object = first ? find(tree, first) : tree;
     if (!object) throw new Error(`объект ${String(first)} не найден`);
@@ -218,7 +203,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    const server = await serverOf(ports, map);
+    const server = createMapServer(ports, await settingsOf(ports, map.configPath));
     const value = await server.runMetric({ ...map, metric: address });
     console.log(JSON.stringify(value, null, 2));
     // Как у `object`: вотчер живой модели держит процесс.
@@ -237,7 +222,7 @@ async function main(): Promise<void> {
       return;
     }
     const map = pick(maps, third ?? undefined);
-    const server = await serverOf(ports, map);
+    const server = createMapServer(ports, await settingsOf(ports, map.configPath));
     const ok = await displayCheck(ports, server, map, second);
     // Вотчеров здесь нет, но esbuild держит процесс — выходим сами.
     exit(ok ? 0 : 1);
@@ -252,7 +237,7 @@ async function main(): Promise<void> {
     }
     // Сервер живёт, пока жив процесс: агент говорит с ним по stdio.
     serveMcp(
-      await serverOf(ports, map),
+      createMapServer(ports, await settingsOf(ports, map.configPath)),
       // Карта названа командой, но сервер всё равно отдаёт список: так обращается агент (0009).
       first ? [map] : maps,
       stdioTransport(),

@@ -1,10 +1,4 @@
-import {
-  objectsMap,
-  objectsMapConfig,
-  parseViewState,
-  viewMounts,
-  VIEW_STATE,
-} from "@mapward/core";
+import { objectsMap, objectsMapConfig, parseViewState, VIEW_STATE } from "@mapward/core";
 import type { MapMetric, MapObject } from "@mapward/core";
 import type {
   Cancellation,
@@ -47,8 +41,6 @@ export type CollectPlan = {
    * объекта (решение 0044). Без неё — только поддерево объекта метрики.
    */
   root?: () => Promise<MapObject>;
-  /** Корни подключённых карт, на объекты которых ведёт вьюха, — или почему карты нет. */
-  mounts?: (names: string[]) => Promise<Record<string, MapObject | string>>;
 };
 
 /**
@@ -197,17 +189,7 @@ export class CollectMetric {
         specs.map((spec, index) => {
           if (kept.has(index)) return { value: kept.get(index), log: undefined };
           const attempt = (token?: Cancellation) =>
-            this.collector(
-              spec,
-              cwd,
-              owner,
-              hint,
-              token,
-              plan.output,
-              metric,
-              plan.root,
-              plan.mounts,
-            );
+            this.collector(spec, cwd, owner, hint, token, plan.output, metric, plan.root);
           return plan.step ? plan.step(index, attempt) : attempt(cancel);
         }),
       );
@@ -254,7 +236,6 @@ export class CollectMetric {
     output?: OutputListener,
     metric?: MapMetric,
     root?: () => Promise<MapObject>,
-    mounts?: CollectPlan["mounts"],
   ): Promise<{ value: unknown; log?: string }> {
     const env = () => objectEnv(owner, cwd, this.env.vars());
 
@@ -312,9 +293,7 @@ export class CollectMetric {
         const state = metric
           ? parseViewState(await this.files.read(join(metric.cachePath, VIEW_STATE)))
           : {};
-        const names = viewMounts(map, state);
-        const mounted = names.length > 0 && mounts ? await mounts(names) : {};
-        return { value: objectsMap(map, address, objectsMapConfig(spec), state, mounted) };
+        return { value: objectsMap(map, address, objectsMapConfig(spec), state) };
       }
       default:
         throw new Error(`Коллектор ${String(spec.kind)} ещё не поддержан`);

@@ -4,6 +4,5 @@ export { Terminals } from "./adapters/terminals.ts";
 export { SavedHistory } from "./model/saved-history.ts";
 export { TabHistory } from "./model/tab-history.ts";
 export { ScreenStore, type StartAt } from "./model/screen.ts";
-export { MapFrames, type ScreenFrames } from "./model/map-frames.ts";
 export { ProvideScreenSlots, ProvideTerminals, type ScreenSlots } from "./ports.tsx";
 export { isHistory, type History } from "./pure-model/navigation.ts";
