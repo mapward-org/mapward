@@ -67,6 +67,15 @@ function reflects(map: ObjectsMap, sent: ObjectsMap, op: MapOp): boolean {
       return node(op.object) !== undefined;
     case "create-object":
       return appeared((item) => item.label === op.name.trim());
+    case "copy-objects": {
+      // Адрес копии знает только сервер; копия отражена, когда появились новые узлы с теми же
+      // подписями, что у оригиналов.
+      const fresh = map.nodes.filter((item) => !sent.nodes.some((old) => old.id === item.id));
+      return op.objects.every((address) => {
+        const label = sent.nodes.find((item) => item.id === address)?.label;
+        return label === undefined || fresh.some((item) => item.label === label);
+      });
+    }
     case "create-relation": {
       // Связь склеивается со стрелкой той же пары: отражена, когда связей на паре стало больше.
       const count = (value: ObjectsMap) =>
@@ -197,6 +206,41 @@ function apply(map: ObjectsMap, op: MapOp, id: string): ObjectsMap {
         ...(op.size ? { size: op.size } : {}),
       };
       return { ...map, nodes: [...map.nodes, node] };
+    }
+    case "copy-objects": {
+      // Копия — узел оригинала с жильцами под временным адресом, там, куда её положили.
+      const inGroup =
+        op.parent !== undefined && map.nodes.some((item) => item.id === op.parent && item.expanded);
+      const copies = op.objects.flatMap((address, index) => {
+        const top = map.nodes.find((item) => item.id === address);
+        if (!top) return [];
+        const base = `${id}:${index}`;
+        const renamed = (value: string) =>
+          within(value, address) ? base + value.slice(address.length) : value;
+        const at =
+          op.positions?.[address] ??
+          (top.position ? { x: top.position.x + 24, y: top.position.y + 24 } : undefined);
+        return map.nodes
+          .filter((item) => within(item.id, address))
+          .map((item): ViewNode => {
+            const next = {
+              ...item,
+              id: renamed(item.id),
+              link: renamed(item.link),
+              object: renamed(item.object),
+              ...(item.parent === undefined ? {} : { parent: renamed(item.parent) }),
+            };
+            if (item.id !== address) return next;
+            const { parent: _old, position: _at, ...rest } = next;
+            return {
+              ...rest,
+              kind: "object",
+              ...(inGroup && op.parent !== undefined ? { parent: op.parent } : {}),
+              ...(at ? { position: at } : {}),
+            };
+          });
+      });
+      return { ...map, nodes: [...map.nodes, ...copies] };
     }
     case "create-relation": {
       const arrow: ViewRelation = {

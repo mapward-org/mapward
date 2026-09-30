@@ -332,3 +332,68 @@ test("an arrow keeps its own style on this view", () => {
     route: "orthogonal",
   });
 });
+
+test("a copy takes the object with its children, under a free folder, and keeps the prototype", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "copy-objects",
+      view: "mapward://_metrics/canvas",
+      objects: ["mapward://systems/shop"],
+    }),
+  );
+  expect(written(list, "/map/systems/shop-2/_index.json")).toContain('"Магазин"');
+  expect(written(list, "/map/systems/shop-2/cart/_index.json")).toContain(
+    '"extends": "mapward://prototypes/service"',
+  );
+  // Оригинал не тронут, связь с концом снаружи копии остаётся у оригинала.
+  expect(list.some((item) => item.kind !== "write")).toBe(false);
+  expect(
+    list.some((item) => item.kind === "write" && item.path.startsWith("/map/relations/")),
+  ).toBe(false);
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.positions["mapward://systems/shop-2/cart"]).toEqual({ x: 1, y: 2 });
+  expect(state.positions["mapward://systems/shop/cart"]).toEqual({ x: 1, y: 2 });
+  // Магазин вьюха выбирает шаблоном `systems/*` — его копия видна и без ссылки.
+  expect(state.refs).toEqual(["mapward://systems/shop/cart"]);
+});
+
+test("a relation with both ends in the copy is copied onto the copies", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "copy-objects",
+      view: "mapward://_metrics/canvas",
+      objects: ["mapward://systems/shop", "mapward://systems/bank", "mapward://systems/shop/cart"],
+      positions: { "mapward://systems/bank": { x: 5, y: 6 } },
+    }),
+  );
+  const relation = written(list, "/map/relations/cart-to-bank-2/_index.json") ?? "";
+  expect(relation).toContain('"from": "mapward://systems/shop-2/cart"');
+  expect(relation).toContain('"to": "mapward://systems/bank-2"');
+  // Корзина едет вместе с магазином и второй раз не копируется.
+  expect(written(list, "/map/systems/cart/_index.json")).toBeUndefined();
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.positions["mapward://systems/bank-2"]).toEqual({ x: 5, y: 6 });
+});
+
+test("a copy lands in the named group and stands there as a ref when the view does not pick it", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "copy-objects",
+      view: "mapward://_metrics/canvas",
+      objects: ["mapward://systems/bank"],
+      parent: "mapward://systems/shop",
+    }),
+  );
+  expect(written(list, "/map/systems/shop/bank/_index.json")).toContain('"Банк"');
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.refs).toContain("mapward://systems/shop/bank");
+});
+
+test("a copy of an object deleted after copying is refused", () => {
+  const plan = planEdit(context, {
+    op: "copy-objects",
+    view: "mapward://_metrics/canvas",
+    objects: ["mapward://systems/gone"],
+  });
+  expect("error" in plan && plan.error).toContain("удалили");
+});

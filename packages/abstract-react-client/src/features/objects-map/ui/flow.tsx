@@ -26,6 +26,7 @@ import {
 } from "@xyflow/react";
 import {
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent,
@@ -48,6 +49,7 @@ import { canvasClasses } from "../../../lib/ui/canvas-classes.ts";
 import { tabHover } from "../../../lib/ui/tab-hover.ts";
 import { draws, type Deletable, type Popover, type Tool } from "../pure-model/tools.ts";
 import { dropOp, dropTarget, type Rect } from "../pure-model/drop.ts";
+import { clipText, pasteOps, readClip, topsOf } from "../pure-model/copy.ts";
 import { layout, ROOM, type Box } from "../pure-model/layout.ts";
 import { DRAFT_ID, drawnBox, lineEnd, type Draft } from "../pure-model/edit.ts";
 import { handles, routePath, type Route } from "../pure-model/route.ts";
@@ -1063,6 +1065,8 @@ function keepSelected<T extends { id: string; selected?: boolean }>(built: T[], 
 
 export type GraphProps = {
   map: ObjectsMap;
+  /** Карта, которой принадлежит вьюха: копия вставляется только в свою карту. */
+  mapPath: string;
   viewport?: Viewport | undefined;
   tool: Tool;
   renaming: string | undefined;
@@ -1329,6 +1333,62 @@ function Canvas(props: GraphProps) {
     if (!(await props.onEdit(ops))) restore();
   };
 
+  /** Перетаскивание начали с зажатым Alt — на отпускание это копия, а не перенос. */
+  const copying = useRef(false);
+
+  /**
+   * Alt+перетаскивание: оригиналы возвращаются на место, копии встают туда, где отпустили. Куда
+   * падает пачка, решает узел под курсором — как при переносе.
+   */
+  const dropCopy = async (dragged: Node, all: Node[]) => {
+    const shapes: MapOp[] = all
+      .filter((node) => node.type === "note")
+      .map((node) => ({
+        op: "put-shape",
+        view,
+        shape: {
+          ...(node.data as NoteData).shape,
+          id: shapeId(),
+          x: node.position.x,
+          y: node.position.y,
+        },
+      }));
+    const objects = all.filter(
+      (node) => node.type !== "note" && node.type !== "anchor" && node.id !== DRAFT_ID,
+    );
+    const tops = topsOf(objects.map((node) => ({ address: node.id, node }))).map(
+      (item) => item.node,
+    );
+    const lead = tops.find((node) => node.id === dragged.id) ?? tops[0];
+    const aims = new Map<string | undefined, Node[]>();
+    if (lead) {
+      const { target } = where(lead);
+      for (const node of tops) {
+        const inside =
+          target !== undefined && (target === node.id || target.startsWith(`${node.id}/`));
+        const aim = inside ? node.parentId : target;
+        aims.set(aim, [...(aims.get(aim) ?? []), node]);
+      }
+    }
+    const copies = [...aims].map(([aim, group]): MapOp => ({
+      op: "copy-objects",
+      view,
+      objects: group.map((node) => node.id),
+      ...(aim === undefined ? {} : { parent: aim }),
+      positions: Object.fromEntries(
+        group.map((node) => [
+          node.id,
+          relativeTo(
+            aim,
+            flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position,
+          ),
+        ]),
+      ),
+    }));
+    restore();
+    if (shapes.length + copies.length > 0) await send([...shapes, ...copies]);
+  };
+
   const dragStop = async (dragged: Node, all: Node[]) => {
     if (dragged.type === "anchor") {
       const line = props.map.shapes.find((shape) => dragged.id.startsWith(`anchor:${shape.id}:`));
@@ -1336,6 +1396,11 @@ function Canvas(props: GraphProps) {
       const side = dragged.id.endsWith(":from") ? "from" : "to";
       const shape = { ...line, [side]: { x: dragged.position.x, y: dragged.position.y } };
       await send([{ op: "put-shape", view, shape }]);
+      return;
+    }
+    if (copying.current) {
+      copying.current = false;
+      await dropCopy(dragged, all);
       return;
     }
     // Фигуры — пометки на холсте: в фрейм не переезжают, у них только место.
@@ -1456,6 +1521,77 @@ function Canvas(props: GraphProps) {
     }
   };
 
+  /** Последнее место курсора над холстом — туда встаёт вставка. */
+  const pointer = useRef<Point | undefined>(undefined);
+  const wrapper = useRef<HTMLDivElement>(null);
+
+  /** Ctrl+C: адреса выделенных объектов с их местом на холсте и фигуры — в системный буфер. */
+  const copy = (event: ClipboardEvent) => {
+    const chosen = nodes.filter(
+      (node) => node.selected && node.type !== "anchor" && node.id !== DRAFT_ID,
+    );
+    if (chosen.length === 0) return;
+    const objects = chosen
+      .filter((node) => node.type !== "note")
+      .map((node) => ({
+        address: node.id,
+        at: flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position,
+      }));
+    const shapes = chosen
+      .filter((node) => node.type === "note")
+      .map((node) => (node.data as NoteData).shape);
+    event.clipboardData?.setData(
+      "text/plain",
+      clipText({ map: props.mapPath, objects: topsOf(objects), shapes }),
+    );
+    event.preventDefault();
+  };
+
+  /** Ctrl+V: копия встаёт под курсор, в группу под ним; чужой текст в буфере холст не трогает. */
+  const paste = (event: ClipboardEvent) => {
+    const clip = readClip(event.clipboardData?.getData("text/plain") ?? "");
+    if (!clip) return;
+    event.preventDefault();
+    if (clip.map !== props.mapPath) {
+      props.onSay("Копия из другой карты сюда не вставляется: копировать можно в пределах карты");
+      return;
+    }
+    const at = pointer.current;
+    const point = at ? flow.screenToFlowPosition(at) : undefined;
+    const target = point ? dropTarget({ node: "", center: point, groups: groups() }) : undefined;
+    const ops = pasteOps({ view, clip, point, target, relative: relativeTo, newShapeId: shapeId });
+    if (ops.length > 0) void send(ops);
+  };
+
+  // Буфер слушается на документе: событие копирования у элемента без выделенного текста уходит в
+  // body, а не в холст. Холст отвечает, только когда фокус у него и не в поле ввода.
+  const clipboard = useRef({ copy, paste });
+  clipboard.current = { copy, paste };
+  useEffect(() => {
+    const mine = () => {
+      const active = document.activeElement as HTMLElement | null;
+      return (
+        active !== null &&
+        wrapper.current?.contains(active) === true &&
+        active.tagName !== "INPUT" &&
+        active.tagName !== "TEXTAREA" &&
+        !active.isContentEditable
+      );
+    };
+    const onCopy = (event: ClipboardEvent) => {
+      if (mine()) clipboard.current.copy(event);
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      if (mine()) clipboard.current.paste(event);
+    };
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("paste", onPaste);
+    };
+  }, []);
+
   const key = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       props.onEscape();
@@ -1492,15 +1628,20 @@ function Canvas(props: GraphProps) {
     // Клавиши ловит обёртка: холсту нужен фокус, чтобы Delete и Ctrl+Z не ушли в редактор.
     // oxlint-disable-next-line no-noninteractive-tabindex
     <div
+      ref={wrapper}
       className="relative h-full min-h-40 w-full outline-none"
       tabIndex={0}
       onKeyDown={key}
       onPointerMove={(event) => {
+        pointer.current = { x: event.clientX, y: event.clientY };
         if (!props.hint) return;
         const box = event.currentTarget.getBoundingClientRect();
         setCursor({ x: event.clientX - box.left, y: event.clientY - box.top });
       }}
-      onPointerLeave={() => setCursor(undefined)}
+      onPointerLeave={() => {
+        pointer.current = undefined;
+        setCursor(undefined);
+      }}
     >
       <ReactFlow
         nodes={nodes}
@@ -1513,6 +1654,9 @@ function Canvas(props: GraphProps) {
         onlyRenderVisibleElements
         deleteKeyCode={null}
         onNodesChange={(changes: NodeChange[]) => setNodes((now) => applyNodeChanges(changes, now))}
+        onNodeDragStart={(event) => {
+          copying.current = event.altKey;
+        }}
         onNodeDragStop={(_, node, all) => void dragStop(node, all)}
         onConnect={(connection) => {
           if (props.tool.kind !== "relation") return;

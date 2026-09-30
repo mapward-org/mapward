@@ -75,6 +75,16 @@ export const MapOp = T.Union([
   }),
   T.Object({ op: T.Literal("delete-object"), object: T.String() }),
   T.Object({
+    op: T.Literal("copy-objects"),
+    view: T.String(),
+    /** Что копировать; лежащий внутри другого скопированного едет с ним и отдельно не копируется. */
+    objects: T.Array(T.String()),
+    /** Куда класть копии; не назван — место для новых объектов из конфига вьюхи. */
+    parent: T.Optional(T.String()),
+    /** Позиции копий на этой вьюхе по адресам оригиналов — относительно родителя. */
+    positions: T.Optional(T.Record(T.String(), Point)),
+  }),
+  T.Object({
     op: T.Literal("add-ref"),
     view: T.String(),
     object: T.String(),
@@ -256,6 +266,37 @@ const withPosition = (
 function replaceAddress(text: string, from: string, to: string): string {
   const escaped = from.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replaceAll(new RegExp(`${escaped}(?![\\p{L}\\p{N}_.-])`, "gu"), to);
+}
+
+/**
+ * Несколько адресов за один проход: адрес, уже заменённый на новый, не задевается следующей
+ * заменой, даже если новый начинается с другого старого.
+ */
+function replaceAddresses(text: string, renames: ReadonlyMap<string, string>): string {
+  if (renames.size === 0) return text;
+  const olds = [...renames.keys()]
+    .toSorted((a, b) => b.length - a.length)
+    .map((address) => address.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`(?:${olds.join("|")})(?![\\p{L}\\p{N}_.-])`, "gu");
+  return text.replaceAll(pattern, (found) => renames.get(found) ?? found);
+}
+
+/** Адрес внутри скопированного — под адресом копии; вне копии — `undefined`. */
+function copiedAddress(address: string, renames: ReadonlyMap<string, string>): string | undefined {
+  for (const [from, to] of renames) {
+    if (within(address, from)) return to + address.slice(from.length);
+  }
+  return undefined;
+}
+
+/** Записи под ключами копий рядом с записями оригиналов. */
+function copyKeys<T>(record: Record<string, T>, key: (id: string) => string): Record<string, T> {
+  const next = { ...record };
+  for (const [id, value] of Object.entries(record)) {
+    const moved = key(id);
+    if (moved !== id) next[moved] = value;
+  }
+  return next;
 }
 
 function freeName(parent: MapObject, wanted: string): string {
@@ -489,6 +530,137 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
       for (const relation of hanging) draft.remove(relation.path);
       forget(draft, object.address);
       for (const relation of hanging) forget(draft, relation.address);
+      return { changes: draft.changes() };
+    }
+
+    case "copy-objects": {
+      if (!view) return fail("Нужна вьюха");
+      const place = op.parent ?? view.config.placeObjects;
+      if (place === undefined) {
+        return fail(
+          "Место для новых объектов в настройке вьюхи не названо: вставлять можно только в группу",
+        );
+      }
+      const parent = findObject(root, place);
+      if (!parent) return fail(`Нет объекта ${place}, куда вставлять`);
+      const originals: MapObject[] = [];
+      for (const address of new Set(op.objects)) {
+        const object = findObject(root, address);
+        // В буфере адреса, а не снимок: удалённый после копирования оригинал вставить нечем.
+        if (!object || object.address === MAP_ROOT || object.isGroup) {
+          return fail(`Нет объекта ${address}: его удалили или перенесли после копирования`);
+        }
+        originals.push(object);
+      }
+      const tops = originals.filter(
+        (object) =>
+          !originals.some((other) => other !== object && within(object.address, other.address)),
+      );
+      if (tops.length === 0) return fail("Копировать нечего");
+
+      // Имена папок, занятые у каждого родителя, — с учётом копий, уже положенных этой операцией.
+      const taken = new Map<string, Set<string>>();
+      const claim = (owner: MapObject, wanted: string): string => {
+        const names =
+          taken.get(owner.path) ?? new Set(owner.children.map((child) => basename(child.path)));
+        taken.set(owner.path, names);
+        let name = wanted;
+        for (let index = 2; names.has(name); index += 1) name = `${wanted}-${index}`;
+        names.add(name);
+        return name;
+      };
+      const renames = new Map<string, string>();
+      const folders = new Map<string, string>();
+      for (const object of tops) {
+        const folder = claim(parent, basename(object.path));
+        renames.set(object.address, childAddress(parent.address, folder));
+        folders.set(object.path, join(parent.path, folder));
+      }
+
+      // Связь копируется, только когда оба её конца попали в копию. Лежащая внутри скопированного,
+      // но с концом снаружи, остаётся у оригинала; лежащая снаружи с обоими концами внутри —
+      // копируется рядом с собой.
+      const copied = (address: string) => copiedAddress(address, renames) !== undefined;
+      const skipped: string[] = [];
+      const outside: MapObject[] = [];
+      walk(root, (candidate) => {
+        if (!isRelation(candidate)) return;
+        const { from, to } = candidate.props as { from: string; to: string };
+        const both = copied(from) && copied(to);
+        if (copied(candidate.address)) {
+          if (!both) skipped.push(candidate.path);
+        } else if (both) outside.push(candidate);
+      });
+      for (const relation of outside) {
+        const shelf = trail(root, relation.address).at(-2);
+        if (!shelf) continue;
+        const folder = claim(shelf, basename(relation.path));
+        renames.set(relation.address, childAddress(shelf.address, folder));
+        folders.set(relation.path, join(shelf.path, folder));
+      }
+
+      // Копируется то, где карта пишет содержание: `_index.json`, конфиги своих метрик и
+      // состояние вьюх. Директивы, их состояние и кэши в контекст не входят и остаются у оригинала.
+      const known = [...context.files.keys()];
+      const dropped = (path: string) => skipped.some((cut) => within(path, cut));
+      for (const [from, to] of folders) {
+        for (const path of known) {
+          if (!within(path, from) || dropped(path)) continue;
+          draft.write(
+            to + path.slice(from.length),
+            replaceAddresses(context.files.get(path) ?? "", renames),
+          );
+        }
+      }
+
+      // Во вьюхах копия встаёт так же, как оригинал: позиции и размеры потомков, изломы и стили
+      // стрелок внутри копии.
+      const node = (id: string) => copiedAddress(id, renames) ?? id;
+      const arrow = (id: string) => {
+        const ends = id.split("→");
+        const next = ends.map((end) => copiedAddress(end, renames));
+        return ends.length === 2 && next.every((end) => end !== undefined) ? next.join("→") : id;
+      };
+      for (const path of known) {
+        if (basename(path) !== VIEW_STATE) continue;
+        editState(draft, path, (state) => ({
+          ...state,
+          ...(state.positions ? { positions: copyKeys(state.positions, node) } : {}),
+          ...(state.sizes ? { sizes: copyKeys(state.sizes, node) } : {}),
+          ...(state.bends ? { bends: copyKeys(state.bends, arrow) } : {}),
+          ...(state.arrows ? { arrows: copyKeys(state.arrows, arrow) } : {}),
+        }));
+      }
+
+      // На своей вьюхе копия встаёт, где сказано, а не сказано — чуть в стороне от оригинала.
+      // Вьюхой не выбранная пропала бы с холста сразу после вставки: такая встаёт ссылкой.
+      const before = parseViewState(context.files.get(view.statePath));
+      const inGroup = objectsMap(root, op.view, view.config, before).nodes.some(
+        (item) => item.id === parent.address && item.expanded,
+      );
+      editState(draft, view.statePath, (state) => {
+        let next = state;
+        for (const object of tops) {
+          const address = renames.get(object.address) ?? object.address;
+          const at = op.positions?.[object.address];
+          const near = before.positions?.[object.address];
+          next = withPosition(
+            next,
+            address,
+            at ?? (near === undefined ? undefined : { x: near.x + 24, y: near.y + 24 }),
+          );
+          const seen =
+            inGroup ||
+            view.config.show.some((pattern) => matchesAddress(address, pattern)) ||
+            view.config.prototypes.some(
+              (key) => key === prototypeOf(object) || key === object.prototypeName,
+            );
+          if (!seen && !next.refs?.includes(address)) {
+            next = { ...next, refs: [...(next.refs ?? []), address] };
+          }
+        }
+        return next;
+      });
       return { changes: draft.changes() };
     }
 

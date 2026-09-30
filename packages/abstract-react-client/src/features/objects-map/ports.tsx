@@ -6,6 +6,8 @@ import type { EditResult, MapOp, ObjectRef } from "@mapward/core";
  * делает сервер (решение 0044), холст только зовёт её — стыкует порт с мостом точка входа.
  */
 export type ObjectsMapPort = {
+  /** Карта, которой принадлежит вьюха: копия с холста вставляется только в свою карту. */
+  mapPath: string;
   /** Пачка операций: применяется по очереди и отменяется целиком. */
   edit(ops: MapOp[]): Promise<EditResult>;
   undo(id: string): Promise<EditResult>;

@@ -156,6 +156,7 @@ export const ObjectView = observer(function ObjectView(props: {
             >
               <ProvideObjectsMap
                 port={{
+                  mapPath: props.mapConfig.mapPath,
                   // Правка карты — у сервера (решение 0044): вьюха зовёт операции по мосту.
                   edit: (ops) => bridge.editMap({ ...props.mapConfig, ops }),
                   undo: (id) => bridge.undoEdit({ ...props.mapConfig, id }),

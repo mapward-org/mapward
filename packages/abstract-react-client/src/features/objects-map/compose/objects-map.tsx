@@ -429,6 +429,7 @@ export const ObjectsMapView = observer(function ObjectsMapView(props: {
       <Rail store={store} map={props.map} />
       <Graph
         map={store.picture(props.map)}
+        mapPath={port.mapPath}
         viewport={store.view}
         tool={store.tool}
         renaming={store.renaming}
