@@ -113,6 +113,26 @@ function Ends(props: { connecting: boolean }) {
 const SIDES = [Position.Top, Position.Right, Position.Bottom, Position.Left];
 
 /**
+ * Фокус в поле подписи, как только его видно. `autoFocus` не годится: новый узел холст держит
+ * скрытым, пока не измерит, и скрытое поле фокус не берёт — брошенную карточку приходилось
+ * кликать ещё раз. Поэтому попытка повторяется по кадрам, пока фокус не встанет.
+ */
+function focusWhenShown(field: HTMLTextAreaElement | null): void {
+  if (!field) return;
+  let frames = 30;
+  const attempt = () => {
+    if (!field.isConnected || document.activeElement === field) return;
+    field.focus();
+    if (document.activeElement === field) {
+      field.select();
+      return;
+    }
+    if (--frames > 0) requestAnimationFrame(attempt);
+  };
+  attempt();
+}
+
+/**
  * Подпись, которую правят на месте: поле без состояния React, значение берётся на Enter, а
  * Shift+Enter переносит строку — подпись бывает в несколько строк. Выравнивание и шрифт — от
  * подписи: поле ввода по умолчанию прижимает текст влево, и подпись на время правки прыгала бы.
@@ -137,7 +157,7 @@ function Label(props: {
         fieldSizing: "content",
       }}
       rows={1}
-      autoFocus
+      ref={focusWhenShown}
       defaultValue={props.text}
       onBlur={(event) => done(event.currentTarget.value)}
       onKeyDown={(event) => {
@@ -479,6 +499,9 @@ function endNode(map: ObjectsMap, end: LineEnd | undefined): string | undefined 
 }
 
 const anchorId = (line: string, side: "from" | "to") => `anchor:${line}:${side}`;
+
+/** Префикс двойника: он держит место оригинала, пока копию тянут с Alt. */
+const GHOST = "ghost:";
 
 const css = (size: ObjectRef["width"]) => (typeof size === "number" ? `${size}px` : size);
 
@@ -1337,6 +1360,37 @@ function Canvas(props: GraphProps) {
   const copying = useRef(false);
 
   /**
+   * Alt+перетаскивание видно сразу: на месте тянутых узлов встают их двойники, и оригинал
+   * остаётся стоять, а под курсором едет копия. Двойники — только картинка: их не выделяют и
+   * не тянут, а пересборка на отпускание их убирает. Жильцы фрейма получают двойников тоже.
+   */
+  const ghosts = (dragged: Node[]) => {
+    setNodes((now) => {
+      const taken = new Set(dragged.filter((node) => node.type !== "anchor").map((n) => n.id));
+      for (const node of now) {
+        if (node.parentId !== undefined && taken.has(node.parentId)) taken.add(node.id);
+      }
+      const twins = now
+        .filter((node) => taken.has(node.id))
+        .map((node): Node => ({
+          ...node,
+          id: `${GHOST}${node.id}`,
+          ...(node.parentId === undefined
+            ? {}
+            : { parentId: taken.has(node.parentId) ? `${GHOST}${node.parentId}` : node.parentId }),
+          data: { ...node.data, renaming: false },
+          selected: false,
+          draggable: false,
+          selectable: false,
+          connectable: false,
+          dragging: false,
+        }));
+      // Двойники — первыми: они под тянутыми, а родитель у холста идёт раньше жильцов.
+      return [...twins, ...now];
+    });
+  };
+
+  /**
    * Alt+перетаскивание: оригиналы возвращаются на место, копии встают туда, где отпустили. Куда
    * падает пачка, решает узел под курсором — как при переносе.
    */
@@ -1654,8 +1708,9 @@ function Canvas(props: GraphProps) {
         onlyRenderVisibleElements
         deleteKeyCode={null}
         onNodesChange={(changes: NodeChange[]) => setNodes((now) => applyNodeChanges(changes, now))}
-        onNodeDragStart={(event) => {
+        onNodeDragStart={(event, _, dragged) => {
           copying.current = event.altKey;
+          if (event.altKey) ghosts(dragged);
         }}
         onNodeDragStop={(_, node, all) => void dragStop(node, all)}
         onConnect={(connection) => {

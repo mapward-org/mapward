@@ -71,6 +71,16 @@ export function withDraft(map: ObjectsMap, draft: Draft | undefined): ObjectsMap
   };
 }
 
+/**
+ * Имя нового фрейма — подпись его прототипа в палитре, а не прототипа нет — не фрейм. Фрейм
+ * рисуют протяжкой, и поле названия над узкой рамкой только мешало: без имени он не создавался.
+ */
+export function frameName(map: ObjectsMap, prototype: string): string | undefined {
+  const item = map.palette.objects.find((one) => one.prototype === prototype);
+  if (item?.frame !== true) return undefined;
+  return item.label.trim() || "Фрейм";
+}
+
 export function createOp(view: string, draft: Draft, name: string): MapOp | undefined {
   const label = name.trim();
   if (!label) return undefined;

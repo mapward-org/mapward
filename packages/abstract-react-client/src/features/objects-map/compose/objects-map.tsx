@@ -445,7 +445,7 @@ export const ObjectsMapView = observer(function ObjectsMapView(props: {
         onUndo={() => store.undo()}
         onRedo={() => store.redo()}
         onEscape={() => store.escape()}
-        onPlace={(draft) => store.place(draft)}
+        onPlace={(draft) => store.place(draft, props.map)}
         onDraft={(name) => store.commitDraft(name, props.map)}
         onDraftCancel={() => store.dropDraft()}
         onSelect={(chosen) => store.select(chosen)}

@@ -164,13 +164,13 @@ test("a refused edit leaves the canvas at once and the node is back", async () =
 test("a dropped card is a draft: Enter creates it with the name, Esc leaves nothing", async () => {
   const { port, sent } = fake([]);
   const store = new ObjectsMapStore(port, views, "v");
-  store.place({ prototype: "mapward://prototypes/event", position: { x: 1, y: 2 } });
+  store.place({ prototype: "mapward://prototypes/event", position: { x: 1, y: 2 } }, map);
   expect(store.picture(map).nodes.some((node) => node.id === "draft:new")).toBe(true);
   store.dropDraft();
   expect(store.picture(map).nodes.some((node) => node.id === "draft:new")).toBe(false);
   expect(sent).toEqual([]);
 
-  store.place({ prototype: "mapward://prototypes/event", position: { x: 1, y: 2 } });
+  store.place({ prototype: "mapward://prototypes/event", position: { x: 1, y: 2 } }, map);
   await store.commitDraft("Заказ оплачен", map);
   expect(sent).toEqual([
     [
@@ -180,6 +180,34 @@ test("a dropped card is a draft: Enter creates it with the name, Esc leaves noth
         name: "Заказ оплачен",
         prototype: "mapward://prototypes/event",
         position: { x: 1, y: 2 },
+      },
+    ],
+  ]);
+});
+
+test("a drawn frame is created at once with its palette name — no draft to type into", async () => {
+  const { port, sent } = fake([]);
+  const store = new ObjectsMapStore(port, views, "v");
+  const framed: ObjectsMap = {
+    ...map,
+    palette: {
+      objects: [{ prototype: "mapward://prototypes/area", label: "Область", frame: true }],
+      relations: [],
+    },
+  };
+  const size = { width: 300, height: 200 };
+  store.place({ prototype: "mapward://prototypes/area", position: { x: 1, y: 2 }, size }, framed);
+  expect(store.picture(framed).nodes.some((node) => node.id === "draft:new")).toBe(false);
+  await Promise.resolve();
+  expect(sent).toEqual([
+    [
+      {
+        op: "create-object",
+        view: "v",
+        name: "Область",
+        prototype: "mapward://prototypes/area",
+        position: { x: 1, y: 2 },
+        size,
       },
     ],
   ]);

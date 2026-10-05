@@ -15,6 +15,7 @@ import type { PendingEdit } from "../pure-model/pending.ts";
 import {
   createOp,
   editOps,
+  frameName,
   lineShape,
   startEditing,
   styled,
@@ -472,10 +473,19 @@ export class ObjectsMapStore {
     this.menu = undefined;
   }
 
-  /** Карточка брошена: видна сразу с полем подписи, на диск уйдёт по Enter. */
-  place(draft: Draft): void {
-    this.draft = draft;
+  /**
+   * Карточка брошена: видна сразу с полем подписи, на диск уйдёт по Enter. Фрейм подписи не
+   * ждёт — создаётся сразу с именем прототипа из палитры, переименовывают его потом.
+   */
+  place(draft: Draft, map: ObjectsMap): void {
     this.tool = { kind: "select" };
+    const name = frameName(map, draft.prototype);
+    if (name === undefined) {
+      this.draft = draft;
+      return;
+    }
+    const op = createOp(map.view, draft, name);
+    if (op) void this.edit([op], map);
   }
 
   dropDraft(): void {
