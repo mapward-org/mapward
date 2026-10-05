@@ -54,10 +54,10 @@
       {
         "key": "публикация",
         "label": "Публикация",
-        "description": "Локальный выпуск: собрать .vsix и поставить его в свой редактор — кнопка «Собрать и поставить». Витрины пока нет.",
+        "description": "Локальный выпуск: что собрано и что стоит в редакторе. Кнопка «Собрать и поставить» — на корне карты, во вкладке «Быстрый доступ». Витрины пока нет.",
         "metrics": ["release-version", "release-vsix"],
         "details-metrics-layout": {
-          "areas": [["release"], ["release-version"], ["release-vsix"]],
+          "areas": [["release-version"], ["release-vsix"]],
           "style": {
             "gap": "8px"
           }

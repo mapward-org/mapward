@@ -9,6 +9,5 @@
       "name": "сборка и установка",
       "run": "node \"${{ mapward://@ }}/apps/vscode-extension/scripts/package-vsix.mjs\" --install --json"
     }
-  ],
-  "refreshes": ["release-vsix", "release-version"]
+  ]
 }

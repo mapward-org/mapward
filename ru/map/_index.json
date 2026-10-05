@@ -4,6 +4,18 @@
   "metric-groups": {
     "groups": [
       {
+        "key": "быстро",
+        "label": "Быстрый доступ",
+        "description": "Что нужно чаще всего: дети карты и кнопка «Собрать и поставить» расширение в свой редактор.",
+        "metrics": ["children-list"],
+        "details-metrics-layout": {
+          "areas": [["release"], ["children-list"]],
+          "style": {
+            "gap": "8px"
+          }
+        }
+      },
+      {
         "key": "продукт",
         "label": "Работа с продуктом",
         "description": "Что делаем и почему: идеи, требования, решения и проверки к ним.",
@@ -14,8 +26,7 @@
           "decisions",
           "decisions-drift",
           "requirements-links",
-          "links",
-          "children-list"
+          "links"
         ],
         "details-metrics-layout": {
           "areas": [
@@ -25,8 +36,7 @@
             ["decisions"],
             ["decisions-drift"],
             ["requirements-links"],
-            ["links"],
-            ["children-list"]
+            ["links"]
           ],
           "style": {
             "gap": "8px"
