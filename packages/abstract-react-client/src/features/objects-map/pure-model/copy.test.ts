@@ -38,12 +38,21 @@ test("the paste puts the copy's top left corner under the cursor, in the group u
     relative: (_, point) => ({ x: point.x - 900, y: point.y - 400 }),
     newShapeId: () => "new",
   });
-  // Линия не копируется: её концы бывают прицеплены к узлам, которых у копии ещё нет.
+  // Линия не копируется: её концы бывают прицеплены к узлам, которых у копии ещё нет. Фигура
+  // встаёт в группу под курсором, с местом от неё.
   expect(ops).toEqual([
     {
       op: "put-shape",
       view: "mapward://_metrics/canvas",
-      shape: { id: "new", kind: "rect", x: 1000, y: 520, width: 10, height: 10 },
+      shape: {
+        id: "new",
+        kind: "rect",
+        x: 100,
+        y: 120,
+        width: 10,
+        height: 10,
+        parent: "mapward://es/игры",
+      },
     },
     {
       op: "copy-objects",

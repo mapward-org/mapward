@@ -39,6 +39,8 @@ export type NodeStyle = {
   group?: string;
   width?: string | number;
   maxHeight?: string | number;
+  /** Выравнивание подписи по горизонтали; не задано — по центру. */
+  align?: TextAlign;
 };
 
 export type ObjectsMapConfig = {
@@ -64,6 +66,10 @@ export type ObjectsMapConfig = {
 };
 
 export type Point = { x: number; y: number };
+
+/** Выравнивание текста по горизонтали — у подписи узла и у текста пометки. */
+export const TextAlign = T.Union([T.Literal("left"), T.Literal("center"), T.Literal("right")]);
+export type TextAlign = Static<typeof TextAlign>;
 
 /** Как стрелка идёт через изломы: ломаной, скруглённо или прямыми углами. */
 export const Route = T.Union([
@@ -108,6 +114,11 @@ export type LineEnd = Static<typeof LineEnd>;
 export const ViewShape = T.Object({
   id: T.String(),
   kind: T.Union([T.Literal("rect"), T.Literal("ellipse"), T.Literal("text"), T.Literal("line")]),
+  /**
+   * Группа, на которой пометка нарисована: пометка ездит, копируется и удаляется вместе с ней, а
+   * `x` и `y` отсчитаны от группы, как позиции её жильцов. Нет — пометка лежит на холсте.
+   */
+  parent: T.Optional(T.String()),
   x: T.Number(),
   y: T.Number(),
   width: T.Optional(T.Number()),
@@ -118,6 +129,7 @@ export const ViewShape = T.Object({
   stroke: T.Optional(T.String()),
   textColor: T.Optional(T.String()),
   fontSize: T.Optional(T.Number()),
+  align: T.Optional(TextAlign),
   /** Только у линии: её концы и стрелки на них. */
   from: T.Optional(LineEnd),
   to: T.Optional(LineEnd),
@@ -172,6 +184,7 @@ export type ViewNode = {
   group?: string;
   width?: string | number;
   maxHeight?: string | number;
+  align?: TextAlign;
   /**
    * Группа — рамка с жильцами, как фрейм в Miro. Группой объект делает только конфиг вьюхи
    * (`expand`): на холсте её не сворачивают, иначе размеры и позиции соседей поехали бы.
@@ -482,6 +495,7 @@ export function objectsMap(
       ...(style.group === undefined ? {} : { group: style.group }),
       ...(style.width === undefined ? {} : { width: style.width }),
       ...(style.maxHeight === undefined ? {} : { maxHeight: style.maxHeight }),
+      ...(style.align === undefined ? {} : { align: style.align }),
       expanded,
       ...(position === undefined ? {} : { position }),
       ...(size === undefined ? {} : { size }),

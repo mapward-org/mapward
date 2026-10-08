@@ -50,10 +50,25 @@ import { tabHover } from "../../../lib/ui/tab-hover.ts";
 import { draws, type Deletable, type Popover, type Tool } from "../pure-model/tools.ts";
 import { dropOp, dropTarget, type Rect } from "../pure-model/drop.ts";
 import { clipText, pasteOps, readClip, topsOf } from "../pure-model/copy.ts";
-import { layout, ROOM, type Box } from "../pure-model/layout.ts";
+import { layout, ROOM, SIMPLE, type Box } from "../pure-model/layout.ts";
 import { DRAFT_ID, drawnBox, lineEnd, type Draft } from "../pure-model/edit.ts";
-import { handles, routePath, type Route } from "../pure-model/route.ts";
-import { center as middle, endPoint, snapToFrame, type Frame } from "../pure-model/anchors.ts";
+import {
+  draw,
+  facing,
+  handles,
+  orthogonal,
+  routePath,
+  sideMiddle,
+  sideOf,
+  type Route,
+} from "../pure-model/route.ts";
+import {
+  center as middle,
+  endPoint,
+  snapToFrame,
+  type Anchor,
+  type Frame,
+} from "../pure-model/anchors.ts";
 
 /**
  * Связка вьюхи карты с `@xyflow/react` — единственный файл клиента, где живёт состояние React
@@ -300,7 +315,10 @@ function SimpleNode(props: NodeProps<Node<ObjectData>>) {
           style={node.textColor ? { color: node.textColor } : {}}
         >
           {node.kind === "ref" && <span title="Ссылка на чужой объект">↗</span>}
-          <div className={`min-w-0 flex-1 text-center ${tabHover.tabOnly}`}>
+          <div
+            className={`min-w-0 flex-1 ${tabHover.tabOnly}`}
+            style={{ textAlign: node.align ?? "center" }}
+          >
             <Label
               text={node.label}
               renaming={props.data.renaming}
@@ -378,8 +396,9 @@ function CardNode(props: NodeProps<Node<ObjectData>>) {
 }
 
 /**
- * Группа — фрейм, как в Miro: рамка с заливкой цвета прототипа, название — над рамкой. Таскают
- * фрейм за любое пустое место — жильцы лежат поверх и тащатся сами. Двойной клик по названию — правка имени, «⋯» — превью группы. Не сворачивается:
+ * Группа — фрейм, как в Miro: рамка с заливкой цвета прототипа, название — над рамкой. Пустое
+ * место фрейма — поверхность: по нему двигают холст и рисуют, а сам фрейм тащат, когда его
+ * выбрали кликом. Двойной клик по названию — правка имени, «⋯» — превью группы. Не сворачивается:
  * группой объект делает конфиг вьюхи. Растягивается ручками, и жильцы при этом стоят на месте.
  */
 function GroupNode(props: NodeProps<Node<ObjectData>>) {
@@ -430,6 +449,8 @@ function GroupNode(props: NodeProps<Node<ObjectData>>) {
   );
 }
 
+const JUSTIFY = { left: "flex-start", center: "center", right: "flex-end" } as const;
+
 /** Фигура — пометка на холсте, не объект: прямоугольник, круг или текст. */
 function NoteNode(props: NodeProps<Node<NoteData>>) {
   const { shape, handlers } = props.data;
@@ -445,10 +466,12 @@ function NoteNode(props: NodeProps<Node<NoteData>>) {
         onResizeEnd={(_, box) => handlers.resize(shape.id, box)}
       />
       <Ends connecting={false} />
-      {/* Центрует и flex, и text-align: поле правки во всю ширину иначе прижало бы текст влево. */}
+      {/* Ровняет и flex, и text-align: поле правки во всю ширину иначе прижало бы текст влево. */}
       <div
-        className="flex h-full w-full items-center justify-center p-1 text-center"
+        className="flex h-full w-full items-center p-1"
         style={{
+          justifyContent: JUSTIFY[shape.align ?? "center"],
+          textAlign: shape.align ?? "center",
           border: text && !props.selected ? "none" : `1px ${text ? "dashed" : "solid"} ${line}`,
           borderRadius: shape.kind === "ellipse" ? "50%" : 2,
           background: shape.color ?? "transparent",
@@ -513,6 +536,19 @@ type Build = {
   renderCard: (item: ObjectRef) => ReactNode;
 };
 
+/**
+ * Фрейм — поверхность, как в Miro: невыбранный не тащится, и по его пустому месту двигают холст
+ * и рисуют. Двигается он, только когда его сперва выбрали кликом. Библиотека холста не даёт
+ * двигать вид по узлу, который можно тащить, поэтому «тащится» снимается с невыбранного фрейма.
+ */
+function grip(nodes: Node[]): Node[] {
+  return nodes.map((node) => {
+    if (node.type !== "frame" || node.id.startsWith(GHOST)) return node;
+    const draggable = node.selected === true;
+    return node.draggable === draggable ? node : { ...node, draggable };
+  });
+}
+
 function build(params: Build): { nodes: Node[]; boxes: Box[] } {
   const boxes = layout(params.map);
   const byId = new Map(params.map.nodes.map((node) => [node.id, node]));
@@ -563,6 +599,7 @@ function build(params: Build): { nodes: Node[]; boxes: Box[] } {
     return { ...common, type: "simple", data, style: { width: box.width, height: box.height } };
   });
 
+  const frames = new Set(params.map.nodes.filter((node) => node.expanded).map((node) => node.id));
   for (const shape of params.map.shapes) {
     if (shape.kind === "line") {
       // Свободный конец — точка-узел, за которую его тащат; прицепленный едет за своим узлом.
@@ -579,16 +616,21 @@ function build(params: Build): { nodes: Node[]; boxes: Box[] } {
       }
       continue;
     }
+    // Пометка на группе лежит в ней, как жилец, и ездит с ней; группы, которой на вьюхе нет,
+    // ей не на чем стоять.
+    const parent = shape.parent;
+    if (parent !== undefined && !frames.has(parent)) continue;
     nodes.push({
       id: `shape:${shape.id}`,
       type: "note",
       position: { x: shape.x, y: shape.y },
+      ...(parent === undefined ? {} : { parentId: parent }),
       data: { shape, renaming: params.renaming === shape.id, handlers: params.handlers },
       style: { width: shape.width ?? 160, height: shape.height ?? 80 },
       zIndex: -1,
     });
   }
-  return { nodes, boxes };
+  return { nodes: grip(nodes), boxes };
 }
 
 const MARK = { type: MarkerType.ArrowClosed };
@@ -709,6 +751,15 @@ function frameOf(node: ReturnType<typeof useInternalNode>): Frame | undefined {
   };
 }
 
+/**
+ * Конец пути с прямыми углами: закреплённый — в своей точке рамки, плавающий — посередине
+ * стороны, обращённой к соседней точке пути. Из середины стороны стрелка выходит ровно.
+ */
+function squareEnd(box: Frame, anchor: Anchor | undefined, toward: Point): Point {
+  if (anchor) return endPoint(box, anchor, toward);
+  return sideMiddle(box, facing(box, toward));
+}
+
 const placed = (point: Point): CSSProperties => ({
   position: "absolute",
   transform: `translate(-50%, -50%) translate(${point.x}px, ${point.y}px)`,
@@ -734,19 +785,32 @@ function BentEdge(props: EdgeProps<Edge<BentData>>) {
   const fallbackTo = { x: props.targetX, y: props.targetY };
   const towardTo = bends[0] ?? (targetFrame ? middle(targetFrame) : fallbackTo);
   const towardFrom = bends.at(-1) ?? (sourceFrame ? middle(sourceFrame) : fallbackFrom);
+  const square = style?.route === "orthogonal";
   const from =
     pull?.side === "from"
       ? pull.point
       : sourceFrame
-        ? endPoint(sourceFrame, style?.fromAnchor, towardTo)
+        ? square
+          ? squareEnd(sourceFrame, style?.fromAnchor, towardTo)
+          : endPoint(sourceFrame, style?.fromAnchor, towardTo)
         : fallbackFrom;
   const to =
     pull?.side === "to"
       ? pull.point
       : targetFrame
-        ? endPoint(targetFrame, style?.toAnchor, towardFrom)
+        ? square
+          ? squareEnd(targetFrame, style?.toAnchor, towardFrom)
+          : endPoint(targetFrame, style?.toAnchor, towardFrom)
         : fallbackTo;
   const points = [from, ...bends, to];
+  // Прямые углы выходят из стороны узла перпендикулярно ей и огибают свои узлы.
+  const vertices = square
+    ? orthogonal(
+        { point: from, box: sourceFrame, side: sourceFrame && sideOf(sourceFrame, from) },
+        { point: to, box: targetFrame, side: targetFrame && sideOf(targetFrame, to) },
+        bends,
+      )
+    : points;
 
   /** Конец тянут по рамке своего узла; отпускание закрепляет его там. */
   const pullEnd = (event: ReactPointerEvent, side: "from" | "to") => {
@@ -778,9 +842,10 @@ function BentEdge(props: EdgeProps<Edge<BentData>>) {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const path = routePath(points, style?.route ?? "straight");
+  const path = square ? draw(vertices, false) : routePath(points, style?.route ?? "straight");
   // Ручка «создать излом» — на трети отрезка, подпись — на середине: друг друга не закрывают.
-  const { label, inserts } = handles(points);
+  const { inserts } = handles(points);
+  const { label } = handles(vertices);
   // Подпись склеенной стрелки — число её связей, а не имя: такую не правят.
   const editable = relation?.count === 1 && relation.link !== undefined;
   const renaming = editable && props.data?.edit.renaming === props.id;
@@ -893,12 +958,30 @@ type LineData = {
 
 /** Линия-пометка: выделенная толще и цветом фокуса, на концах — точки. */
 function LineEdge(props: EdgeProps<Edge<LineData>>) {
+  const source = useInternalNode(props.source);
+  const target = useInternalNode(props.target);
+  const square = props.data?.route === "orthogonal";
+  // Свободный конец — точка-узел без рамки; прицепленный к узлу у прямых углов выходит из
+  // середины стороны, обращённой к другому концу, как у стрелки связи.
+  const box = (node: typeof source) => (node && node.type !== "anchor" ? frameOf(node) : undefined);
+  const sourceBox = square ? box(source) : undefined;
+  const targetBox = square ? box(target) : undefined;
+  const plainFrom = { x: props.sourceX, y: props.sourceY };
+  const plainTo = { x: props.targetX, y: props.targetY };
+  const fromSide = sourceBox && facing(sourceBox, targetBox ? middle(targetBox) : plainTo);
+  const toSide = targetBox && facing(targetBox, sourceBox ? middle(sourceBox) : plainFrom);
   const ends = [
-    { x: props.sourceX, y: props.sourceY },
-    { x: props.targetX, y: props.targetY },
+    sourceBox && fromSide ? sideMiddle(sourceBox, fromSide) : plainFrom,
+    targetBox && toSide ? sideMiddle(targetBox, toSide) : plainTo,
   ];
-  const path = routePath(ends, props.data?.route ?? "straight");
-  const { label } = handles(ends);
+  const vertices = square
+    ? orthogonal(
+        { point: ends[0] ?? plainFrom, box: sourceBox, side: fromSide },
+        { point: ends[1] ?? plainTo, box: targetBox, side: toSide },
+      )
+    : ends;
+  const path = square ? draw(vertices, false) : routePath(ends, props.data?.route ?? "straight");
+  const { label } = handles(vertices);
   const width = Number(props.style?.strokeWidth ?? 1.5);
   const data = props.data;
   const renaming = data !== undefined && data.edit.renaming === data.shape;
@@ -1204,6 +1287,16 @@ function Canvas(props: GraphProps) {
     const to = arrow && boxOf(arrow.to);
     if (!arrow || !from || !to) return { x: 0, y: 0 };
     const bends = arrow.bends ?? [];
+    if (arrow.style?.route === "orthogonal") {
+      const start = squareEnd(from, arrow.style.fromAnchor, bends[0] ?? middle(to));
+      const finish = squareEnd(to, arrow.style.toAnchor, bends.at(-1) ?? middle(from));
+      const path = orthogonal(
+        { point: start, box: from, side: sideOf(from, start) },
+        { point: finish, box: to, side: sideOf(to, finish) },
+        bends,
+      );
+      return handles(path).label ?? start;
+    }
     const start = endPoint(from, arrow.style?.fromAnchor, bends[0] ?? middle(to));
     const finish = endPoint(to, arrow.style?.toAnchor, bends.at(-1) ?? middle(from));
     return handles([start, ...bends, finish]).label ?? start;
@@ -1254,19 +1347,27 @@ function Canvas(props: GraphProps) {
         ...(kept === undefined || kept === 1 ? {} : { scale: kept }),
       };
       const ops: MapOp[] = [{ op: "resize-nodes", view, sizes: { [id]: size } }];
-      const old =
-        flow.getInternalNode(id)?.position ?? props.map.nodes.find((n) => n.id === id)?.position;
+      // Прежнее место — из картинки, а не из холста: холст во время протяжки уже сдвинул узел, и
+      // сравнение с ним теряло сдвиг — растянутое вверх или влево отскакивало вниз и вправо.
+      const before = layout(props.map);
+      const old = before.find((item) => item.id === id)?.position;
       if (old && (Math.abs(old.x - box.x) > 0.5 || Math.abs(old.y - box.y) > 0.5)) {
         // Фрейм тянули за левый или верхний край: он сдвинулся, а жильцы, чьи позиции
         // отсчитаны от него, сдвигаются обратно — на холсте они стоят где стояли.
         const dx = box.x - old.x;
         const dy = box.y - old.y;
         const positions: Record<string, Point> = { [id]: { x: box.x, y: box.y } };
-        for (const child of props.map.nodes.filter((n) => n.parent === id)) {
-          const at = flow.getInternalNode(child.id)?.position ?? child.position;
-          if (at) positions[child.id] = { x: at.x - dx, y: at.y - dy };
+        for (const child of before.filter((item) => item.parent === id)) {
+          positions[child.id] = { x: child.position.x - dx, y: child.position.y - dy };
         }
         ops.push({ op: "move-nodes", view, positions });
+        for (const shape of props.map.shapes.filter((item) => item.parent === id)) {
+          ops.push({
+            op: "put-shape",
+            view,
+            shape: { ...shape, x: shape.x - dx, y: shape.y - dy },
+          });
+        }
       }
       void props.onEdit(ops);
     },
@@ -1300,13 +1401,13 @@ function Canvas(props: GraphProps) {
 
   const [nodes, setNodes] = useState<Node[]>(() => build(params()).nodes);
   const [lines, setLines] = useState<Edge[]>(() => edges(props.map, bend, restyle, edgeEdit));
-  const restore = () => setNodes((now) => keepSelected(build(params()).nodes, now));
+  const restore = () => setNodes((now) => grip(keepSelected(build(params()).nodes, now)));
 
   // Новая картинка — новые узлы. Картинка приходит тем же объектом, пока по содержимому ничего
   // не поменялось (стор сводит снимки подписки к одному), поэтому пересборки без дела нет и
   // выделение с ручками ресайза не слетает посреди жеста.
   useEffect(() => {
-    setNodes((now) => keepSelected(build(params()).nodes, now));
+    setNodes((now) => grip(keepSelected(build(params()).nodes, now)));
     // oxlint-disable-next-line exhaustive-deps
   }, [props.map, props.renaming, props.tool.kind]);
 
@@ -1346,6 +1447,17 @@ function Canvas(props: GraphProps) {
     if (target === undefined) return point;
     const base = flow.getInternalNode(target)?.internals.positionAbsolute ?? { x: 0, y: 0 };
     return { x: point.x - base.x, y: point.y - base.y };
+  };
+
+  /** Пометка там, где её отпустили: на фрейме под центром — его, с местом от него; иначе на холсте. */
+  const landed = (node: Node): ViewShape => {
+    const { at, target } = where(node);
+    const { parent: _old, ...shape } = (node.data as NoteData).shape;
+    return {
+      ...shape,
+      ...relativeTo(target, at),
+      ...(target === undefined ? {} : { parent: target }),
+    };
   };
 
   /**
@@ -1395,21 +1507,16 @@ function Canvas(props: GraphProps) {
    * падает пачка, решает узел под курсором — как при переносе.
    */
   const dropCopy = async (dragged: Node, all: Node[]) => {
-    const shapes: MapOp[] = all
-      .filter((node) => node.type === "note")
-      .map((node) => ({
-        op: "put-shape",
-        view,
-        shape: {
-          ...(node.data as NoteData).shape,
-          id: shapeId(),
-          x: node.position.x,
-          y: node.position.y,
-        },
-      }));
     const objects = all.filter(
       (node) => node.type !== "note" && node.type !== "anchor" && node.id !== DRAFT_ID,
     );
+    // Пометки скопированного фрейма копирует сервер вместе с ним — отдельно их не ставят.
+    const taken = (parent: string) =>
+      objects.some((node) => parent === node.id || parent.startsWith(`${node.id}/`));
+    const shapes: MapOp[] = all
+      .filter((node) => node.type === "note")
+      .filter((node) => node.parentId === undefined || !taken(node.parentId))
+      .map((node) => ({ op: "put-shape", view, shape: { ...landed(node), id: shapeId() } }));
     const tops = topsOf(objects.map((node) => ({ address: node.id, node }))).map(
       (item) => item.node,
     );
@@ -1457,17 +1564,15 @@ function Canvas(props: GraphProps) {
       await dropCopy(dragged, all);
       return;
     }
-    // Фигуры — пометки на холсте: в фрейм не переезжают, у них только место.
-    const shapes: MapOp[] = all
-      .filter((node) => node.type === "note")
-      .map((node) => ({
-        op: "put-shape",
-        view,
-        shape: { ...(node.data as NoteData).shape, x: node.position.x, y: node.position.y },
-      }));
     const objects = all.filter((node) => node.type !== "note" && node.type !== "anchor");
     // Жилец выделенного фрейма едет вместе с фреймом — отдельно его не двигают.
     const chosen = new Set(objects.map((node) => node.id));
+    // Пометка падает, как узел, на фрейм под своим центром и становится его; вынесенная на
+    // пустое место — снова лежит на холсте. Пометка выделенного фрейма едет с ним сама.
+    const shapes: MapOp[] = all
+      .filter((node) => node.type === "note")
+      .filter((node) => node.parentId === undefined || !chosen.has(node.parentId))
+      .map((node) => ({ op: "put-shape", view, shape: landed(node) }));
     const tops = objects.filter(
       (node) => node.parentId === undefined || !chosen.has(node.parentId),
     );
@@ -1508,10 +1613,12 @@ function Canvas(props: GraphProps) {
         );
         return;
       }
+      // Карточка встаёт центром под курсор, а не углом: так её кладут туда, куда смотрят.
+      const corner = { x: point.x - SIMPLE.width / 2, y: point.y - SIMPLE.height / 2 };
       props.onPlace({
         prototype: tool.prototype,
         ...(parent === undefined ? {} : { parent }),
-        position: relativeTo(parent, point),
+        position: relativeTo(parent, corner),
       });
       return;
     }
@@ -1548,10 +1655,14 @@ function Canvas(props: GraphProps) {
       const fallback =
         tool.shape === "text" ? { width: 160, height: 32 } : { width: 160, height: 80 };
       const box = drawnBox(from, moved ? to : from, fallback);
+      // Нарисованная на фрейме пометка принадлежит ему: место — от фрейма, ездит вместе с ним.
+      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const parent = dropTarget({ node: "", center, groups: groups() });
       props.onDrawShape({
         id: shapeId(),
         kind: tool.shape,
         ...box,
+        ...(parent === undefined ? {} : { parent, ...relativeTo(parent, box) }),
         text: tool.shape === "text" ? "текст" : "",
       });
       return;
@@ -1591,9 +1702,18 @@ function Canvas(props: GraphProps) {
         address: node.id,
         at: flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position,
       }));
+    // Пометки — местом на холсте целиком: вставка кладёт их в свой фрейм. Пометку скопированного
+    // фрейма копирует сервер вместе с ним, в буфер она не идёт.
+    const copied = (parent: string) =>
+      objects.some((item) => parent === item.address || parent.startsWith(`${item.address}/`));
     const shapes = chosen
       .filter((node) => node.type === "note")
-      .map((node) => (node.data as NoteData).shape);
+      .filter((node) => node.parentId === undefined || !copied(node.parentId))
+      .map((node): ViewShape => {
+        const { parent: _old, ...shape } = (node.data as NoteData).shape;
+        const at = flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
+        return { ...shape, x: at.x, y: at.y };
+      });
     event.clipboardData?.setData(
       "text/plain",
       clipText({ map: props.mapPath, objects: topsOf(objects), shapes }),
@@ -1707,7 +1827,9 @@ function Canvas(props: GraphProps) {
         // Узел за краем холста не рисуется — и его карточка не подписана на метрики.
         onlyRenderVisibleElements
         deleteKeyCode={null}
-        onNodesChange={(changes: NodeChange[]) => setNodes((now) => applyNodeChanges(changes, now))}
+        onNodesChange={(changes: NodeChange[]) =>
+          setNodes((now) => grip(applyNodeChanges(changes, now)))
+        }
         onNodeDragStart={(event, _, dragged) => {
           copying.current = event.altKey;
           if (event.altKey) ghosts(dragged);
@@ -1730,6 +1852,11 @@ function Canvas(props: GraphProps) {
           if (props.tool.kind === "line") {
             const hit = node.type === "note" ? node.id.slice("shape:".length) : node.id;
             if (node.type !== "anchor") props.onLine(lineEnd({ x: 0, y: 0 }, hit));
+            return;
+          }
+          // Фрейм — поверхность: клик по нему инструментом карточки ставит её на фрейм.
+          if (node.type === "frame" && props.tool.kind === "object") {
+            place(event);
             return;
           }
           if (node.type === "note" || node.type === "anchor") return;

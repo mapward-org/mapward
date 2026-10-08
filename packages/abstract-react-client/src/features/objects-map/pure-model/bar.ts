@@ -18,16 +18,25 @@ export type BarKey =
   | "width"
   | "route"
   | "arrows"
+  | "align"
   | "edit"
   | "dive"
   | "delete"
   | "|";
 
 /** Кнопки с выпадашкой: у остальных клик — сразу действие. Текст — цвет и размер вместе. */
-export type Menu = "fill" | "stroke" | "text" | "width" | "route" | "arrows";
+export type Menu = "fill" | "stroke" | "text" | "width" | "route" | "arrows" | "align";
 
 /** Поле стиля, которое правит выпадашка. */
-export type Field = "fill" | "stroke" | "textColor" | "fontSize" | "width" | "route" | "arrows";
+export type Field =
+  | "fill"
+  | "stroke"
+  | "textColor"
+  | "fontSize"
+  | "width"
+  | "route"
+  | "arrows"
+  | "align";
 
 export function barFor(target: Target): BarKey[] {
   switch (target.kind) {
@@ -43,9 +52,9 @@ export function barFor(target: Target): BarKey[] {
         case "line":
           return ["stroke", "width", "|", "route", "arrows", "|", "text", "|", "delete"];
         case "text":
-          return ["text", "fill", "|", "delete"];
+          return ["text", "align", "fill", "|", "delete"];
         default:
-          return ["fill", "stroke", "width", "|", "text", "|", "delete"];
+          return ["fill", "stroke", "width", "|", "text", "align", "|", "delete"];
       }
   }
 }
@@ -59,6 +68,7 @@ export type Look = {
   width?: number | undefined;
   route?: string | undefined;
   arrows?: string | undefined;
+  align?: string | undefined;
 };
 
 export function lookOf(target: Target | undefined): Look {
@@ -73,6 +83,7 @@ export function lookOf(target: Target | undefined): Look {
       width: shape.strokeWidth,
       route: shape.route,
       arrows: shape.arrow,
+      align: shape.align,
     };
   }
   if (target.kind === "arrow") {
@@ -104,6 +115,7 @@ export function patchFor(
           width: "strokeWidth",
           route: "route",
           arrows: "arrow",
+          align: "align",
         }[menu]
       : {
           fill: "stroke",
@@ -113,6 +125,7 @@ export function patchFor(
           width: "strokeWidth",
           route: "route",
           arrows: "route",
+          align: "route",
         }[menu];
   return { [field]: value };
 }
@@ -155,6 +168,16 @@ export const ARROWS = [
   { key: "end", icon: "→", title: "Стрелка на конце" },
   { key: "both", icon: "↔", title: "Стрелки с обеих сторон" },
 ] as const;
+
+/** Выравнивание текста пометки иконками — только по горизонтали. */
+export const ALIGNS = [
+  { key: "left", icon: "⇤", title: "Текст влево" },
+  { key: "center", icon: "↔", title: "Текст по центру" },
+  { key: "right", icon: "⇥", title: "Текст вправо" },
+] as const;
+
+export const alignIcon = (align: string | undefined): string =>
+  ALIGNS.find((one) => one.key === (align ?? "center"))?.icon ?? "↔";
 
 export const routeIcon = (route: string | undefined): string =>
   ROUTES.find((one) => one.key === (route ?? "straight"))?.icon ?? "╱";

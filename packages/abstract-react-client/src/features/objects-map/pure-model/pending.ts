@@ -163,6 +163,10 @@ function apply(map: ObjectsMap, op: MapOp, id: string): ObjectsMap {
           from: renamed(arrow.from),
           to: renamed(arrow.to),
         })),
+        // Пометки на перенесённой группе едут за её адресом.
+        shapes: map.shapes.map((shape) =>
+          shape.parent === undefined ? shape : { ...shape, parent: renamed(shape.parent) },
+        ),
       };
     }
     case "rename":
@@ -183,6 +187,11 @@ function apply(map: ObjectsMap, op: MapOp, id: string): ObjectsMap {
         ...map,
         nodes: map.nodes.filter((item) => !gone(item.id)),
         relations: map.relations.filter((arrow) => !gone(arrow.from) && !gone(arrow.to)),
+        // Пометки удалённой группы уходят с ней; у ссылки пометок нет — её группа чужая.
+        shapes:
+          op.op === "delete-object"
+            ? map.shapes.filter((shape) => shape.parent === undefined || !gone(shape.parent))
+            : map.shapes,
       };
     }
     case "create-object": {

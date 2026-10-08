@@ -247,3 +247,21 @@ test("a frame drafted by dragging is drawn as a frame of that size", () => {
   });
   expect(picture.nodes.at(-1)).toMatchObject({ expanded: true, size: { width: 400, height: 240 } });
 });
+
+test("a shape drawn on a group follows it when it moves and goes away when it is deleted", () => {
+  const drawn: ObjectsMap = {
+    ...map,
+    shapes: [{ id: "on", kind: "rect", parent: "mapward://shop", x: 5, y: 5 }],
+  };
+  const moved = overlay(drawn, [
+    entry([{ op: "move-object", object: "mapward://shop", parent: "mapward://bank" }], {
+      sent: drawn,
+    }),
+  ]);
+  expect(moved.shapes[0]?.parent).toBe("mapward://bank/shop");
+
+  const gone = overlay(drawn, [
+    entry([{ op: "delete-object", object: "mapward://shop" }], { sent: drawn }),
+  ]);
+  expect(gone.shapes).toEqual([]);
+});

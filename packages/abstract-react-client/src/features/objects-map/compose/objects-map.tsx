@@ -4,7 +4,16 @@ import { useViewStates } from "../../../services/state/ports.tsx";
 import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { ObjectsMapStore } from "../model/objects-map.ts";
 import { objectTool } from "../pure-model/tools.ts";
-import { ARROWS, FONT_SIZES, railObjects, ROUTES, routeIcon, WIDTHS } from "../pure-model/bar.ts";
+import {
+  ALIGNS,
+  alignIcon,
+  ARROWS,
+  FONT_SIZES,
+  railObjects,
+  ROUTES,
+  routeIcon,
+  WIDTHS,
+} from "../pure-model/bar.ts";
 import { useObjectsMapPort } from "../ports.tsx";
 import { Graph } from "../ui/flow.tsx";
 import {
@@ -345,6 +354,29 @@ const ContextBar = observer(function ContextBar(props: Props) {
               onClick={() => store.toggleMenu("arrows")}
             >
               →
+            </BarIcon>
+          </BarSlot>
+        ) : key === "align" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "align" && (
+                <MenuFrame>
+                  <Segmented
+                    value={store.look(map).align ?? "center"}
+                    options={ALIGNS}
+                    onPick={(align) => store.apply("align", align, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Выравнивание текста"
+              on={store.menu === "align"}
+              onClick={() => store.toggleMenu("align")}
+            >
+              {alignIcon(store.look(map).align)}
             </BarIcon>
           </BarSlot>
         ) : key === "edit" ? (

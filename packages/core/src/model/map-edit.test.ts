@@ -397,3 +397,47 @@ test("a copy of an object deleted after copying is refused", () => {
   });
   expect("error" in plan && plan.error).toContain("удалили");
 });
+
+/** Контекст, где на магазине нарисована пометка, а на холсте — ещё одна. */
+const withShapes: EditContext = {
+  root: map,
+  files: new Map(files).set(
+    "/map/_metrics/canvas/map-state.json",
+    JSON.stringify({
+      shapes: [
+        { id: "s1", kind: "rect", parent: "mapward://systems/shop", x: 10, y: 20 },
+        { id: "s2", kind: "text", x: 0, y: 0, text: "холст" },
+      ],
+    }),
+  ),
+};
+
+test("a shape drawn on a group is copied with it onto the copy", () => {
+  const list = changes(
+    planEdit(withShapes, {
+      op: "copy-objects",
+      view: "mapward://_metrics/canvas",
+      objects: ["mapward://systems/shop"],
+    }),
+  );
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.shapes).toEqual([
+    { id: "s1", kind: "rect", parent: "mapward://systems/shop", x: 10, y: 20 },
+    { id: "s2", kind: "text", x: 0, y: 0, text: "холст" },
+    { id: "s1-2", kind: "rect", parent: "mapward://systems/shop-2", x: 10, y: 20 },
+  ]);
+});
+
+test("a shape drawn on a group goes away with it and follows its new address", () => {
+  const gone = changes(
+    planEdit(withShapes, { op: "delete-object", object: "mapward://systems/shop" }),
+  );
+  const state = JSON.parse(written(gone, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.shapes.map((shape: { id: string }) => shape.id)).toEqual(["s2"]);
+
+  const moved = changes(
+    planEdit(withShapes, { op: "set-folder", object: "mapward://systems/shop", folder: "store" }),
+  );
+  const next = JSON.parse(written(moved, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(next.shapes[0].parent).toBe("mapward://systems/store");
+});

@@ -299,6 +299,24 @@ function copyKeys<T>(record: Record<string, T>, key: (id: string) => string): Re
   return next;
 }
 
+/**
+ * Пометки скопированных групп — копиями на копиях групп, рядом с оригиналами. Номер копии —
+ * номер оригинала со свободным суффиксом: пометки вьюхи различаются номером.
+ */
+function copyShapes(shapes: ViewShape[], renames: ReadonlyMap<string, string>): ViewShape[] {
+  const taken = new Set(shapes.map((shape) => shape.id));
+  const copies: ViewShape[] = [];
+  for (const shape of shapes) {
+    const parent = shape.parent === undefined ? undefined : copiedAddress(shape.parent, renames);
+    if (parent === undefined) continue;
+    let id = `${shape.id}-2`;
+    for (let index = 3; taken.has(id); index += 1) id = `${shape.id}-${index}`;
+    taken.add(id);
+    copies.push({ ...shape, id, parent });
+  }
+  return [...shapes, ...copies];
+}
+
 function freeName(parent: MapObject, wanted: string): string {
   const taken = new Set(parent.children.map((child) => basename(child.path)));
   if (!taken.has(wanted)) return wanted;
@@ -335,6 +353,14 @@ function forget(draft: Draft, address: string): void {
         : {}),
       ...(state.sizes
         ? { sizes: Object.fromEntries(Object.entries(state.sizes).filter(([k]) => keep(k))) }
+        : {}),
+      // Пометка, нарисованная на удалённой группе, без неё ничего не значит.
+      ...(state.shapes
+        ? {
+            shapes: state.shapes.filter(
+              (shape) => shape.parent === undefined || keep(shape.parent),
+            ),
+          }
         : {}),
     }));
   }
@@ -629,6 +655,7 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
           ...(state.sizes ? { sizes: copyKeys(state.sizes, node) } : {}),
           ...(state.bends ? { bends: copyKeys(state.bends, arrow) } : {}),
           ...(state.arrows ? { arrows: copyKeys(state.arrows, arrow) } : {}),
+          ...(state.shapes ? { shapes: copyShapes(state.shapes, renames) } : {}),
         }));
       }
 

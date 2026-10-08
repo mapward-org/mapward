@@ -11,7 +11,10 @@ export type Clip = {
   map: string;
   /** Верхние скопированные объекты и их левый верхний угол на холсте. */
   objects: { address: string; at: Point }[];
-  /** Фигуры-пометки — они живут во вьюхе и копируются целиком, с новым номером. */
+  /**
+   * Фигуры-пометки — они живут во вьюхе и копируются целиком, с новым номером. Место — на
+   * холсте целиком, без группы: вставка кладёт их в группу под курсором.
+   */
   shapes: ViewShape[];
 };
 
@@ -75,10 +78,16 @@ export function pasteOps(params: {
     : { x: PASTE_NUDGE, y: PASTE_NUDGE };
   const moved = (at: Point) => ({ x: at.x + shift.x, y: at.y + shift.y });
 
-  const ops: MapOp[] = shapes.map((shape) => ({
+  // Пометка в буфере — местом на холсте целиком; вставленная в группу становится её.
+  const ops: MapOp[] = shapes.map(({ parent: _old, ...shape }) => ({
     op: "put-shape",
     view,
-    shape: { ...shape, id: params.newShapeId(), ...moved(shape) },
+    shape: {
+      ...shape,
+      id: params.newShapeId(),
+      ...params.relative(params.target, moved(shape)),
+      ...(params.target === undefined ? {} : { parent: params.target }),
+    },
   }));
   const objects = topsOf(clip.objects);
   if (objects.length > 0) {

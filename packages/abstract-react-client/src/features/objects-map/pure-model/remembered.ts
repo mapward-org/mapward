@@ -11,9 +11,9 @@ export type Remembered = Partial<Record<StyleKind, Record<string, unknown>>>;
 
 /** Что помнится: стиль, но не место, размер, текст и концы. */
 const FIELDS: Record<StyleKind, string[]> = {
-  rect: ["color", "stroke", "textColor", "fontSize", "strokeWidth"],
-  ellipse: ["color", "stroke", "textColor", "fontSize", "strokeWidth"],
-  text: ["color", "stroke", "textColor", "fontSize"],
+  rect: ["color", "stroke", "textColor", "fontSize", "strokeWidth", "align"],
+  ellipse: ["color", "stroke", "textColor", "fontSize", "strokeWidth", "align"],
+  text: ["color", "stroke", "textColor", "fontSize", "align"],
   line: ["stroke", "strokeWidth", "textColor", "fontSize", "route", "arrow"],
   arrow: ["stroke", "strokeWidth", "textColor", "fontSize", "route"],
 };
