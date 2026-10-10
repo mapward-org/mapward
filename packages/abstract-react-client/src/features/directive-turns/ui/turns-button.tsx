@@ -43,10 +43,24 @@ export function TurnsGroup(props: { title: string; children: ReactNode }) {
 /** Крутящийся кружок: у идущего пункта и на кнопке, когда ждать нечего, а что-то идёт. */
 const spinner = "block shrink-0 animate-spin rounded-full border-current border-t-transparent";
 
+/**
+ * Строка ленты: пункт и, у ждущего и упавшего, крестик справа. Кнопки соседние, а не
+ * вложенные: кнопка в кнопке недопустима. Подсветка наведения — на всей строке.
+ */
+export function TurnRow(props: { children: ReactNode }) {
+  return (
+    <div className="group flex items-baseline text-[11px] hover:bg-[var(--mw-list-hoverBackground)]">
+      {props.children}
+    </div>
+  );
+}
+
 export function TurnItem(props: {
   turn: Turn;
   /** «Сколько ждёт» стареет само: пока список открыт, время приходит свежим раз в минуту. */
   now: number;
+  /** Рядом крестик: при наведении он встаёт на место времени. */
+  dismissable?: boolean;
   onTake: (turn: Turn) => void;
 }) {
   const { turn } = props;
@@ -60,7 +74,7 @@ export function TurnItem(props: {
           : `${turn.kind === "metric" ? "метрика" : "экшон"}, прогон ${turn.run}`
       }
       onClick={() => props.onTake(turn)}
-      className="flex w-full items-baseline gap-2 px-3 py-0.5 text-left text-[11px] hover:bg-[var(--mw-list-hoverBackground)]"
+      className={`flex min-w-0 flex-1 items-baseline gap-2 py-0.5 pr-3 pl-3 text-left ${props.dismissable ? "group-hover:pr-0" : ""}`}
     >
       <span className="min-w-0 flex-1 truncate opacity-90">{turnLabel(turn)}</span>
       {turn.state === "running" && (
@@ -75,9 +89,28 @@ export function TurnItem(props: {
           {state}
         </span>
       )}
-      <span className="shrink-0 text-[var(--mw-descriptionForeground)]">
+      <span
+        className={`shrink-0 text-[var(--mw-descriptionForeground)] ${props.dismissable ? "group-hover:hidden" : ""}`}
+      >
         {waited(turn.at, props.now)}
       </span>
+    </button>
+  );
+}
+
+/**
+ * Убрать пункт, не открывая, — директиву, закрытую своим же этапом, смотреть не обязательно.
+ * Виден при наведении на строку; список не закрывает, чтобы убрать подряд несколько.
+ */
+export function TurnDismiss(props: { onDismiss: () => void }) {
+  return (
+    <button
+      type="button"
+      title="Убрать, не открывая"
+      onClick={props.onDismiss}
+      className="hidden shrink-0 px-2 opacity-60 group-hover:block hover:opacity-100"
+    >
+      ×
     </button>
   );
 }

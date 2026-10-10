@@ -5,7 +5,15 @@ import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
 import { Turns, type RunFocus } from "../adapters/turns.ts";
 import { TurnsPanel } from "../model/turns-panel.ts";
 import { turnKey } from "../pure-model/turns.ts";
-import { TurnItem, TurnsBadge, TurnsDock, TurnsGroup, TurnsList } from "../ui/turns-button.tsx";
+import {
+  TurnDismiss,
+  TurnItem,
+  TurnRow,
+  TurnsBadge,
+  TurnsDock,
+  TurnsGroup,
+  TurnsList,
+} from "../ui/turns-button.tsx";
 
 /**
  * Лента в кружке сайдбара — решение 0046: что идёт и где ход у человека. Пустая — кнопки нет:
@@ -27,24 +35,24 @@ export const DirectiveTurns = observer(function DirectiveTurns(props: { focus?: 
           {turns.groups.running.length > 0 && (
             <TurnsGroup title="Идут">
               {turns.groups.running.map((turn) => (
-                <TurnItem
-                  key={turnKey(turn)}
-                  turn={turn}
-                  now={panel.now}
-                  onTake={(one) => panel.take(one, turns)}
-                />
+                <TurnRow key={turnKey(turn)}>
+                  <TurnItem turn={turn} now={panel.now} onTake={(one) => panel.take(one, turns)} />
+                </TurnRow>
               ))}
             </TurnsGroup>
           )}
           {turns.groups.waiting.length > 0 && (
             <TurnsGroup title="Ждут ответа">
               {turns.groups.waiting.map((turn) => (
-                <TurnItem
-                  key={turnKey(turn)}
-                  turn={turn}
-                  now={panel.now}
-                  onTake={(one) => panel.take(one, turns)}
-                />
+                <TurnRow key={turnKey(turn)}>
+                  <TurnItem
+                    turn={turn}
+                    now={panel.now}
+                    dismissable
+                    onTake={(one) => panel.take(one, turns)}
+                  />
+                  <TurnDismiss onDismiss={() => turns.dismiss(turn)} />
+                </TurnRow>
               ))}
             </TurnsGroup>
           )}

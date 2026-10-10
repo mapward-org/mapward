@@ -53,18 +53,22 @@ export class Turns {
           directive: turn.directive,
         });
       }
-      if (turn.state !== "running") {
-        void this.bridge.dismissTurn({
-          mapPath: turn.mapPath,
-          address: turn.address,
-          directive: turn.directive,
-        });
-      }
-      return;
+    } else {
+      this.focus?.receive({ mapPath: turn.mapPath, address: turn.address, run: turn.run });
     }
-    this.focus?.receive({ mapPath: turn.mapPath, address: turn.address, run: turn.run });
-    if (turn.state !== "running") {
-      void this.bridge.dismissTurn({ mapPath: turn.mapPath, run: turn.run });
-    }
+    this.dismiss(turn);
+  }
+
+  /**
+   * Убрать пункт, не открывая его, — крестиком: директиву, закрытую своим же этапом, смотреть
+   * не обязательно, а из числа на кнопке иначе её не убрать. Идущее не убирается: уйдёт само.
+   */
+  dismiss(turn: Turn): void {
+    if (turn.state === "running") return;
+    void this.bridge.dismissTurn(
+      turn.kind === "directive"
+        ? { mapPath: turn.mapPath, address: turn.address, directive: turn.directive }
+        : { mapPath: turn.mapPath, run: turn.run },
+    );
   }
 }
