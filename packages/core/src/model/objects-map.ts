@@ -159,7 +159,23 @@ export type ViewState = {
   bends?: Record<string, Point[]>;
   /** Стиль стрелок по их `id`: связь на разных вьюхах рисуется по-разному. */
   arrows?: Record<string, ArrowStyle>;
+  /**
+   * Копии-отображения по их `id` — `<адрес объекта>#<номер>`: ещё один узел того же объекта на
+   * этом холсте. Папки у копии нет, позиция и размер пишутся по её `id`.
+   */
+  copies?: Record<string, ViewCopy>;
+  /** Концы связей, привязанные к копиям: по адресу связи — `id` копии у `from` и `to`. */
+  ends?: Record<string, { from?: string; to?: string }>;
 };
+
+/**
+ * Копия-отображение. `parent` — фрейм, на котором она лежит: рисуется внутри него и ездит с ним,
+ * но жильцом не становится — объект остаётся, где жил.
+ */
+export type ViewCopy = { object: string; parent?: string };
+
+/** `id` копии: адрес объекта и номер после `#` — адрес переписывается переносом сам. */
+export const copyId = (object: string, index: number): string => `${object}#${index}`;
 
 /**
  * Размер узла на холсте. `scale` — масштаб содержимого: растяжение даёт карточке больше места,
@@ -169,7 +185,8 @@ export type Size = { width: number; height: number; scale?: number };
 
 export type ViewNode = {
   id: string;
-  kind: "object" | "ref";
+  /** `copy` — копия-отображение: `id` свой, `object` и `link` — объекта, на который она указывает. */
+  kind: "object" | "ref" | "copy";
   label: string;
   link: string;
   /** Адрес объекта — у узла с полным превью по нему рисуется карточка. */
@@ -466,7 +483,12 @@ export function objectsMap(
   }
 
   const nodes: ViewNode[] = [];
-  const place = (object: MapObject, kind: ViewNode["kind"], parent: string | undefined) => {
+  const place = (
+    object: MapObject,
+    kind: ViewNode["kind"],
+    parent: string | undefined,
+    id: string = object.address,
+  ) => {
     const style = styleOf(object, config);
     const inside = residents(object).filter((child) => !cut.has(child.address));
     const configured =
@@ -474,12 +496,13 @@ export function objectsMap(
       ofPrototype(object, config.expand.prototypes);
     // Раскрытый конфигом — группа и без жильцов: ограниченный контекст ставят пустой рамкой и
     // бросают в него стикеры. Не раскрытый — один узел, стрелки к жильцам подняты к нему (C4).
-    const expanded = configured;
-    const position = state.positions?.[object.address];
-    const size = state.sizes?.[object.address];
+    // Копия — один узел: копию фрейма не делают, а ставший фреймом позже рисуется карточкой.
+    const expanded = kind !== "copy" && configured;
+    const position = state.positions?.[id];
+    const size = state.sizes?.[id];
 
     nodes.push({
-      id: object.address,
+      id,
       kind,
       label: labelOf(object, style),
       link: object.address,
@@ -504,15 +527,33 @@ export function objectsMap(
   };
   for (const { object, kind } of tops) place(object, kind, undefined);
 
-  // Видимый узел для адреса — самый глубокий из показанных, внутри которого адрес лежит.
-  const shown = nodes.map((node) => node.id).toSorted((a, b) => b.length - a.length);
+  // Копии — после всех: фрейм, на котором копия лежит, уже на холсте. Нет его — копия на холсте.
+  const frames = new Set(nodes.filter((node) => node.expanded).map((node) => node.id));
+  const copies = new Set<string>();
+  for (const [id, copy] of Object.entries(state.copies ?? {})) {
+    const object = byAddress.get(copy.object);
+    if (!object || object.isGroup || isRelation(object) || cut.has(object.address)) continue;
+    const parent = copy.parent !== undefined && frames.has(copy.parent) ? copy.parent : undefined;
+    place(object, "copy", parent, id);
+    copies.add(id);
+  }
+
+  // Видимый узел для адреса — самый глубокий из показанных, внутри которого адрес лежит. Копия
+  // им не бывает: на неё стрелка попадает только привязкой.
+  const shown = nodes
+    .map((node) => node.id)
+    .filter((id) => !copies.has(id))
+    .toSorted((a, b) => b.length - a.length);
   const visible = (address: string) => shown.find((id) => within(address, id));
 
   const arrows = new Map<string, ViewRelation>();
   for (const relation of relations) {
     const { from, to } = relation.props as { from: string; to: string };
-    const a = visible(from);
-    const b = visible(to);
+    const bound = state.ends?.[relation.address];
+    const end = (copy: string | undefined, address: string) =>
+      copy !== undefined && copies.has(copy) ? copy : visible(address);
+    const a = end(bound?.from, from);
+    const b = end(bound?.to, to);
     if (!a || !b || a === b) continue;
     const key = `${a}→${b}`;
     const known = arrows.get(key);

@@ -441,3 +441,124 @@ test("a shape drawn on a group goes away with it and follows its new address", (
   const next = JSON.parse(written(moved, "/map/_metrics/canvas/map-state.json") ?? "{}");
   expect(next.shapes[0].parent).toBe("mapward://systems/store");
 });
+
+/** Та же карта, где магазин — фрейм, а у банка на холсте копия с привязанной связью. */
+const framed: MapObject = {
+  ...map,
+  metrics: [
+    {
+      ...viewMetric,
+      config: {
+        collectors: [
+          {
+            ...viewMetric.config.collectors?.[0],
+            expand: { objects: ["systems/shop"] },
+          },
+        ],
+      },
+    },
+  ],
+};
+const withCopy: EditContext = {
+  root: framed,
+  files: new Map(files).set(
+    "/map/_metrics/canvas/map-state.json",
+    JSON.stringify({
+      positions: { "mapward://systems/bank#2": { x: 7, y: 8 } },
+      copies: { "mapward://systems/bank#2": { object: "mapward://systems/bank" } },
+      ends: { "mapward://relations/cart-to-bank": { to: "mapward://systems/bank#2" } },
+    }),
+  ),
+};
+const canvas = "mapward://_metrics/canvas";
+const stateOf = (list: FileChange[]) =>
+  JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+
+test("a display copy is a record in the view state, not a folder", () => {
+  const list = changes(
+    planEdit(withCopy, {
+      op: "put-copy",
+      view: canvas,
+      copy: "mapward://systems/bank#3",
+      parent: "mapward://systems/shop",
+      position: { x: 1, y: 1 },
+    }),
+  );
+  expect(list.every((item) => item.kind === "write" && item.path.endsWith("map-state.json"))).toBe(
+    true,
+  );
+  const state = stateOf(list);
+  expect(state.copies["mapward://systems/bank#3"]).toEqual({
+    object: "mapward://systems/bank",
+    parent: "mapward://systems/shop",
+  });
+  expect(state.positions["mapward://systems/bank#3"]).toEqual({ x: 1, y: 1 });
+});
+
+test("a frame is not copied, and a copy lies only on a frame", () => {
+  const frame = planEdit(withCopy, {
+    op: "put-copy",
+    view: canvas,
+    copy: "mapward://systems/shop#2",
+  });
+  expect("error" in frame && frame.error).toContain("фрейма");
+  const onCard = planEdit(withCopy, {
+    op: "put-copy",
+    view: canvas,
+    copy: "mapward://systems/bank#3",
+    parent: "mapward://systems/bank",
+  });
+  expect("error" in onCard && onCard.error).toContain("не фрейм");
+});
+
+test("a relation drawn to a copy keeps the object address and binds the end to the copy", () => {
+  const list = changes(
+    planEdit(withCopy, {
+      op: "create-relation",
+      view: canvas,
+      from: "mapward://systems/shop",
+      to: "mapward://systems/bank#2",
+    }),
+  );
+  expect(written(list, "/map/relations/shop-to-bank/_index.json")).toContain(
+    '"to": "mapward://systems/bank"',
+  );
+  expect(stateOf(list).ends["mapward://relations/shop-to-bank"]).toEqual({
+    to: "mapward://systems/bank#2",
+  });
+});
+
+test("removing a copy takes the relations bound to it and leaves the object", () => {
+  const list = changes(
+    planEdit(withCopy, { op: "remove-copy", view: canvas, copy: "mapward://systems/bank#2" }),
+  );
+  expect(list).toContainEqual({ kind: "remove", path: "/map/relations/cart-to-bank" });
+  expect(list.some((item) => item.kind === "remove" && item.path === "/map/systems/bank")).toBe(
+    false,
+  );
+  const state = stateOf(list);
+  expect(state.copies).toEqual({});
+  expect(state.positions).toEqual({});
+  expect(state.ends).toEqual({});
+});
+
+test("deleting the object takes its copies", () => {
+  const list = changes(
+    planEdit(withCopy, { op: "delete-object", object: "mapward://systems/bank" }),
+  );
+  const state = stateOf(list);
+  expect(state.copies).toEqual({});
+  expect(state.positions).toEqual({});
+});
+
+test("moving the object rewrites its copies", () => {
+  const list = changes(
+    planEdit(withCopy, { op: "set-folder", object: "mapward://systems/bank", folder: "vault" }),
+  );
+  const state = stateOf(list);
+  expect(state.copies["mapward://systems/vault#2"]).toEqual({ object: "mapward://systems/vault" });
+  expect(state.positions["mapward://systems/vault#2"]).toEqual({ x: 7, y: 8 });
+  expect(state.ends["mapward://relations/cart-to-bank"]).toEqual({
+    to: "mapward://systems/vault#2",
+  });
+});

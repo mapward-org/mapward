@@ -24,6 +24,8 @@ import {
 import type { Draft, Editing } from "../pure-model/edit.ts";
 import { barFor, lookOf, patchFor, remember, stepField } from "../pure-model/bar.ts";
 import type { BarKey, Field, Look, Menu, Target } from "../pure-model/bar.ts";
+import { showBeside } from "../pure-model/copy.ts";
+import { layout } from "../pure-model/layout.ts";
 import { rememberedArrow, rememberStyle, withRemembered } from "../pure-model/remembered.ts";
 import type { Remembered } from "../pure-model/remembered.ts";
 
@@ -134,6 +136,7 @@ export class ObjectsMapStore {
       step: action,
       editSelected: action,
       diveSelected: action,
+      showSelected: action,
       escape: action,
       openRelation: action,
       apply: action,
@@ -401,7 +404,8 @@ export class ObjectsMapStore {
   editSelected(map: ObjectsMap): void {
     const target = this.target(map);
     this.menu = undefined;
-    if (target?.kind === "object") this.startEdit(target.node.id, map);
+    // У копии правится её объект: своего имени у копии нет.
+    if (target?.kind === "object") this.startEdit(target.node.object, map);
   }
 
   /** «Провалиться» с панели: объект — он сам, стрелка — связь, из которой она. */
@@ -410,6 +414,28 @@ export class ObjectsMapStore {
     this.menu = undefined;
     if (target?.kind === "object") this.dive(target.node.object);
     else if (target?.kind === "arrow" && target.arrow.link) this.dive(target.arrow.link);
+  }
+
+  /** «Копия-отображение» с панели: тот же объект ещё раз, рядом с выделенным узлом. */
+  async showSelected(map: ObjectsMap): Promise<void> {
+    const target = this.target(map);
+    this.menu = undefined;
+    if (target?.kind !== "object" || target.node.expanded) return;
+    const picture = this.picture(map);
+    const box = layout(picture).find((one) => one.id === target.node.id);
+    if (!box) return;
+    await this.edit(
+      [
+        showBeside({
+          view: picture.view,
+          object: target.node.object,
+          parent: target.node.parent,
+          box,
+          taken: new Set(picture.nodes.map((one) => one.id)),
+        }),
+      ],
+      map,
+    );
   }
 
   /** Esc: закрыть выпадашку, потом поповер. */

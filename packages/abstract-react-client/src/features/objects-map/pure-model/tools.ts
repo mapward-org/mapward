@@ -31,7 +31,7 @@ export type Popover =
   | { kind: "relations"; items: { label: string; link: string }[]; edge?: string };
 
 /** Выделенное на холсте, что можно удалить клавишей: у каждого вида своя операция. */
-export type Deletable = { kind: "object" | "ref" | "shape"; id: string; label: string };
+export type Deletable = { kind: "object" | "ref" | "copy" | "shape"; id: string; label: string };
 
 export const sameTool = (a: Tool, b: Tool): boolean => JSON.stringify(a) === JSON.stringify(b);
 
@@ -113,6 +113,8 @@ export function confirmText(target: Deletable): string {
       return `Удалить «${target.label}» вместе с папкой и связями?`;
     case "ref":
       return `Убрать ссылку на «${target.label}» с вьюхи? Сам объект останется`;
+    case "copy":
+      return `Убрать копию «${target.label}» с вьюхи вместе с её связями? Сам объект останется`;
     case "shape":
       return `Удалить фигуру «${target.label}»?`;
   }
@@ -124,6 +126,8 @@ export function deleteOp(view: string, target: Deletable): MapOp {
       return { op: "delete-object", object: target.id };
     case "ref":
       return { op: "remove-ref", view, object: target.id };
+    case "copy":
+      return { op: "remove-copy", view, copy: target.id };
     case "shape":
       return { op: "remove-shape", view, id: target.id };
   }

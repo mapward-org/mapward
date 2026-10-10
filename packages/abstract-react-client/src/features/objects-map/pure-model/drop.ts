@@ -45,12 +45,13 @@ export function parentAddress(address: string): string {
  * Операция на отпускание. В своей группе — только сдвиг. В другую — перенос папки, с позицией
  * относительно новой группы. На холст из группы — объект уходит к родителю прежней группы по
  * адресу: это ближайшее место выше, и связи с группой он не теряет. Ссылка — не жилец: её папка
- * чужая и не переезжает, у неё меняется только позиция.
+ * чужая и не переезжает, у неё меняется только позиция. Копия папки не имеет вовсе: в другую
+ * группу она ложится сама, без объекта, — и на холст из группы уходит на холст, а не к родителю.
  */
 export function dropOp(params: {
   view: string;
   node: string;
-  kind: "object" | "ref";
+  kind: "object" | "ref" | "copy";
   parent: string | undefined;
   target: string | undefined;
   /** Позиция относительно цели: группы или холста. */
@@ -61,6 +62,15 @@ export function dropOp(params: {
   const { view, node } = params;
   if (params.kind === "ref" || params.target === params.parent) {
     return { op: "move-nodes", view, positions: { [node]: params.stay } };
+  }
+  if (params.kind === "copy") {
+    return {
+      op: "put-copy",
+      view,
+      copy: node,
+      ...(params.target === undefined ? {} : { parent: params.target }),
+      position: params.position,
+    };
   }
   const parent = params.target ?? parentAddress(params.parent ?? node);
   return { op: "move-object", view, object: node, parent, position: params.position };

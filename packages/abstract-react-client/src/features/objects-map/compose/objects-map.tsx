@@ -383,6 +383,14 @@ const ContextBar = observer(function ContextBar(props: Props) {
           <BarIcon key={key} title="Править имя и адрес" onClick={() => store.editSelected(map)}>
             ✎
           </BarIcon>
+        ) : key === "show" ? (
+          <BarIcon
+            key={key}
+            title="Копия-отображение рядом: тот же объект ещё раз (Alt+Shift+перетаскивание)"
+            onClick={() => store.showSelected(map)}
+          >
+            ⧉
+          </BarIcon>
         ) : key === "dive" ? (
           <BarIcon key={key} title="Провалиться в объект" onClick={() => store.diveSelected(map)}>
             ↘

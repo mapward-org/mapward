@@ -20,7 +20,9 @@ const arrow = (count: number): ViewRelation => ({
 const node = { id: "n" } as ViewNode;
 
 test("the bar shows only what applies to the selected kind", () => {
-  expect(barFor({ kind: "object", node })).toEqual(["edit", "dive", "|", "delete"]);
+  expect(barFor({ kind: "object", node })).toEqual(["edit", "dive", "show", "|", "delete"]);
+  // Копию фрейма не делают — и кнопки у фрейма нет.
+  expect(barFor({ kind: "object", node: { ...node, expanded: true } })).not.toContain("show");
   expect(barFor({ kind: "shape", shape: shape("line") })).toContain("arrows");
   expect(barFor({ kind: "shape", shape: shape("rect") })).not.toContain("arrows");
   expect(barFor({ kind: "shape", shape: shape("text") })).not.toContain("width");

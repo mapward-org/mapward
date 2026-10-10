@@ -49,7 +49,7 @@ import { canvasClasses } from "../../../lib/ui/canvas-classes.ts";
 import { tabHover } from "../../../lib/ui/tab-hover.ts";
 import { draws, type Deletable, type Popover, type Tool } from "../pure-model/tools.ts";
 import { dropOp, dropTarget, type Rect } from "../pure-model/drop.ts";
-import { clipText, pasteOps, readClip, topsOf } from "../pure-model/copy.ts";
+import { clipText, freeCopyId, pasteOps, readClip, topsOf } from "../pure-model/copy.ts";
 import { layout, ROOM, SIMPLE, type Box } from "../pure-model/layout.ts";
 import { DRAFT_ID, drawnBox, lineEnd, type Draft } from "../pure-model/edit.ts";
 import {
@@ -283,6 +283,9 @@ function ScaleHandle(props: {
   );
 }
 
+/** Рамка узла: ссылка — пунктиром, копия — точками, чтобы отличалась от оригинала. */
+const BORDER: Record<ViewNode["kind"], string> = { object: "solid", ref: "dashed", copy: "dotted" };
+
 /** Простая карточка — фигура нужной формы и цвета с подписью. Ссылка обведена пунктиром. */
 function SimpleNode(props: NodeProps<Node<ObjectData>>) {
   const { node, handlers } = props.data;
@@ -295,7 +298,7 @@ function SimpleNode(props: NodeProps<Node<ObjectData>>) {
         ...SHAPES[node.shape],
         background: node.color ?? "var(--mw-editor-background)",
         color: "var(--mw-foreground)",
-        border: `1px ${node.kind === "ref" ? "dashed" : "solid"} ${
+        border: `1px ${BORDER[node.kind]} ${
           props.selected ? "var(--mw-focus-border, #3794ff)" : frame
         }`,
         outline: props.selected ? "1px solid var(--mw-focus-border, #3794ff)" : "none",
@@ -315,6 +318,7 @@ function SimpleNode(props: NodeProps<Node<ObjectData>>) {
           style={node.textColor ? { color: node.textColor } : {}}
         >
           {node.kind === "ref" && <span title="Ссылка на чужой объект">↗</span>}
+          {node.kind === "copy" && <span title="Копия: тот же объект ещё раз на холсте">⧉</span>}
           <div
             className={`min-w-0 flex-1 ${tabHover.tabOnly}`}
             style={{ textAlign: node.align ?? "center" }}
@@ -366,9 +370,9 @@ function CardNode(props: NodeProps<Node<ObjectData>>) {
       style={
         props.selected
           ? { outline: "2px solid var(--mw-focus-border, #3794ff)", outlineOffset: 1 }
-          : node.kind === "ref"
-            ? { outline: `1px dashed ${frame}` }
-            : {}
+          : node.kind === "object"
+            ? {}
+            : { outline: `1px ${BORDER[node.kind]} ${frame}` }
       }
     >
       <NodeResizer
@@ -408,7 +412,7 @@ function GroupNode(props: NodeProps<Node<ObjectData>>) {
     <div
       className="relative h-full w-full rounded-sm text-[11px]"
       style={{
-        border: `1px ${node.kind === "ref" ? "dashed" : "solid"} ${accent}`,
+        border: `1px ${BORDER[node.kind]} ${accent}`,
         background: node.color ?? "transparent",
         color: "var(--mw-foreground)",
       }}
@@ -1325,14 +1329,18 @@ function Canvas(props: GraphProps) {
       }
       const node = props.map.nodes.find((item) => item.id === id);
       if (node && value && value !== node.label) {
-        void props.onEdit([{ op: "rename", object: id, label: value, view }]);
+        void props.onEdit([{ op: "rename", object: node.object, label: value, view }]);
       }
     },
     cancel: () => {
       props.onRename(undefined);
       props.onDraftCancel();
     },
-    preview: (id) => props.onPopover({ kind: "object", address: id }),
+    preview: (id) =>
+      props.onPopover({
+        kind: "object",
+        address: props.map.nodes.find((item) => item.id === id)?.object ?? id,
+      }),
     resize: (id, box) => {
       const shape = props.map.shapes.find((item) => item.id === id);
       if (!shape) return;
@@ -1468,8 +1476,13 @@ function Canvas(props: GraphProps) {
     if (!(await props.onEdit(ops))) restore();
   };
 
+  /** Адрес объекта узла: у копии-отображения он свой, не её `id`. */
+  const objectOf = (node: Node) => (node.data as ObjectData).node.object;
+
   /** Перетаскивание начали с зажатым Alt — на отпускание это копия, а не перенос. */
   const copying = useRef(false);
+  /** Начали с Alt+Shift — копия-отображение: ещё один узел того же объекта, без новой папки. */
+  const showing = useRef(false);
 
   /**
    * Alt+перетаскивание видно сразу: на месте тянутых узлов встают их двойники, и оригинал
@@ -1482,23 +1495,23 @@ function Canvas(props: GraphProps) {
       for (const node of now) {
         if (node.parentId !== undefined && taken.has(node.parentId)) taken.add(node.id);
       }
-      const twins = now
-        .filter((node) => taken.has(node.id))
-        .map((node): Node => ({
-          ...node,
-          id: `${GHOST}${node.id}`,
-          ...(node.parentId === undefined
-            ? {}
-            : { parentId: taken.has(node.parentId) ? `${GHOST}${node.parentId}` : node.parentId }),
-          data: { ...node.data, renaming: false },
-          selected: false,
-          draggable: false,
-          selectable: false,
-          connectable: false,
-          dragging: false,
-        }));
-      // Двойники — первыми: они под тянутыми, а родитель у холста идёт раньше жильцов.
-      return [...twins, ...now];
+      const twin = (node: Node): Node => ({
+        ...node,
+        id: `${GHOST}${node.id}`,
+        ...(node.parentId === undefined
+          ? {}
+          : { parentId: taken.has(node.parentId) ? `${GHOST}${node.parentId}` : node.parentId }),
+        data: { ...node.data, renaming: false },
+        selected: false,
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        dragging: false,
+      });
+      // Двойник — прямо перед своим оригиналом: под тянутым, и фрейм, на котором лежит стикер,
+      // идёт раньше его двойника. Двойники в начале списка опережали свой фрейм, холст не находил
+      // им родителя, и на фрейме оригинал пропадал из виду — Alt выглядел переносом.
+      return now.flatMap((node) => (taken.has(node.id) ? [twin(node), node] : [node]));
     });
   };
 
@@ -1517,7 +1530,7 @@ function Canvas(props: GraphProps) {
       .filter((node) => node.type === "note")
       .filter((node) => node.parentId === undefined || !taken(node.parentId))
       .map((node) => ({ op: "put-shape", view, shape: { ...landed(node), id: shapeId() } }));
-    const tops = topsOf(objects.map((node) => ({ address: node.id, node }))).map(
+    const tops = topsOf(objects.map((node) => ({ address: objectOf(node), node }))).map(
       (item) => item.node,
     );
     const lead = tops.find((node) => node.id === dragged.id) ?? tops[0];
@@ -1534,11 +1547,12 @@ function Canvas(props: GraphProps) {
     const copies = [...aims].map(([aim, group]): MapOp => ({
       op: "copy-objects",
       view,
-      objects: group.map((node) => node.id),
+      // Копия-отображение копируется своим объектом: папки у неё нет.
+      objects: group.map(objectOf),
       ...(aim === undefined ? {} : { parent: aim }),
       positions: Object.fromEntries(
         group.map((node) => [
-          node.id,
+          objectOf(node),
           relativeTo(
             aim,
             flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position,
@@ -1550,6 +1564,42 @@ function Canvas(props: GraphProps) {
     if (shapes.length + copies.length > 0) await send([...shapes, ...copies]);
   };
 
+  /**
+   * Alt+Shift+перетаскивание: оригиналы на месте, а там, где отпустили, встают копии-отображения
+   * тех же объектов. Фрейм не копируется; пометки и линии — тоже: у них нет объекта.
+   */
+  const dropShow = async (dragged: Node, all: Node[]) => {
+    const cards = all.filter(
+      (node) =>
+        node.type !== "note" &&
+        node.type !== "anchor" &&
+        node.id !== DRAFT_ID &&
+        !(node.data as ObjectData).node.expanded,
+    );
+    restore();
+    if (cards.length === 0) {
+      props.onSay("Копию фрейма не делают — Alt+Shift копирует карточки");
+      return;
+    }
+    const lead = cards.find((node) => node.id === dragged.id) ?? cards[0];
+    const { target } = lead ? where(lead) : { target: undefined };
+    const taken = new Set(props.map.nodes.map((node) => node.id));
+    const ops = cards.map((node): MapOp => {
+      const at = flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
+      // Тянули фрейм вместе с жильцом — копия жильца не может лечь на свой же тянутый фрейм.
+      const aim =
+        target !== undefined && cards.some((card) => card.id === target) ? undefined : target;
+      return {
+        op: "put-copy",
+        view,
+        copy: freeCopyId((node.data as ObjectData).node.object, taken),
+        ...(aim === undefined ? {} : { parent: aim }),
+        position: relativeTo(aim, at),
+      };
+    });
+    await send(ops);
+  };
+
   const dragStop = async (dragged: Node, all: Node[]) => {
     if (dragged.type === "anchor") {
       const line = props.map.shapes.find((shape) => dragged.id.startsWith(`anchor:${shape.id}:`));
@@ -1557,6 +1607,12 @@ function Canvas(props: GraphProps) {
       const side = dragged.id.endsWith(":from") ? "from" : "to";
       const shape = { ...line, [side]: { x: dragged.position.x, y: dragged.position.y } };
       await send([{ op: "put-shape", view, shape }]);
+      return;
+    }
+    if (showing.current) {
+      showing.current = false;
+      copying.current = false;
+      await dropShow(dragged, all);
       return;
     }
     if (copying.current) {
@@ -1699,7 +1755,7 @@ function Canvas(props: GraphProps) {
     const objects = chosen
       .filter((node) => node.type !== "note")
       .map((node) => ({
-        address: node.id,
+        address: objectOf(node),
         at: flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position,
       }));
     // Пометки — местом на холсте целиком: вставка кладёт их в свой фрейм. Пометку скопированного
@@ -1806,6 +1862,16 @@ function Canvas(props: GraphProps) {
       className="relative h-full min-h-40 w-full outline-none"
       tabIndex={0}
       onKeyDown={key}
+      // Shift у холста — клавиша рамки выделения: нажатие с ним забирает себе подложка, и узел
+      // не тянется. Alt+Shift по узлу — копия-отображение, поэтому узел на это нажатие помечается
+      // `nokey`, и подложка его пропускает. Обёртка ловит нажатие раньше подложки.
+      onPointerDownCapture={(event) => {
+        if (!event.altKey || !event.shiftKey) return;
+        const node = (event.target as Element).closest(".react-flow__node");
+        if (!node || node.classList.contains("nokey")) return;
+        node.classList.add("nokey");
+        setTimeout(() => node.classList.remove("nokey"));
+      }}
       onPointerMove={(event) => {
         pointer.current = { x: event.clientX, y: event.clientY };
         if (!props.hint) return;
@@ -1832,6 +1898,7 @@ function Canvas(props: GraphProps) {
         }
         onNodeDragStart={(event, _, dragged) => {
           copying.current = event.altKey;
+          showing.current = event.altKey && event.shiftKey;
           if (event.altKey) ghosts(dragged);
         }}
         onNodeDragStop={(_, node, all) => void dragStop(node, all)}
@@ -1893,6 +1960,8 @@ function Canvas(props: GraphProps) {
         }}
         defaultViewport={props.viewport}
         fitView={!props.viewport}
+        // Умолчание xyflow — 0.5: большая карта целиком не помещается.
+        minZoom={0.05}
         proOptions={{ hideAttribution: true }}
         onMoveEnd={(_, viewport) => props.onViewport(viewport)}
       >

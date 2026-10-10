@@ -21,6 +21,8 @@ export type BarKey =
   | "align"
   | "edit"
   | "dive"
+  /** Копия-отображение рядом: ещё один узел того же объекта. */
+  | "show"
   | "delete"
   | "|";
 
@@ -41,7 +43,10 @@ export type Field =
 export function barFor(target: Target): BarKey[] {
   switch (target.kind) {
     case "object":
-      return ["edit", "dive", "|", "delete"];
+      // Копию фрейма не делают.
+      return target.node.expanded
+        ? ["edit", "dive", "|", "delete"]
+        : ["edit", "dive", "show", "|", "delete"];
     case "arrow":
       // Склеенная стрелка — не одна связь: удалить её одной кнопкой нельзя.
       return target.arrow.count > 1

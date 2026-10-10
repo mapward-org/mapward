@@ -103,3 +103,36 @@ export function pasteOps(params: {
   }
   return ops;
 }
+
+/**
+ * `id` новой копии-отображения: адрес объекта и первый свободный номер после `#`. Свободный —
+ * значит не занятый ни узлом холста, ни копией, уже положенной этой же пачкой.
+ */
+export function freeCopyId(object: string, taken: Set<string>): string {
+  let index = 2;
+  while (taken.has(`${object}#${index}`)) index += 1;
+  const id = `${object}#${index}`;
+  taken.add(id);
+  return id;
+}
+
+/**
+ * Копия-отображение с панели: тот же объект ещё раз, справа от выделенного узла, на том же фрейме,
+ * если узел лежит на фрейме. Копия копии — снова копия того же объекта.
+ */
+export function showBeside(params: {
+  view: string;
+  object: string;
+  parent: string | undefined;
+  box: { position: Point; width: number };
+  taken: Set<string>;
+}): MapOp {
+  const { box } = params;
+  return {
+    op: "put-copy",
+    view: params.view,
+    copy: freeCopyId(params.object, params.taken),
+    ...(params.parent === undefined ? {} : { parent: params.parent }),
+    position: { x: box.position.x + box.width + PASTE_NUDGE, y: box.position.y },
+  };
+}

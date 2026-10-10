@@ -63,6 +63,16 @@ function reflects(map: ObjectsMap, sent: ObjectsMap, op: MapOp): boolean {
       return !map.nodes.some((item) => within(item.id, op.object));
     case "remove-ref":
       return node(op.object) === undefined;
+    case "put-copy": {
+      const found = node(op.copy);
+      return (
+        found !== undefined &&
+        found.parent === op.parent &&
+        (op.position === undefined || near(found.position, op.position))
+      );
+    }
+    case "remove-copy":
+      return node(op.copy) === undefined;
     case "add-ref":
       return node(op.object) !== undefined;
     case "create-object":
@@ -194,6 +204,36 @@ function apply(map: ObjectsMap, op: MapOp, id: string): ObjectsMap {
             : map.shapes,
       };
     }
+    case "put-copy": {
+      // Копия — узел своего объекта под своим `id`; нового объекта нет — копируется его узел.
+      const inGroup =
+        op.parent !== undefined && map.nodes.some((item) => item.id === op.parent && item.expanded);
+      const known = map.nodes.find((item) => item.id === op.copy);
+      const object = op.copy.slice(0, Math.max(0, op.copy.lastIndexOf("#")));
+      const source = known ?? map.nodes.find((item) => item.id === object);
+      if (!source) return map;
+      const { parent: _old, ...rest } = source;
+      const copy: ViewNode = {
+        ...rest,
+        id: op.copy,
+        kind: "copy",
+        expanded: false,
+        ...(inGroup && op.parent !== undefined ? { parent: op.parent } : {}),
+        ...(op.position ? { position: op.position } : {}),
+      };
+      return {
+        ...map,
+        nodes: known
+          ? map.nodes.map((item) => (item.id === op.copy ? copy : item))
+          : [...map.nodes, copy],
+      };
+    }
+    case "remove-copy":
+      return {
+        ...map,
+        nodes: map.nodes.filter((item) => item.id !== op.copy),
+        relations: map.relations.filter((arrow) => arrow.from !== op.copy && arrow.to !== op.copy),
+      };
     case "create-object": {
       const pick = map.palette.objects.find((one) => one.prototype === op.prototype);
       const inGroup =

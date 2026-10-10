@@ -17,7 +17,7 @@ import {
   ViewShape,
   within,
 } from "./objects-map.ts";
-import type { ObjectsMapConfig, ViewState } from "./objects-map.ts";
+import type { ObjectsMapConfig, ViewCopy, ViewState } from "./objects-map.ts";
 import { INDEX } from "./raw-object.ts";
 import { basename, join } from "../lib/path.ts";
 
@@ -91,6 +91,20 @@ export const MapOp = T.Union([
     position: T.Optional(Point),
   }),
   T.Object({ op: T.Literal("remove-ref"), view: T.String(), object: T.String() }),
+  T.Object({
+    op: T.Literal("put-copy"),
+    view: T.String(),
+    /**
+     * `id` копии-отображения — `<адрес объекта>#<номер>`. Нет такой — заводится, есть — меняются
+     * её фрейм и позиция: так же, как фигура, копию ставит и двигает одна операция.
+     */
+    copy: T.String(),
+    /** Фрейм, на котором копия лежит; не назван — лежит на холсте. */
+    parent: T.Optional(T.String()),
+    position: T.Optional(Point),
+  }),
+  /** Убрать копию-отображение вместе со связями, привязанными к ней; объект остаётся. */
+  T.Object({ op: T.Literal("remove-copy"), view: T.String(), copy: T.String() }),
   T.Object({
     op: T.Literal("move-nodes"),
     view: T.String(),
@@ -340,11 +354,34 @@ function readIndex(draft: Draft, object: MapObject): Record<string, unknown> {
 /** Все вьюхи, чьё состояние знает контекст, — удалённый объект убирается из каждой. */
 const statePaths = (draft: Draft) => draft.paths().filter((path) => basename(path) === VIEW_STATE);
 
+/** Объект копии по её `id`: всё до последнего `#`. */
+const copyObject = (id: string): string => id.slice(0, Math.max(0, id.lastIndexOf("#")));
+
+/** Отдельный от удаления шаг: из записей состояния — всё, что лежит внутри адреса. */
+const without = <T>(record: Record<string, T>, keep: (key: string) => boolean) =>
+  Object.fromEntries(Object.entries(record).filter(([key]) => keep(key)));
+
 function forget(draft: Draft, address: string): void {
-  const keep = (key: string) => !within(key, address);
+  // Копия удалённого объекта уходит с ним, ключи её позиции и размера — тоже.
+  const keep = (key: string) => !within(key, address) && !within(copyObject(key), address);
   for (const path of statePaths(draft)) {
     editState(draft, path, (state) => ({
       ...state,
+      ...(state.copies
+        ? {
+            copies: Object.fromEntries(
+              Object.entries(state.copies)
+                .filter(([id]) => keep(id))
+                // Копия удалённого фрейма не пропадает: ложится на холст.
+                .map(([id, copy]): [string, ViewCopy] => {
+                  if (copy.parent === undefined || keep(copy.parent)) return [id, copy];
+                  const { parent: _gone, ...rest } = copy;
+                  return [id, rest];
+                }),
+            ),
+          }
+        : {}),
+      ...(state.ends ? { ends: without(state.ends, keep) } : {}),
       ...(state.refs ? { refs: state.refs.filter(keep) } : {}),
       ...(state.positions
         ? {
@@ -452,24 +489,41 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
       if (place === undefined) return fail("Место для новых связей в настройке вьюхи не названо");
       const parent = findObject(root, place);
       if (!parent) return fail(`Нет объекта ${place}, куда класть связь`);
-      if (!findObject(root, op.from)) return fail(`Нет объекта ${op.from}`);
-      if (!findObject(root, op.to)) return fail(`Нет объекта ${op.to}`);
-      if (op.from === op.to) return fail("Связь с самим собой не проводится");
+      // Конец связи — объект или копия на этой вьюхе: копия даёт связи адрес своего объекта, а
+      // себе — привязку, по которой стрелка придёт именно к ней.
+      const copies = parseViewState(draft.read(view.statePath)).copies ?? {};
+      const endOf = (id: string) => copies[id]?.object ?? id;
+      const from = endOf(op.from);
+      const to = endOf(op.to);
+      if (!findObject(root, from)) return fail(`Нет объекта ${op.from}`);
+      if (!findObject(root, to)) return fail(`Нет объекта ${op.to}`);
+      if (from === to) return fail("Связь с самим собой не проводится");
       const prototype = op.prototype ?? view.config.palette.relations[0];
       if (prototype !== undefined && !findObject(root, prototype)) {
         return fail(`Нет прототипа ${prototype}`);
       }
       const end = (address: string) => slug(address.split("/").at(-1) || "корень");
-      const folder = freeName(parent, `${end(op.from)}-to-${end(op.to)}`);
+      const folder = freeName(parent, `${end(from)}-to-${end(to)}`);
       const name = op.name?.trim() || nameOf(root, prototype) || "связь";
       draft.write(
         join(parent.path, folder, INDEX),
         json({
           name,
           ...(prototype === undefined ? {} : { extends: prototype }),
-          props: { from: op.from, to: op.to },
+          props: { from, to },
         }),
       );
+      const bound = {
+        ...(copies[op.from] ? { from: op.from } : {}),
+        ...(copies[op.to] ? { to: op.to } : {}),
+      };
+      if (Object.keys(bound).length > 0) {
+        const address = childAddress(parent.address, folder);
+        editState(draft, view.statePath, (state) => ({
+          ...state,
+          ends: { ...state.ends, [address]: bound },
+        }));
+      }
       return { changes: draft.changes() };
     }
 
@@ -712,6 +766,61 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
         ...state,
         refs: (state.refs ?? []).filter((ref) => ref !== op.object),
       }));
+      return { changes: draft.changes() };
+    }
+
+    case "put-copy": {
+      if (!view) return fail("Нужна вьюха");
+      const state = parseViewState(draft.read(view.statePath));
+      const known = state.copies?.[op.copy];
+      const address = known?.object ?? copyObject(op.copy);
+      if (!address || op.copy === address) {
+        return fail(`${op.copy} — не копия: её id — адрес объекта и номер после #`);
+      }
+      const object = findObject(root, address);
+      if (!object || object.address === MAP_ROOT || object.isGroup || isRelation(object)) {
+        return fail(`Нет объекта ${address}`);
+      }
+      // Копию фрейма не делают: пришлось бы решать, чьи копии у её жильцов.
+      const frames = objectsMap(root, op.view, view.config, state).nodes.filter(
+        (node) => node.expanded,
+      );
+      if (!known && frames.some((node) => node.object === address)) {
+        return fail("Копию фрейма не делают");
+      }
+      if (op.parent !== undefined && !frames.some((node) => node.id === op.parent)) {
+        return fail(`${op.parent} на этой вьюхе — не фрейм: копию кладут на фрейм или на холст`);
+      }
+      const copy: ViewCopy = {
+        object: address,
+        ...(op.parent === undefined ? {} : { parent: op.parent }),
+      };
+      editState(draft, view.statePath, (now) =>
+        withPosition({ ...now, copies: { ...now.copies, [op.copy]: copy } }, op.copy, op.position),
+      );
+      return { changes: draft.changes() };
+    }
+
+    case "remove-copy": {
+      if (!view) return fail("Нужна вьюха");
+      const state = parseViewState(draft.read(view.statePath));
+      if (!state.copies?.[op.copy]) return fail(`Копии ${op.copy} на этой вьюхе нет`);
+      // Связь, проведённая к копии, без неё ничего не значит: уходит вместе с ней.
+      const bound = Object.entries(state.ends ?? {})
+        .filter(([, ends]) => ends.from === op.copy || ends.to === op.copy)
+        .map(([address]) => findObject(root, address))
+        .filter((relation): relation is MapObject => relation !== undefined);
+      for (const relation of bound) draft.remove(relation.path);
+      for (const relation of bound) forget(draft, relation.address);
+      editState(draft, view.statePath, (now) => {
+        const drop = (key: string) => key !== op.copy;
+        return {
+          ...now,
+          copies: without(now.copies ?? {}, drop),
+          ...(now.positions ? { positions: without(now.positions, drop) } : {}),
+          ...(now.sizes ? { sizes: without(now.sizes, drop) } : {}),
+        };
+      });
       return { changes: draft.changes() };
     }
 

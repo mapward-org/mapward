@@ -263,3 +263,40 @@ test("a palette button knows its prototype draws frames", () => {
   );
   expect(value.palette.objects.map((item) => item.frame)).toEqual([true, undefined]);
 });
+
+test("a copy is one more node of the same object, and only a bound arrow lands on it", () => {
+  const value = objectsMap(
+    map,
+    "v",
+    config({ show: ["systems/*"], expand: { objects: ["systems/shop"] } }),
+    {
+      positions: { "mapward://systems/bank#2": { x: 5, y: 5 } },
+      copies: {
+        "mapward://systems/bank#2": { object: "mapward://systems/bank" },
+        "mapward://systems/shop/cart#2": {
+          object: "mapward://systems/shop/cart",
+          parent: "mapward://systems/shop",
+        },
+      },
+      ends: { "mapward://relations/b": { to: "mapward://systems/bank#2" } },
+    },
+  );
+  const copy = value.nodes.find((node) => node.id === "mapward://systems/bank#2");
+  expect(copy).toMatchObject({
+    kind: "copy",
+    object: "mapward://systems/bank",
+    link: "mapward://systems/bank",
+    label: "Банк",
+    expanded: false,
+    position: { x: 5, y: 5 },
+  });
+  // Копия на фрейме рисуется внутри него, а жильцом не считается.
+  expect(value.nodes.find((node) => node.id === "mapward://systems/shop/cart#2")?.parent).toBe(
+    "mapward://systems/shop",
+  );
+  expect(value.relations.map((arrow) => `${arrow.from} ${arrow.to}`)).toEqual([
+    "mapward://systems/shop/cart mapward://systems/bank",
+    "mapward://systems/shop/orders mapward://systems/bank#2",
+    "mapward://systems/shop/cart mapward://systems/shop/orders",
+  ]);
+});

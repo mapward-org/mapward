@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { clipText, pasteOps, readClip, topsOf } from "./copy.ts";
+import { clipText, pasteOps, readClip, showBeside, topsOf } from "./copy.ts";
 
 const clip = {
   map: "/maps/one",
@@ -83,4 +83,22 @@ test("without a cursor the copy lands a little aside, in the view's place for ne
     positions: { "mapward://es/оплата": { x: 124, y: 124 } },
   });
   expect(op && "parent" in op).toBe(false);
+});
+
+test("a copy from the bar lands right of its node, on the same frame, under a free id", () => {
+  const taken = new Set(["mapward://es/заказ", "mapward://es/заказ#2"]);
+  const op = showBeside({
+    view: "mapward://es/_metrics/storming",
+    object: "mapward://es/заказ",
+    parent: "mapward://es",
+    box: { position: { x: 10, y: 20 }, width: 160 },
+    taken,
+  });
+  expect(op).toEqual({
+    op: "put-copy",
+    view: "mapward://es/_metrics/storming",
+    copy: "mapward://es/заказ#3",
+    parent: "mapward://es",
+    position: { x: 194, y: 20 },
+  });
 });
