@@ -500,7 +500,7 @@ export const ObjectsMapView = observer(function ObjectsMapView(props: {
             content: <ContextBar store={store} map={props.map} />,
           },
         ]}
-        renderCard={(item) => <port.Card item={item} />}
+        renderCard={(item) => <port.Card item={item} draggable />}
       />
       <PopoverCorner>
         <PopoverContent store={store} map={props.map} />

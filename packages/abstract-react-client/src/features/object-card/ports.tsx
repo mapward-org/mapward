@@ -12,12 +12,13 @@ export type ObjectCardPort = {
   open(link: string): void;
   /** Ctrl + клик по имени — отдельным табом; хост без табов — поля нет (решение 0026). */
   openTab?: ((link: string) => void) | undefined;
-  /** Сетка метрик вкладки — та же, что на экране объекта, со своей подпиской. */
+  /** Сетка метрик вкладки — та же, что на экране объекта, со своей подпиской; карточка просит компактную. */
   Grid: ComponentType<{
     object: MapObject;
     metrics: MapMetric[];
     layout?: Layout | undefined;
     group?: string | undefined;
+    compact?: boolean | undefined;
   }>;
   /** Меню экшонов объекта — то же, что в шапке экрана. */
   Actions: ComponentType<{ object: MapObject }>;

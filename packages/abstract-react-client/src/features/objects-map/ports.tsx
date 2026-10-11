@@ -16,7 +16,7 @@ export type ObjectsMapPort = {
   /** Открыть узел отдельным табом — ctrl + клик (решение 0026); хост без табов — поля нет. */
   openTab?: ((link: string) => void) | undefined;
   /** Полное превью объекта; его рисует фича карточки, стыкует точка входа. */
-  Card: ComponentType<{ item: ObjectRef; actions?: ReactNode }>;
+  Card: ComponentType<{ item: ObjectRef; actions?: ReactNode; draggable?: boolean }>;
 };
 
 const ObjectsMapContext = createContext<ObjectsMapPort | undefined>(undefined);

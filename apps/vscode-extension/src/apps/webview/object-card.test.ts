@@ -31,31 +31,44 @@ const core = {
 const port: ObjectCardPort = {
   find: (address: string) => (address === core.address ? core : undefined),
   open: () => {},
-  Grid: (props: { metrics: MapMetric[]; group?: string | undefined }) =>
-    createElement("i", null, `сетка ${props.group}: ${props.metrics.map((m) => m.key).join(",")}`),
+  Grid: (props: { metrics: MapMetric[]; group?: string | undefined; compact?: boolean }) =>
+    createElement(
+      "i",
+      null,
+      `сетка ${props.group}: ${props.metrics.map((m) => m.key).join(",")}${props.compact ? " компактно" : ""}`,
+    ),
   Actions: () => createElement("i", null, "экшоны"),
   Directives: () => createElement("i", null, "директивы"),
 };
 
-const card = (item: { object: string; group?: string; width?: number }) =>
+const card = (item: { object: string; group?: string; width?: number }, draggable?: boolean) =>
   renderToString(
-    createElement(ProvideObjectCard, { port, children: createElement(ObjectCard, { item }) }),
+    createElement(ProvideObjectCard, {
+      port,
+      children: createElement(ObjectCard, { item, ...(draggable ? { draggable } : {}) }),
+    }),
   );
 
-test("карточка — шапка с прототипом и сетка вкладки превью", () => {
+test("карточка — шапка одной строкой и компактная сетка вкладки превью", () => {
   const html = card({ object: core.address, width: 280 });
-  // Имя строкой целиком, прототип — второй строкой рядом с адресом: длинный не съедает имя.
+  // Шапка — одна строка: прототип и адрес только в подсказке на имени, прототип виден по цвету.
+  expect(html).toContain('title="Пакет · packages/core"');
   expect(html).toContain(">core</button>");
-  expect(html).toContain("Пакет<!-- --> · </span>");
+  expect(html).not.toContain("Пакет<!-- --> · </span>");
   expect(html).toContain("директивы");
-  expect(html).toContain("сетка превью: tests");
+  expect(html).toContain("сетка превью: tests компактно");
   expect(html).toContain("width:280px");
   // Экшонов у объекта нет — и кнопки нет.
   expect(html).not.toContain("экшоны");
 });
 
+test("ручка перетаскивания — только когда место показа её попросило", () => {
+  expect(card({ object: core.address })).not.toContain("Перетащить");
+  expect(card({ object: core.address }, true)).toContain('title="Перетащить"');
+});
+
 test("названная вкладка — она, а не превью", () => {
-  expect(card({ object: core.address, group: "всё" })).toContain("сетка всё: code,tests");
+  expect(card({ object: core.address, group: "всё" })).toContain("сетка всё: code,tests компактно");
 });
 
 test("чего нет, карточка так и говорит", () => {

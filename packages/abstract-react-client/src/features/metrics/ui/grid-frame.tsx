@@ -13,11 +13,14 @@ export function GridFrame(props: {
   /** Правила раскладки — тегом `<style>` рядом с сеткой. */
   css?: string | undefined;
   solo?: { gridTemplateColumns: string; gridTemplateRows: string } | undefined;
+  /** Компактный вид: поля и зазоры минимальные, левого поля под свёртку нет — свёртки нет. */
+  compact?: boolean | undefined;
   children: ReactNode;
 }) {
+  const space = props.compact ? "gap-1 p-1" : "gap-2 p-2 pl-6";
   return (
     <div
-      className={`${props.scope} grid content-start gap-2 p-2 pl-6 ${props.solo ? "h-full min-h-0" : ""}`}
+      className={`${props.scope} grid content-start ${space} ${props.solo ? "h-full min-h-0" : ""}`}
       {...(props.solo ? { style: props.solo } : {})}
     >
       {props.css && <style>{props.css}</style>}

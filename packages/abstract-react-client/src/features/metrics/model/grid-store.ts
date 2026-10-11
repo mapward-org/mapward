@@ -35,6 +35,11 @@ export type GridInput = {
   metrics: MapMetric[];
   layout?: Layout | undefined;
   solo?: string | undefined;
+  /**
+   * Компактный вид — превью объекта на чужом экране: клетки без шапки, одно значение. Признак
+   * места показа, а не метрики: заказывает его карточка.
+   */
+  compact?: boolean | undefined;
   /** Экшоны, которые раскладка может поставить в клетку: ключ в `areas`, как у метрики. */
   cells: () => MapAction[];
 };
@@ -197,9 +202,16 @@ export class GridStore {
     clearInterval(this.clock);
   }
 
-  /** В табе одной метрики свёрнутость не спрашивается: таб открыт ради того, чтобы её видеть. */
+  get isCompact(): boolean {
+    return this.input.compact === true;
+  }
+
+  /**
+   * В табе одной метрики свёрнутость не спрашивается: таб открыт ради того, чтобы её видеть. В
+   * компактном виде тоже: вкладку превью собирают руками, и свернуть клетку без шапки нечем.
+   */
   private isFolded(metric: MapMetric): boolean {
-    if (this.input.solo === metric.key) return false;
+    if (this.input.solo === metric.key || this.isCompact) return false;
     return this.folded.value[metric.key] ?? metric.config.collapsed ?? false;
   }
 

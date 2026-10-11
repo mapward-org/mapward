@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { CardSize } from "@mapward/core";
 import { canvasClasses } from "../../../lib/ui/canvas-classes.ts";
+import { GripIcon } from "../../../lib/ui/icons.tsx";
 import { tabHover } from "../../../lib/ui/tab-hover.ts";
 import { cssSize } from "../pure-model/card.ts";
 
@@ -42,12 +43,22 @@ export function CardBody(props: { children: ReactNode }) {
   );
 }
 
-/** Шапка: за неё карточка тащится по холсту; имя с прототипом — ссылка на объект. */
-export function CardHead(props: { children: ReactNode; buttons?: ReactNode }) {
+/**
+ * Шапка — одна строка: имя и кнопки, без линии снизу. Тащится карточка только за ручку слева:
+ * имя — ссылка, и тащить за неё значило бы путать «двигаю» с «проваливаюсь». Ручку рисует только
+ * место, где карточку двигают, — холст; в списке и в метрике она была бы мёртвой.
+ */
+export function CardHead(props: { children: ReactNode; buttons?: ReactNode; draggable?: boolean }) {
   return (
-    <header
-      className={`${canvasClasses.dragHandle} relative z-10 flex shrink-0 items-center gap-1 border-b border-[var(--mw-panel-border,#8884)] px-1.5 py-0.5`}
-    >
+    <header className="relative z-10 flex shrink-0 items-center gap-1 px-1.5 py-0.5">
+      {props.draggable && (
+        <span
+          title="Перетащить"
+          className={`${canvasClasses.dragHandle} -ml-1 shrink-0 cursor-grab opacity-50 hover:opacity-100`}
+        >
+          {GripIcon}
+        </span>
+      )}
       {props.children}
       <span className="ml-auto flex shrink-0 gap-0.5">{props.buttons}</span>
     </header>
@@ -57,37 +68,28 @@ export function CardHead(props: { children: ReactNode; buttons?: ReactNode }) {
 export function CardName(props: {
   name: string;
   prototypeName?: string | undefined;
-  /** Адрес под именем, мелко: видно, где объект лежит и что правится как «адрес». */
+  /** Адрес — в подсказке на имени вместе с прототипом: прототипы различают по цвету. */
   address: string;
   onOpen: () => void;
   /** Ctrl + клик — отдельным табом; без табов — просто переход. */
   onOpenTab?: (() => void) | undefined;
 }) {
-  // Имя — главное, и ему отдана вся строка до кнопок, до двух строк переноса. Прототип бывает
-  // длинным и раньше съедал имя целиком — он ушёл вниз, к адресу, мелко.
+  // Имя — главное, и ему отдана вся строка до кнопок, до двух строк переноса. Прототип и адрес
+  // ушли в подсказку: строка под именем съедала высоту, а прототип и так виден по цвету.
   const where = props.address.replace("mapward://", "") || "корень";
   return (
-    <span className="flex min-w-0 flex-1 flex-col">
-      <button
-        type="button"
-        onClick={(event) =>
-          props.onOpenTab && (event.ctrlKey || event.metaKey) ? props.onOpenTab() : props.onOpen()
-        }
-        title={`${props.prototypeName ? `${props.prototypeName}: ` : ""}${props.name}${
-          props.onOpenTab ? " — Ctrl + клик: отдельным табом" : ""
-        }`}
-        className={`line-clamp-2 min-w-0 text-left font-medium break-words ${props.onOpenTab ? tabHover.tabLink : "hover:underline"}`}
-      >
-        {props.name}
-      </button>
-      <span
-        className="truncate text-[9px] leading-tight opacity-60"
-        title={`${props.prototypeName ? `${props.prototypeName} · ` : ""}${props.address}`}
-      >
-        {props.prototypeName && <span>{props.prototypeName} · </span>}
-        <span className="font-mono">{where}</span>
-      </span>
-    </span>
+    <button
+      type="button"
+      onClick={(event) =>
+        props.onOpenTab && (event.ctrlKey || event.metaKey) ? props.onOpenTab() : props.onOpen()
+      }
+      title={`${props.prototypeName ? `${props.prototypeName} · ` : ""}${where}${
+        props.onOpenTab ? "\nCtrl + клик — отдельным табом" : ""
+      }`}
+      className={`line-clamp-2 min-w-0 flex-1 text-left font-medium break-words ${props.onOpenTab ? tabHover.tabLink : "hover:underline"}`}
+    >
+      {props.name}
+    </button>
   );
 }
 

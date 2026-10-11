@@ -9,7 +9,8 @@ import { CardBody, CardFrame, CardHead, CardName, CardNote } from "../ui/card.ts
 /**
  * Карточка объекта — превью там, где объект встречается на чужом экране: узел карты детей, пункт
  * списка или дерева с `object`, дисплей `object`. Шапка — имя со ссылкой и кнопки терминала,
- * экшонов и директив этого объекта; тело — сетка метрик его вкладки превью, со своей подпиской.
+ * экшонов и директив этого объекта; тело — компактная сетка метрик его вкладки превью, со своей
+ * подпиской.
  * Кнопки и сетку рисуют их фичи, карточка получает их портом (решение 0042).
  */
 export const ObjectCard = observer(function ObjectCard(props: {
@@ -19,6 +20,8 @@ export const ObjectCard = observer(function ObjectCard(props: {
    * холст карты кладёт «править» (решение 0044). В списке и сетке метрик слот пуст.
    */
   actions?: ReactNode;
+  /** Ручка перетаскивания в шапке — её просит только холст, где карточку двигают. */
+  draggable?: boolean | undefined;
 }) {
   const port = useObjectCardPort();
   const card = useLocalStore(
@@ -36,6 +39,7 @@ export const ObjectCard = observer(function ObjectCard(props: {
       maxHeight={props.item.maxHeight}
       header={
         <CardHead
+          draggable={props.draggable === true}
           buttons={
             <>
               {props.actions}
@@ -64,6 +68,7 @@ export const ObjectCard = observer(function ObjectCard(props: {
             metrics={card.preview.metrics}
             layout={card.preview.layout}
             group={card.preview.group.key}
+            compact
           />
         </CardBody>
       )}

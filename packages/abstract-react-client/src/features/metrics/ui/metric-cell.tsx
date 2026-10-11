@@ -30,6 +30,46 @@ export function MetricCell(props: {
 }
 
 /**
+ * Клетка компактного вида — превью объекта: только значение. Значок состояния («упала»,
+ * «считается») виден всегда в правом верхнем углу; имя, время сбора и кнопки — ярлыком в том же
+ * углу при наведении. Ярлык не сдвигает содержимое — наведение не должно его дёргать — и шириной
+ * по себе, а не во всю клетку: полоса закрывала бы первую строку, а в списках там ссылки. Полное
+ * имя — подсказкой на ярлыке, в нём самом оно обрезается.
+ *
+ * Группа у клетки именная: превью стоит и внутри чужой клетки (карта фич на экране объекта), и
+ * простая `group-hover` открывала бы плашки всех карточек разом, стоит навести на внешнюю клетку.
+ * Простая `group` остаётся для кнопок внутри плашки: те прячутся до наведения сами по себе.
+ */
+export function CompactCell(props: {
+  cellKey?: string | undefined;
+  badge?: ReactNode;
+  /** Полное имя метрики — подсказкой на ярлыке. */
+  label: string;
+  overlay: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      {...(props.cellKey === undefined ? {} : { [cellAttribute]: props.cellKey })}
+      className="group group/compact relative flex min-h-0 min-w-0 flex-col"
+    >
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto break-words">{props.children}</div>
+      {props.badge && (
+        <span className="absolute top-0 right-0 text-[10px] group-hover/compact:hidden">
+          {props.badge}
+        </span>
+      )}
+      <div
+        title={props.label}
+        className="absolute top-0 right-0 z-10 hidden max-w-[70%] min-w-0 items-center gap-1 rounded-sm bg-[var(--mw-editor-background)] px-1 text-[11px] font-semibold shadow-sm group-hover/compact:flex"
+      >
+        {props.overlay}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Buttons appear on hover so a still sidebar stays quiet. The chevron sits outside the flow:
  * appearing on hover must not shift the label sideways. The label is the loudest thing in the
  * cell — plain case, semibold, full contrast (decision 0045); the rest is quieter on its own.
