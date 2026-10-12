@@ -492,7 +492,9 @@ export const ObjectsMapView = observer(function ObjectsMapView(props: {
         onLine={(end) => store.lineAt(end, props.map)}
         onDrawLine={(from, to) => store.drawLine(from, to, props.map)}
         onDrawShape={(shape) => store.drawShape(shape, props.map)}
-        onRelate={(from, to, prototype) => store.relate(from, to, prototype, props.map)}
+        onRelate={(from, to, prototype, sides) =>
+          store.relate(from, to, prototype, props.map, sides)
+        }
         pinned={[
           {
             ...store.barAt(props.map),

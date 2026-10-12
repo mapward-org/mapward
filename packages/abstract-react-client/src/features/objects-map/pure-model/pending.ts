@@ -1,4 +1,4 @@
-import { slug } from "@mapward/core";
+import { pinnedEnds, slug } from "@mapward/core";
 import type { MapOp, ObjectsMap, Point, ViewNode, ViewRelation } from "@mapward/core";
 
 /**
@@ -292,11 +292,18 @@ function apply(map: ObjectsMap, op: MapOp, id: string): ObjectsMap {
       return { ...map, nodes: [...map.nodes, ...copies] };
     }
     case "create-relation": {
+      // Закреплена сразу, как её запишет сервер: иначе до ответа она мигнула бы плавающей. Пара,
+      // у которой стрелка уже есть, своих концов не меняет.
+      const joins = map.relations.some((item) => item.from === op.from && item.to === op.to);
+      const ends = joins
+        ? undefined
+        : pinnedEnds(map, op.from, op.to, { from: op.fromSide, to: op.toSide });
       const arrow: ViewRelation = {
         id,
         from: op.from,
         to: op.to,
         ...(op.name === undefined ? {} : { label: op.name }),
+        ...(ends ? { style: ends } : {}),
         count: 1,
         relations: [],
       };

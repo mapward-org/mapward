@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import type { ViewNode } from "@mapward/core";
-import { absolute, layout, PAD, ROOM, SIMPLE } from "./layout.ts";
+import type { ViewNode } from "./objects-map.ts";
+import { absolute, layout, PAD, ROOM, SIMPLE } from "./node-layout.ts";
 
 const node = (id: string, extra: Partial<ViewNode> = {}): ViewNode => ({
   id,

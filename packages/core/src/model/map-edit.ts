@@ -19,6 +19,7 @@ import {
 } from "./objects-map.ts";
 import type { ObjectsMapConfig, ViewCopy, ViewState } from "./objects-map.ts";
 import { INDEX } from "./raw-object.ts";
+import { pinnedEnds, Side } from "./arrow-ends.ts";
 import { basename, join } from "../lib/path.ts";
 
 /**
@@ -50,6 +51,12 @@ export const MapOp = T.Union([
     to: T.String(),
     prototype: T.Optional(T.String()),
     name: T.Optional(T.String()),
+    /**
+     * Стороны узлов, к которым крепятся концы: холст знает, за какую тянули и на какую отпустили.
+     * Не названа — сторона, обращённая к другому узлу.
+     */
+    fromSide: T.Optional(Side),
+    toSide: T.Optional(Side),
   }),
   T.Object({
     op: T.Literal("move-object"),
@@ -522,6 +529,32 @@ export function planEdit(context: EditContext, op: MapOp): EditPlan {
         editState(draft, view.statePath, (state) => ({
           ...state,
           ends: { ...state.ends, [address]: bound },
+        }));
+      }
+      // Новая стрелка рождается закреплённой. Концы — узлы, которые видны, как у стрелки на
+      // холсте; связь, влившаяся в уже нарисованную стрелку той же пары, её концы не перекладывает.
+      const shown = objectsMap(
+        root,
+        op.view,
+        view.config,
+        parseViewState(draft.read(view.statePath)),
+      );
+      const ids = shown.nodes
+        .map((node) => node.id)
+        .filter((id) => !copies[id])
+        .toSorted((a, b) => b.length - a.length);
+      const visible = (id: string, address: string) =>
+        copies[id] ? id : ids.find((node) => within(address, node));
+      const a = visible(op.from, from);
+      const b = visible(op.to, to);
+      const arrow = `${a}→${b}`;
+      const fresh = !shown.relations.some((item) => item.id === arrow);
+      const ends =
+        a && b && a !== b && fresh && pinnedEnds(shown, a, b, { from: op.fromSide, to: op.toSide });
+      if (ends) {
+        editState(draft, view.statePath, (state) => ({
+          ...state,
+          arrows: { ...state.arrows, [arrow]: { ...state.arrows?.[arrow], ...ends } },
         }));
       }
       return { changes: draft.changes() };

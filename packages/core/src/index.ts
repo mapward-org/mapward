@@ -21,6 +21,8 @@ export * from "./model/model.ts";
 export * from "./model/address.ts";
 export * from "./model/schema.ts";
 export * from "./model/objects-map.ts";
+export * from "./model/node-layout.ts";
+export * from "./model/arrow-ends.ts";
 export * from "./model/map-edit.ts";
 export * from "./model/display.ts";
 export * from "./model/inputs.ts";

@@ -8,6 +8,7 @@ import type {
   ViewRelation,
   ViewShape,
 } from "@mapward/core";
+import { layout, pinnedEnds, type Side } from "@mapward/core";
 import { confirmText, deleteOp, sameTool } from "../pure-model/tools.ts";
 import type { Deletable, Popover, Tool } from "../pure-model/tools.ts";
 import { overlay, reflected } from "../pure-model/pending.ts";
@@ -25,7 +26,6 @@ import type { Draft, Editing } from "../pure-model/edit.ts";
 import { barFor, lookOf, patchFor, remember, stepField } from "../pure-model/bar.ts";
 import type { BarKey, Field, Look, Menu, Target } from "../pure-model/bar.ts";
 import { showBeside } from "../pure-model/copy.ts";
-import { layout } from "../pure-model/layout.ts";
 import { rememberedArrow, rememberStyle, withRemembered } from "../pure-model/remembered.ts";
 import type { Remembered } from "../pure-model/remembered.ts";
 
@@ -588,14 +588,40 @@ export class ObjectsMapStore {
    * Новая связь — в последнем стиле связей. Стиль лежит у стрелки вьюхи, а стрелка зовётся
    * парой видимых концов; есть уже такая — связь склеится с ней, и её стиль не трогается.
    */
-  async relate(from: string, to: string, prototype: string, map: ObjectsMap): Promise<void> {
+  /**
+   * Связь, проведённая на холсте: концы закрепляются за стороны, за которую тянули и на которую
+   * отпустили. Запомненный стиль ложится на новую стрелку целиком, поэтому несёт то же закрепление,
+   * что сервер напишет операцией связи, — иначе стёр бы его.
+   */
+  async relate(
+    from: string,
+    to: string,
+    prototype: string,
+    map: ObjectsMap,
+    sides: { from?: Side | undefined; to?: Side | undefined } = {},
+  ): Promise<void> {
     this.tool = { kind: "select" };
     const view = map.view;
-    const ops: MapOp[] = [{ op: "create-relation", view, from, to, prototype }];
+    const ops: MapOp[] = [
+      {
+        op: "create-relation",
+        view,
+        from,
+        to,
+        prototype,
+        ...(sides.from === undefined ? {} : { fromSide: sides.from }),
+        ...(sides.to === undefined ? {} : { toSide: sides.to }),
+      },
+    ];
     const arrow = `${from}→${to}`;
     const style = rememberedArrow(this.remembered.value);
     if (style && !map.relations.some((item) => item.id === arrow))
-      ops.push({ op: "style-arrow", view, arrow, style });
+      ops.push({
+        op: "style-arrow",
+        view,
+        arrow,
+        style: { ...style, ...pinnedEnds(map, from, to, sides) },
+      });
     await this.edit(ops, map);
   }
 

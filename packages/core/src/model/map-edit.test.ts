@@ -198,6 +198,49 @@ test("a relation lands in the configured shelf with its ends in props", () => {
   });
 });
 
+test("a new arrow is born pinned: named sides as given, the rest facing the other node", () => {
+  const placed = new Map(files);
+  placed.set(
+    "/map/_metrics/canvas/map-state.json",
+    JSON.stringify({
+      positions: {
+        "mapward://systems/shop": { x: 0, y: 0 },
+        "mapward://systems/bank": { x: 400, y: 0 },
+      },
+    }),
+  );
+  const list = changes(
+    planEdit(
+      { root: map, files: placed },
+      {
+        op: "create-relation",
+        view: "mapward://_metrics/canvas",
+        from: "mapward://systems/bank",
+        to: "mapward://systems/shop",
+        fromSide: "bottom",
+      },
+    ),
+  );
+  const state = JSON.parse(written(list, "/map/_metrics/canvas/map-state.json") ?? "{}");
+  expect(state.arrows["mapward://systems/bank→mapward://systems/shop"]).toEqual({
+    fromAnchor: { x: 0.5, y: 1 },
+    toAnchor: { x: 1, y: 0.5 },
+  });
+});
+
+test("a relation joining an arrow already drawn leaves its ends alone", () => {
+  const list = changes(
+    planEdit(context, {
+      op: "create-relation",
+      view: "mapward://_metrics/canvas",
+      from: "mapward://systems/shop/cart",
+      to: "mapward://systems/bank",
+      fromSide: "top",
+    }),
+  );
+  expect(written(list, "/map/_metrics/canvas/map-state.json")).toBeUndefined();
+});
+
 test("deleting an object takes its relations along and forgets it in every view", () => {
   const list = changes(
     planEdit(context, { op: "delete-object", object: "mapward://systems/shop" }),

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
-import type { Point } from "@mapward/core";
+import { facing, type Point } from "@mapward/core";
 import type { Box } from "./route.ts";
-import { corners, facing, handles, orthogonal, routePath, sideMiddle, sideOf } from "./route.ts";
+import { corners, curve, handles, orthogonal, routePath, sideMiddle, sideOf } from "./route.ts";
 
 const a = { x: 0, y: 0 };
 const b = { x: 100, y: 50 };
@@ -10,10 +10,28 @@ test("a broken line goes straight through the bends", () => {
   expect(routePath([a, { x: 50, y: 0 }, b])).toBe("M0,0 L50,0 L100,50");
 });
 
-test("a rounded line curves at each bend, not at the ends", () => {
-  const path = routePath([a, { x: 50, y: 0 }, b], "rounded");
-  expect(path.startsWith("M0,0 L38,0 Q50,0 ")).toBe(true);
-  expect(path.endsWith("L100,50")).toBe(true);
+test("a rounded arrow leaves its side and enters the target's side perpendicularly", () => {
+  const bent = curve(
+    { point: { x: 0, y: 0 }, side: "right" },
+    { point: { x: 100, y: 100 }, side: "top" },
+  );
+  expect(bent.path).toBe("M0,0 C56.57,0 100,43.43 100,100");
+  expect(bent.inserts).toHaveLength(1);
+});
+
+test("a rounded arrow passes a bend smoothly: the tangents on both sides line up", () => {
+  const bend = { x: 50, y: 0 };
+  const bent = curve({ point: a }, { point: b }, [bend]);
+  const numbers = bent.path.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+  // M a, C c1 c2 bend, C c3 c4 b: c2, bend и c3 на одной прямой.
+  const [c2x = 0, c2y = 0, , , c3x = 0, c3y = 0] = numbers.slice(4);
+  const cross = (c2x - bend.x) * (c3y - bend.y) - (c2y - bend.y) * (c3x - bend.x);
+  expect(Math.abs(cross)).toBeLessThan(0.5);
+  expect(bent.inserts).toHaveLength(2);
+});
+
+test("a free end of a rounded line looks at its neighbour", () => {
+  expect(curve({ point: a }, { point: { x: 90, y: 0 } }).path).toBe("M0,0 C30,0 60,0 90,0");
 });
 
 test("right angles step horizontally and vertically between points", () => {

@@ -1,9 +1,9 @@
-import type { Point } from "@mapward/core";
+import type { Point, Side } from "@mapward/core";
 
 /**
  * Путь стрелки через точки излома — связи и линии рисуются одинаково (решение 0044). Три режима:
- * ломаная — отрезки через изломы; скруглённая — те же отрезки со скруглениями на изломах; прямые
- * углы — от точки к точке только горизонталью и вертикалью, как ступенька.
+ * ломаная — отрезки через изломы; скруглённая — гладкая кривая, выходящая из стороны узла
+ * перпендикулярно; прямые углы — только горизонталью и вертикалью, как ступенька.
  */
 export type Route = "straight" | "rounded" | "orthogonal";
 
@@ -56,9 +56,6 @@ export function corners(points: Point[], route: Route): Point[] {
 /** Рамка узла на холсте целиком. */
 export type Box = { x: number; y: number; width: number; height: number };
 
-/** Сторона рамки, из которой выходит конец стрелки. */
-export type Side = "top" | "right" | "bottom" | "left";
-
 /**
  * Конец пути с прямыми углами. У конца на узле есть его рамка и сторона: стрелка выходит из неё
  * перпендикулярно и путь рамку не режет. Свободный конец — только точка.
@@ -98,17 +95,6 @@ export function sideMiddle(box: Box, side: Side): Point {
     case "right":
       return { x: box.x + box.width, y: box.y + box.height / 2 };
   }
-}
-
-/**
- * Сторона, с которой плавающий конец смотрит на точку: по оси, где до неё дальше, — так
- * стрелка между карточками рядом выходит навстречу, а не вбок.
- */
-export function facing(box: Box, target: Point): Side {
-  const dx = target.x - (box.x + box.width / 2);
-  const dy = target.y - (box.y + box.height / 2);
-  if (Math.abs(dx) / box.width >= Math.abs(dy) / box.height) return dx >= 0 ? "right" : "left";
-  return dy >= 0 ? "bottom" : "top";
 }
 
 const shift = (point: Point, side: Side, length: number): Point => ({
@@ -223,7 +209,7 @@ export function orthogonal(from: End, to: End, bends: Point[] = []): Point[] {
   return tidy(out);
 }
 
-/** Путь SVG через вершины: скругления — у скруглённой и у прямых углов, если просили. */
+/** Путь SVG через вершины: скругления на углах — если просили. */
 export function draw(vertices: Point[], round: boolean): string {
   const [first, ...rest] = vertices;
   if (!first) return "";
@@ -243,8 +229,85 @@ export function draw(vertices: Point[], round: boolean): string {
   return parts.join(" ");
 }
 
+/** Путь через точки по отрезкам: ломаная или ступеньки прямых углов. Кривую строит `curve`. */
 export function routePath(points: Point[], route: Route = "straight"): string {
-  return draw(corners(points, route), route === "rounded");
+  return draw(corners(points, route), false);
+}
+
+/** Кривая с подписью на середине и ручками «создать излом» на трети каждого её участка. */
+export type Curve = { path: string; label: Point | undefined; inserts: Point[] };
+
+/** Насколько далеко тянет касательная у стороны узла — доля участка, но не короче выхода. */
+const PULL = 0.4;
+
+type Cubic = [Point, Point, Point, Point];
+
+const along = (a: Point, b: Point, t: number): Point => ({
+  x: a.x + (b.x - a.x) * t,
+  y: a.y + (b.y - a.y) * t,
+});
+
+/** Точка кубической кривой Безье при `t`. */
+function at([p0, p1, p2, p3]: Cubic, t: number): Point {
+  const a = along(p0, p1, t);
+  const b = along(p1, p2, t);
+  const c = along(p2, p3, t);
+  return along(along(a, b, t), along(b, c, t), t);
+}
+
+/**
+ * Скруглённая связь — гладкая кривая, как в Miro. Конец на узле выходит из своей стороны
+ * перпендикулярно ей и так же входит в цель; через изломы кривая идёт плавно, касательной вдоль
+ * соседних точек. Свободный конец смотрит на соседнюю точку. Рамки кривая не обходит: цель позади
+ * стороны выхода даёт петлю.
+ */
+export function curve(from: End, to: End, bends: Point[] = []): Curve {
+  const points = [from.point, ...bends, to.point];
+  const last = points.length - 1;
+  // Касательная излома — вдоль соседей, длиной в треть участка: так соседние участки стыкуются гладко.
+  const smooth = (index: number, length: number, sign: 1 | -1): Point => {
+    const point = points[index] ?? from.point;
+    const before = points[index - 1] ?? point;
+    const after = points[index + 1] ?? point;
+    const span = distance(before, after);
+    if (span === 0) return point;
+    const k = (sign * length) / 3 / span;
+    return { x: point.x + (after.x - before.x) * k, y: point.y + (after.y - before.y) * k };
+  };
+  const pull = (length: number) => Math.max(STUB, length * PULL);
+  const cubics = points.slice(1).map((q, index): Cubic => {
+    const p = points[index] ?? q;
+    const length = distance(p, q);
+    const leave =
+      index > 0
+        ? smooth(index, length, 1)
+        : from.side
+          ? shift(p, from.side, pull(length))
+          : toward(p, q, length / 3);
+    const enter =
+      index + 1 < last
+        ? smooth(index + 1, length, -1)
+        : to.side
+          ? shift(q, to.side, pull(length))
+          : toward(q, p, length / 3);
+    return [p, leave, enter, q];
+  });
+  const [first] = points;
+  const path = first
+    ? [
+        move(first),
+        ...cubics.map(
+          ([, c1, c2, q]) =>
+            `C${fmt(c1.x)},${fmt(c1.y)} ${fmt(c2.x)},${fmt(c2.y)} ${fmt(q.x)},${fmt(q.y)}`,
+        ),
+      ].join(" ")
+    : "";
+  const middle = cubics[Math.floor(cubics.length / 2)];
+  return {
+    path,
+    label: middle && at(middle, 0.5),
+    inserts: cubics.map((cubic) => at(cubic, 1 / 3)),
+  };
 }
 
 /**

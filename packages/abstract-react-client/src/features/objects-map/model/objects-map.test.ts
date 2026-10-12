@@ -280,6 +280,51 @@ test("a folded rail stays folded for the next canvas, it lives in the viewer's s
   expect(new ObjectsMapStore(port, kept, "other").railFolded).toBe(true);
 });
 
+test("a relation drawn from a side pins its ends, and the last style keeps the pin", async () => {
+  const memory = {
+    slot<T>(key: string, initial: T) {
+      const seeded: Record<string, unknown> = {
+        "objects-map:last-style": { arrow: { strokeWidth: 3 } },
+      };
+      return { value: (seeded[key] ?? initial) as T, set() {} };
+    },
+  };
+  const pair = {
+    ...map,
+    nodes: [
+      ...map.nodes,
+      {
+        ...map.nodes[0]!,
+        id: "mapward://b",
+        link: "mapward://b",
+        object: "mapward://b",
+        position: { x: 400, y: 0 },
+      },
+    ],
+  };
+  const { port, sent } = fake([]);
+  const store = new ObjectsMapStore(port, memory, "v");
+  await store.relate("mapward://a", "mapward://b", "mapward://prototypes/relation", pair, {
+    from: "bottom",
+  });
+  expect(sent[0]).toEqual([
+    {
+      op: "create-relation",
+      view: "v",
+      from: "mapward://a",
+      to: "mapward://b",
+      prototype: "mapward://prototypes/relation",
+      fromSide: "bottom",
+    },
+    {
+      op: "style-arrow",
+      view: "v",
+      arrow: "mapward://a→mapward://b",
+      style: { strokeWidth: 3, fromAnchor: { x: 0.5, y: 1 }, toAnchor: { x: 0, y: 0.5 } },
+    },
+  ]);
+});
+
 test("a new relation and a new shape come dressed in the last style, as in Miro", async () => {
   const memory = {
     slot<T>(key: string, initial: T) {

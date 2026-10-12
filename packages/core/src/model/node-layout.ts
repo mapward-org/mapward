@@ -1,4 +1,4 @@
-import type { ObjectsMap, Point, ViewNode } from "@mapward/core";
+import type { ObjectsMap, Point, ViewNode } from "./objects-map.ts";
 
 /**
  * Где и какого размера узел на холсте. Позиция приходит из состояния вьюхи; у узла без неё — ряд
@@ -6,7 +6,13 @@ import type { ObjectsMap, Point, ViewNode } from "@mapward/core";
  * холста размер родителя не считает, а жилец за рамкой выглядел бы вынесенным из группы.
  */
 
-export type Box = { id: string; parent?: string; position: Point; width: number; height: number };
+export type NodeBox = {
+  id: string;
+  parent?: string;
+  position: Point;
+  width: number;
+  height: number;
+};
 
 /** Простая карточка — фигура с подписью. */
 export const SIMPLE = { width: 160, height: 48 };
@@ -41,7 +47,7 @@ function slot(index: number, inside: boolean, size: { width: number; height: num
   return inside ? { x: x + PAD.side, y: y + PAD.top } : { x, y };
 }
 
-export function layout(map: Pick<ObjectsMap, "nodes">): Box[] {
+export function layout(map: Pick<ObjectsMap, "nodes">): NodeBox[] {
   const children = new Map<string | undefined, ViewNode[]>();
   for (const node of map.nodes) {
     const list = children.get(node.parent) ?? [];
@@ -49,20 +55,20 @@ export function layout(map: Pick<ObjectsMap, "nodes">): Box[] {
     children.set(node.parent, list);
   }
 
-  const boxes = new Map<string, Box>();
-  const measure = (node: ViewNode, index: number): Box => {
+  const boxes = new Map<string, NodeBox>();
+  const measure = (node: ViewNode, index: number): NodeBox => {
     const inside = children.get(node.id) ?? [];
     const placed = node.expanded ? inside.map((child, i) => measure(child, i)) : [];
     const own = ownSize(node);
     // Растянутый руками фрейм — ровно такой, как его растянули, как в Miro: жилец может и
     // выглядывать за край. Нерастянутый дорастает до жильцов, чтобы никто не оказался снаружи.
-    const fit = (extent: (box: Box) => number, base: number) =>
+    const fit = (extent: (box: NodeBox) => number, base: number) =>
       node.size ? base : Math.max(base, ...placed.map(extent));
     const size = {
       width: fit((box) => box.position.x + box.width + PAD.side, own.width),
       height: fit((box) => box.position.y + box.height + PAD.side, own.height),
     };
-    const box: Box = {
+    const box: NodeBox = {
       id: node.id,
       ...(node.parent === undefined ? {} : { parent: node.parent }),
       position: node.position ?? slot(index, node.parent !== undefined, own),
@@ -83,11 +89,11 @@ export function layout(map: Pick<ObjectsMap, "nodes">): Box[] {
   return map.nodes
     .toSorted((a, b) => depth(a) - depth(b))
     .map((node) => boxes.get(node.id))
-    .filter((box): box is Box => box !== undefined);
+    .filter((box): box is NodeBox => box !== undefined);
 }
 
 /** Положение узла на холсте целиком: своя позиция плюс позиции всех групп над ним. */
-export function absolute(boxes: Box[], id: string): Point {
+export function absolute(boxes: NodeBox[], id: string): Point {
   const byId = new Map(boxes.map((box) => [box.id, box]));
   let point = { x: 0, y: 0 };
   let current = byId.get(id);

@@ -33,6 +33,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { facing, layout, ROOM, SIMPLE, type NodeBox, type Side } from "@mapward/core";
 import type {
   LineEnd,
   LinePattern,
@@ -50,11 +51,10 @@ import { tabHover } from "../../../lib/ui/tab-hover.ts";
 import { draws, type Deletable, type Popover, type Tool } from "../pure-model/tools.ts";
 import { dropOp, dropTarget, type Rect } from "../pure-model/drop.ts";
 import { clipText, freeCopyId, pasteOps, readClip, topsOf } from "../pure-model/copy.ts";
-import { layout, ROOM, SIMPLE, type Box } from "../pure-model/layout.ts";
 import { DRAFT_ID, drawnBox, lineEnd, type Draft } from "../pure-model/edit.ts";
 import {
+  curve,
   draw,
-  facing,
   handles,
   orthogonal,
   routePath,
@@ -108,7 +108,7 @@ function Ends(props: { connecting: boolean }) {
     ? { width: 8, height: 8, background: "var(--mw-focus-border, #3794ff)" }
     : { opacity: 0 };
   // Связь тянется с любой стороны: холст в свободном режиме, любая точка — и начало, и конец.
-  // Где стрелка коснётся узла потом, решают плавающие концы, а не эти точки.
+  // Сторона точки, за которую тянули, и точки, на которую отпустили, закрепляет концы стрелки.
   return (
     <>
       {SIDES.map((side) => (
@@ -126,6 +126,10 @@ function Ends(props: { connecting: boolean }) {
 }
 
 const SIDES = [Position.Top, Position.Right, Position.Bottom, Position.Left];
+
+/** Точка связи узла и есть его сторона: `id` у неё — имя стороны. */
+const sideOfHandle = (handle: string | null | undefined): Side | undefined =>
+  (["top", "right", "bottom", "left"] as const).find((side) => side === handle);
 
 /**
  * Фокус в поле подписи, как только его видно. `autoFocus` не годится: новый узел холст держит
@@ -553,7 +557,7 @@ function grip(nodes: Node[]): Node[] {
   });
 }
 
-function build(params: Build): { nodes: Node[]; boxes: Box[] } {
+function build(params: Build): { nodes: Node[]; boxes: NodeBox[] } {
   const boxes = layout(params.map);
   const byId = new Map(params.map.nodes.map((node) => [node.id, node]));
   const nodes: Node[] = boxes.map((box) => {
@@ -846,10 +850,19 @@ function BentEdge(props: EdgeProps<Edge<BentData>>) {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const path = square ? draw(vertices, false) : routePath(points, style?.route ?? "straight");
+  // Скруглённая — кривая из сторон, на которых стоят концы.
+  const bent =
+    style?.route === "rounded"
+      ? curve(
+          { point: from, side: sourceFrame && sideOf(sourceFrame, from) },
+          { point: to, side: targetFrame && sideOf(targetFrame, to) },
+          bends,
+        )
+      : undefined;
+  const path = bent?.path ?? (square ? draw(vertices, false) : routePath(points, style?.route));
   // Ручка «создать излом» — на трети отрезка, подпись — на середине: друг друга не закрывают.
-  const { inserts } = handles(points);
-  const { label } = handles(vertices);
+  const inserts = bent?.inserts ?? handles(points).inserts;
+  const label = bent ? bent.label : handles(vertices).label;
   // Подпись склеенной стрелки — число её связей, а не имя: такую не правят.
   const editable = relation?.count === 1 && relation.link !== undefined;
   const renaming = editable && props.data?.edit.renaming === props.id;
@@ -965,11 +978,12 @@ function LineEdge(props: EdgeProps<Edge<LineData>>) {
   const source = useInternalNode(props.source);
   const target = useInternalNode(props.target);
   const square = props.data?.route === "orthogonal";
-  // Свободный конец — точка-узел без рамки; прицепленный к узлу у прямых углов выходит из
-  // середины стороны, обращённой к другому концу, как у стрелки связи.
+  const round = props.data?.route === "rounded";
+  // Свободный конец — точка-узел без рамки; прицепленный к узлу у прямых углов и у кривой выходит
+  // из середины стороны, обращённой к другому концу, как у стрелки связи.
   const box = (node: typeof source) => (node && node.type !== "anchor" ? frameOf(node) : undefined);
-  const sourceBox = square ? box(source) : undefined;
-  const targetBox = square ? box(target) : undefined;
+  const sourceBox = square || round ? box(source) : undefined;
+  const targetBox = square || round ? box(target) : undefined;
   const plainFrom = { x: props.sourceX, y: props.sourceY };
   const plainTo = { x: props.targetX, y: props.targetY };
   const fromSide = sourceBox && facing(sourceBox, targetBox ? middle(targetBox) : plainTo);
@@ -984,8 +998,14 @@ function LineEdge(props: EdgeProps<Edge<LineData>>) {
         { point: ends[1] ?? plainTo, box: targetBox, side: toSide },
       )
     : ends;
-  const path = square ? draw(vertices, false) : routePath(ends, props.data?.route ?? "straight");
-  const { label } = handles(vertices);
+  const bent = round
+    ? curve(
+        { point: ends[0] ?? plainFrom, side: fromSide },
+        { point: ends[1] ?? plainTo, side: toSide },
+      )
+    : undefined;
+  const path = bent?.path ?? (square ? draw(vertices, false) : routePath(ends));
+  const label = bent ? bent.label : handles(vertices).label;
   const width = Number(props.style?.strokeWidth ?? 1.5);
   const data = props.data;
   const renaming = data !== undefined && data.edit.renaming === data.shape;
@@ -1209,7 +1229,13 @@ export type GraphProps = {
   /** Фигура нарисована: стор оденет её в последний стиль её вида. */
   onDrawShape: (shape: ViewShape) => void;
   /** Связь проведена: стор создаст её в последнем стиле связей. */
-  onRelate: (from: string, to: string, prototype: string) => void;
+  /** Стороны — за какую точку узла тянули и на какую отпустили: концы встанут туда. */
+  onRelate: (
+    from: string,
+    to: string,
+    prototype: string,
+    sides: { from?: Side | undefined; to?: Side | undefined },
+  ) => void;
   /**
    * Меню, пристёгнутые к узлам холста: контекстная панель стоит рядом с объектом и едет за
    * зумом и сдвигом. Что положить, решает compose; поповер с превью живёт в углу, не здесь.
@@ -1303,6 +1329,14 @@ function Canvas(props: GraphProps) {
     }
     const start = endPoint(from, arrow.style?.fromAnchor, bends[0] ?? middle(to));
     const finish = endPoint(to, arrow.style?.toAnchor, bends.at(-1) ?? middle(from));
+    if (arrow.style?.route === "rounded") {
+      const bent = curve(
+        { point: start, side: sideOf(from, start) },
+        { point: finish, side: sideOf(to, finish) },
+        bends,
+      );
+      return bent.label ?? start;
+    }
     return handles([start, ...bends, finish]).label ?? start;
   };
   const view = props.map.view;
@@ -1889,6 +1923,8 @@ function Canvas(props: GraphProps) {
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         connectionMode={ConnectionMode.Loose}
+        // Выбранная стрелка — поверх остальных стрелок и узлов: иначе её прячет то, что под ней.
+        elevateEdgesOnSelect
         onEdgesChange={(changes: EdgeChange[]) => setLines((now) => applyEdgeChanges(changes, now))}
         // Узел за краем холста не рисуется — и его карточка не подписана на метрики.
         onlyRenderVisibleElements
@@ -1909,7 +1945,10 @@ function Canvas(props: GraphProps) {
             return;
           }
           // Как фигура и линия: провёл связь — снова выбор, следующая связь — снова кнопкой.
-          props.onRelate(connection.source, connection.target, props.tool.prototype);
+          props.onRelate(connection.source, connection.target, props.tool.prototype, {
+            from: sideOfHandle(connection.sourceHandle),
+            to: sideOfHandle(connection.targetHandle),
+          });
         }}
         onPaneClick={place}
         onSelectionChange={({ nodes: chosen, edges: picks }) =>
