@@ -80,12 +80,28 @@ export type KitLinks = { object?: MapObject | undefined };
 
 const KitContext = createContext<KitLinks>({});
 
-export function ProvideKit(props: { links: KitLinks; children: ReactNode }) {
-  return <KitContext value={props.links}>{props.children}</KitContext>;
+/**
+ * Территория компонента — решение 0048: его метка и слой всплывающих окон, элемент в `body` с той
+ * же меткой. Вне компонента территории нет, и `useFloatingLayer` отдаёт `body`.
+ */
+export type Territory = { scope: string | undefined; layer: () => HTMLElement };
+
+const TerritoryContext = createContext<Territory | undefined>(undefined);
+
+export function ProvideKit(props: { links: KitLinks; territory?: Territory; children: ReactNode }) {
+  return (
+    <KitContext value={props.links}>
+      <TerritoryContext value={props.territory}>{props.children}</TerritoryContext>
+    </KitContext>
+  );
 }
 
 export function useKit(): KitLinks {
   return useContext(KitContext);
+}
+
+export function useTerritory(): Territory | undefined {
+  return useContext(TerritoryContext);
 }
 
 /**

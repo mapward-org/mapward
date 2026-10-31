@@ -41,7 +41,7 @@ test("собранный компонент рисуется со своим css
   expect(html).toContain("Транскрибация");
   // Кирпичи — код плагина `views`: в набор окна они не входят.
   expect(html).toContain(
-    "ObjectCard,useAction,useMutation,useNavigation,usePlugin,useQuery,useStream,useViewState",
+    "ObjectCard,useAction,useFloatingLayer,useMutation,useNavigation,usePlugin,useQuery,useStream,useViewState",
   );
   expect(html).toContain(".p-2{padding:8px}");
 });

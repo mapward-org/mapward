@@ -211,7 +211,10 @@ export type Capabilities = Static<typeof Capabilities>;
  */
 export type ComponentBuild = {
   code?: string;
+  /** Css уже ограничен территорией компонента — элементами с меткой `scope` (решение 0048). */
   css?: string;
+  /** Метка компонента: клиент ставит её атрибутом `data-mw-component` на клетку и слой окон. */
+  scope?: string;
   errors?: string[];
   builtAt: string;
 };

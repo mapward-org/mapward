@@ -7,6 +7,7 @@ import type { ActionHandle, Navigate } from "@mapward/component";
 import { useViewStates } from "../../services/state/ports.tsx";
 import {
   useKit,
+  useTerritory,
   useMetricsPort,
   useNavigationPort,
   usePluginKit,
@@ -109,4 +110,15 @@ export function useAction(action: string, inputs?: Record<string, unknown>): Act
   useWatch(actions, actions.source(action));
   if (!object) throw new Error("useAction работает только в метрике и раскладке карты");
   return actions.handle(object, inputs === undefined ? { run: action } : { run: action, inputs });
+}
+
+/**
+ * Куда рисовать то, что ложится поверх карты, — решение 0048. Css компонента действует только под
+ * его меткой, и меню, вынесенное порталом прямо в `body`, осталось бы без стилей; слой — элемент в
+ * `body` с той же меткой. Отдаётся функцией: слой заводится, когда меню открывают, а не при
+ * отрисовке, где документа может и не быть. Вне компонента — сам `body`.
+ */
+export function useFloatingLayer(): () => HTMLElement {
+  const territory = useTerritory();
+  return territory ? territory.layer : () => document.body;
 }

@@ -198,6 +198,18 @@ export type Navigate = (target: string | { link?: string | undefined }, how?: Op
 export declare function useNavigation(): Navigate;
 
 /**
+ * Куда рисовать порталом то, что ложится поверх карты: меню, подсказки, окна. Css компонента
+ * действует только на его территории — в его клетке и в этом слое; вынесенное прямо в
+ * `document.body` останется без его классов. Отдаёт функцию: слой заводится, когда его просят.
+ *
+ * ```tsx
+ * const floating = useFloatingLayer();
+ * return open && createPortal(<div className="fixed z-50 …">…</div>, floating());
+ * ```
+ */
+export declare function useFloatingLayer(): () => HTMLElement;
+
+/**
  * Настройка смотрящего — масштаб холста, свёрнутая панель, последний выбор: хранит её хост, у
  * человека, а не в карте, и она переживает перезагрузку окна. Ключ общий на все компоненты —
  * своё различайте префиксом. Пока хранилище не ответило, значение — `initial`. На странице

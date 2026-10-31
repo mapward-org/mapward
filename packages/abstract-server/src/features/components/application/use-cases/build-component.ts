@@ -7,6 +7,7 @@ import type { BundlerPort, ClockPort, FileReader } from "../../../../ports/index
 import { bundle, isCode, message, watchedOf } from "../../../../lib/bundle.ts";
 import { candidates } from "../../domain/component.ts";
 import { fingerprint, inPackage, statPrint, type BuildInputs } from "../../domain/build-inputs.ts";
+import { scopeCss } from "../../domain/scope-css.ts";
 // Стили tailwind едут текстом внутри сервера: у установленного расширения `node_modules` нет.
 import themeCss from "tailwindcss/theme.css?raw";
 import utilitiesCss from "tailwindcss/utilities.css?raw";
@@ -53,7 +54,7 @@ export type BuildOutput = {
  * сохранённые сборки недействительны, как бы ни совпадали входы.
  */
 export const BUILD_STAMP = fingerprint(
-  ["component-build/1", [...PROVIDED].join(","), themeCss, utilitiesCss].join("\n"),
+  ["component-build/2", [...PROVIDED].join(","), themeCss, utilitiesCss].join("\n"),
 );
 
 async function build(
@@ -103,7 +104,9 @@ async function build(
     };
   }
 
-  return { build: { code: output.code, css }, watched, inputs };
+  // Граница css — решение 0048: метка по самому css, у двух клеток одного компонента она общая.
+  const scope = `c${fingerprint(css)}`;
+  return { build: { code: output.code, css: scopeCss(css, scope), scope }, watched, inputs };
 }
 
 /** Отпечаток ответа на чтение: пакет — по `stat`, если хост его умеет, остальное — по тексту. */
@@ -132,8 +135,9 @@ async function inputsOf(
 }
 
 /**
- * Без сброса стилей (preflight) и в тех же слоях, что у карты: компонент не перекрашивает карту,
- * а одинаковые классы совпадают с уже написанными (решение 0037).
+ * Без сброса стилей (preflight) и в тех же слоях, что у карты: компонент не перекрашивает карту
+ * (решение 0037). Что одинаковые классы компонента не перебивают карту, держит граница — `scopeCss`
+ * (решение 0048).
  */
 async function tailwind(classes: string[]): Promise<string> {
   const sheets: Record<string, string> = {

@@ -12,6 +12,7 @@ import {
   ComponentBoundary,
   ComponentBuilding,
   ComponentFailure,
+  ComponentScope,
   ComponentStyle,
 } from "../ui/component-parts.tsx";
 import { ComponentKit } from "./component-kit.tsx";
@@ -54,16 +55,18 @@ export function ComponentDisplay(props: {
   ) : module.failure ? (
     <ComponentFailure title={module.failure.title} lines={module.failure.lines} />
   ) : View ? (
-    <ProvideKit links={props.links}>
+    <ProvideKit links={props.links} territory={module}>
       <ComponentStyle css={module.css} />
-      <ComponentBoundary
-        build={module.builtAt}
-        fallback={(message) => (
-          <ComponentFailure title="компонент упал при отрисовке" lines={[message]} />
-        )}
-      >
-        <View {...props.display} />
-      </ComponentBoundary>
+      <ComponentScope scope={module.scope}>
+        <ComponentBoundary
+          build={module.builtAt}
+          fallback={(message) => (
+            <ComponentFailure title="компонент упал при отрисовке" lines={[message]} />
+          )}
+        >
+          <View {...props.display} />
+        </ComponentBoundary>
+      </ComponentScope>
     </ProvideKit>
   ) : null;
 }

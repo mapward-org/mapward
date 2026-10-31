@@ -22,6 +22,27 @@ export function ComponentFailure(props: { title: string; lines: string[] }) {
   );
 }
 
+/**
+ * Территория компонента — решение 0048: его css действует только под этой меткой. Обёртка не
+ * влияет на раскладку (`display: contents`) — компонент лежит в клетке, как лежал.
+ */
+export function ComponentScope(props: { scope: string | undefined; children: ReactNode }) {
+  return (
+    <div data-mw-component={props.scope ?? ""} style={{ display: "contents" }}>
+      {props.children}
+    </div>
+  );
+}
+
+/** Кусок карты внутри компонента (карточка объекта на холсте): css компонента сюда не заходит. */
+export function MapTerritory(props: { children: ReactNode }) {
+  return (
+    <div data-mw-map="" style={{ display: "contents" }}>
+      {props.children}
+    </div>
+  );
+}
+
 /** Css компонента ложится своим `<style>` и уходит вместе с ячейкой. */
 export function ComponentStyle(props: { css: string | undefined }) {
   return props.css ? <style>{props.css}</style> : null;

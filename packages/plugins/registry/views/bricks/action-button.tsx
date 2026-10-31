@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useAction } from "@mapward/component";
+import { useAction, useFloatingLayer } from "@mapward/component";
 import type { ActionRef } from "./types.ts";
 
 /**
@@ -120,13 +120,15 @@ function MenuItem(props: { action: ActionRef; onDone: () => void }) {
 /**
  * Меню строки — экшоны из `actions` пункта: кнопкой «⋯» при наведении и правым кликом по строке.
  * Сама строка остаётся как была. Меню — порталом поверх страницы: клетка метрики с прокруткой
- * обрезала бы его.
+ * обрезала бы его. Портал — в слой окон компонента, а не в `body`: классы компонента действуют
+ * только там и в его клетке (решение 0048).
  */
 export function RowMenu(props: { actions: ActionRef[]; children: ReactNode }) {
   // Где встаёт левый верхний угол меню: у курсора или под «⋯», правым краем к ней.
   const [at, setAt] = useState<{ left: number; top: number } | undefined>(undefined);
   const row = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const floating = useFloatingLayer();
 
   // Клик мимо меню и Escape закрывают его.
   useEffect(() => {
@@ -186,7 +188,7 @@ export function RowMenu(props: { actions: ActionRef[]; children: ReactNode }) {
               ))}
             </ul>
           </div>,
-          document.body,
+          floating(),
         )}
     </div>
   );

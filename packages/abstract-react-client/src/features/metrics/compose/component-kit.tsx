@@ -2,6 +2,7 @@ import type * as Kit from "@mapward/component";
 import type { ReactNode } from "react";
 import {
   useAction,
+  useFloatingLayer,
   useMutation,
   useNavigation,
   usePlugin,
@@ -9,7 +10,8 @@ import {
   useStream,
   useViewState,
 } from "../plugin-kit.ts";
-import { useMetricsPort } from "../ports.tsx";
+import { useMetricsPort, useTerritory } from "../ports.tsx";
+import { ComponentScope, MapTerritory } from "../ui/component-parts.tsx";
 
 /**
  * Набор `@mapward/component` — решение 0037: API окна, которым компонент говорит с платформой.
@@ -19,6 +21,9 @@ import { useMetricsPort } from "../ports.tsx";
 /**
  * Карточка объекта — та же, что у пункта с `object`: её рисует фича карточки, сетка даёт её портом.
  * Холст плагина `objects-map` ставит ею узлы с полным превью.
+ *
+ * Карточка — кусок карты внутри компонента (решение 0048): css компонента в неё не заходит, а
+ * кнопки `actions` — снова его, и стоят под его меткой.
  */
 function ObjectCard(props: {
   object: string;
@@ -29,17 +34,24 @@ function ObjectCard(props: {
   draggable?: boolean;
 }) {
   const port = useMetricsPort();
+  const territory = useTerritory();
   return (
-    <port.Card
-      item={{
-        object: props.object,
-        ...(props.group === undefined ? {} : { group: props.group }),
-        ...(props.width === undefined ? {} : { width: props.width }),
-        ...(props.maxHeight === undefined ? {} : { maxHeight: props.maxHeight }),
-      }}
-      actions={props.actions}
-      draggable={props.draggable}
-    />
+    <MapTerritory>
+      <port.Card
+        item={{
+          object: props.object,
+          ...(props.group === undefined ? {} : { group: props.group }),
+          ...(props.width === undefined ? {} : { width: props.width }),
+          ...(props.maxHeight === undefined ? {} : { maxHeight: props.maxHeight }),
+        }}
+        actions={
+          props.actions === undefined ? undefined : (
+            <ComponentScope scope={territory?.scope}>{props.actions}</ComponentScope>
+          )
+        }
+        draggable={props.draggable}
+      />
+    </MapTerritory>
   );
 }
 
@@ -56,5 +68,6 @@ export const ComponentKit = {
   useNavigation,
   useViewState,
   useAction,
+  useFloatingLayer,
   ObjectCard,
 } satisfies { [K in keyof typeof Kit]: (typeof Kit)[K] };
