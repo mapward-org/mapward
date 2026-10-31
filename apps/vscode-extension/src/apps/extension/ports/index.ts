@@ -2,6 +2,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as vscode from "vscode";
 import type { FileEntry, ServerPorts } from "@mapward/abstract-server";
+import { isDirectivePath } from "@/features/directive-layout/index.extension.ts";
 import { createTrust, editor, installPackages, startPlugin } from "./plugins.ts";
 
 /**
@@ -12,6 +13,17 @@ import { createTrust, editor, installPackages, startPlugin } from "./plugins.ts"
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const encode = (text: string) => new TextEncoder().encode(text);
 const uri = (path: string) => vscode.Uri.file(path);
+
+/**
+ * Открытая в редакторе директива. Сервер пишет в неё статус и реплики, пока автор её правит:
+ * запись мимо открытого документа дала бы конфликт с его несохранёнными правками. Поэтому
+ * директиву, открытую в редакторе, читаем и пишем через документ.
+ */
+const openDirective = (path: string): vscode.TextDocument | undefined => {
+  if (!isDirectivePath(path)) return undefined;
+  const wanted = uri(path).toString();
+  return vscode.workspace.textDocuments.find((doc) => doc.uri.toString() === wanted);
+};
 
 const files = {
   /** У `workspace.fs` ссылок нет, а сборке компонента нужен настоящий путь пакета (0037). */
@@ -24,6 +36,8 @@ const files = {
   },
 
   async read(path: string): Promise<string | undefined> {
+    const open = openDirective(path);
+    if (open) return open.getText();
     try {
       return decode(await vscode.workspace.fs.readFile(uri(path)));
     } catch {
@@ -70,6 +84,17 @@ const files = {
   },
 
   async write(path: string, text: string): Promise<void> {
+    const open = openDirective(path);
+    if (open) {
+      const edit = new vscode.WorkspaceEdit();
+      const whole = new vscode.Range(open.positionAt(0), open.positionAt(open.getText().length));
+      edit.replace(open.uri, whole, text);
+      // Применилось — сохраняем: диск и документ снова одно, и карта видит новый статус.
+      if (await vscode.workspace.applyEdit(edit)) {
+        await open.save();
+        return;
+      }
+    }
     await vscode.workspace.fs.writeFile(uri(path), encode(text));
   },
 

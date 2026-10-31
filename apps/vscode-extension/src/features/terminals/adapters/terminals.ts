@@ -19,6 +19,8 @@ type Session = {
   id: string;
   address: string;
   directive?: string;
+  /** Файл директивы: по нему раскладка держит пару «директива справа сверху — терминал под ней». */
+  directivePath?: string;
   name: string;
   terminal: vscode.Terminal;
 };
@@ -81,6 +83,7 @@ async function saveOwners(): Promise<void> {
     record[session.name] = {
       address: session.address,
       ...(session.directive === undefined ? {} : { directive: session.directive }),
+      ...(session.directivePath === undefined ? {} : { directivePath: session.directivePath }),
     };
   }
   await owners.update(OWNERS_KEY, record);
@@ -129,6 +132,13 @@ export async function openTerminal(params: {
   fresh?: boolean;
   /** Директива, которой терминал принадлежит; без неё он общий терминал объекта. */
   directive?: string;
+  /** Её файл — чтобы раскладка нашла терминал по директиве и директиву по терминалу. */
+  directivePath?: string;
+  /**
+   * Где терминалу жить: терминал директивы — вкладкой редактора под её файлом, место называет
+   * раскладка. Без места — нижняя панель, как у терминала объекта.
+   */
+  location?: vscode.TerminalEditorLocationOptions;
   /** Показать терминал, не забирая курсор: кнопка этапа оставляет человека там, где он был. */
   preserveFocus?: boolean;
 }): Promise<{ id: string; name: string }> {
@@ -151,10 +161,12 @@ export async function openTerminal(params: {
     name,
     cwd: params.cwd,
     isTransient: !persistent,
+    ...(params.location === undefined ? {} : { location: params.location }),
   });
   const session = register({
     address: params.address,
     ...(params.directive === undefined ? {} : { directive: params.directive }),
+    ...(params.directivePath === undefined ? {} : { directivePath: params.directivePath }),
     name,
     terminal,
   });
@@ -179,6 +191,32 @@ export function showTerminal(params: { id: string }): void {
 export function showDirectiveTerminal(params: { address: string; directive: string }): void {
   const session = pickStageSession(params);
   if (session) showTerminal(session);
+}
+
+const samePath = (a: string, b: string) =>
+  a.replaceAll("\\", "/").toLowerCase() === b.replaceAll("\\", "/").toLowerCase();
+
+/** Живой терминал директивы по её файлу — раскладке, чтобы вывести его под директивой. */
+export function directiveTerminal(path: string): vscode.Terminal | undefined {
+  return living().find(
+    (session) => session.directivePath !== undefined && samePath(session.directivePath, path),
+  )?.terminal;
+}
+
+/** Чья директива у терминала: файл, который раскладка откроет над ним. */
+export function directiveOfTerminal(terminal: vscode.Terminal): string | undefined {
+  return living().find((session) => session.terminal === terminal)?.directivePath;
+}
+
+/** Директиву удалили — её терминал уходит вместе с ней: говорить в нём больше не о чем. */
+export async function closeDirectiveTerminals(path: string): Promise<void> {
+  for (const session of living()) {
+    if (session.directivePath !== undefined && samePath(session.directivePath, path)) {
+      session.terminal.dispose();
+      sessions.delete(session.id);
+    }
+  }
+  await saveOwners();
 }
 
 export function listTerminals(params: { address: string }): { id: string; name: string }[] {

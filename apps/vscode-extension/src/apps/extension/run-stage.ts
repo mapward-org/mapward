@@ -8,6 +8,7 @@ import {
   sendToTerminal,
   stageName,
 } from "@/features/terminals/index.extension.ts";
+import { terminalLocation } from "@/features/directive-layout/index.extension.ts";
 import { rememberStage } from "./stage-tabs.ts";
 
 /**
@@ -45,9 +46,16 @@ export async function runStage(
   // Имя этапа новый терминал получает при рождении: переименование работает над активным
   // терминалом, а только что заведённый им ещё не стал, и вкладка до конца этапа оставалась
   // с именем объекта.
+  // Терминал директивы живёт вкладкой под её файлом — место называет раскладка.
+  const directivePath = object.directives.find((file) => file.name === params.directive)?.path;
+  const placed =
+    existing || directivePath === undefined
+      ? {}
+      : { directivePath, location: await terminalLocation(directivePath) };
   const session =
     existing ??
     (await openTerminal({
+      ...placed,
       name: stageName(tab),
       address: params.address,
       cwd: params.basePath,

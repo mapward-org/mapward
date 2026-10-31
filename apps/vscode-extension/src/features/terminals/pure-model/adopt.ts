@@ -5,7 +5,7 @@
  * Запись ведётся по полному имени вкладки и несёт адрес объекта и полное имя директивы: в самой
  * вкладке директива идёт без даты, и две директивы с одинаковым названием по подписи не различить.
  */
-export type Owner = { address: string; directive?: string };
+export type Owner = { address: string; directive?: string; directivePath?: string };
 
 export type Owners = Record<string, Owner>;
 

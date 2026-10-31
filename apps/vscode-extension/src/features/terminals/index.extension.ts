@@ -1,6 +1,9 @@
 export {
   adoptTerminals,
+  closeDirectiveTerminals,
   closeTerminal,
+  directiveOfTerminal,
+  directiveTerminal,
   listTerminals,
   openTerminal,
   pickSession,

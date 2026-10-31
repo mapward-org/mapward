@@ -11,7 +11,13 @@ import { startMcpHttp } from "./mcp-http.ts";
 import { bridgeHttp } from "./bridge-http.ts";
 import { serveBridge } from "./bridge-handler.ts";
 import { announcePlatform } from "./platform-record.ts";
-import { adoptTerminals, setMcpUrl } from "@/features/terminals/index.extension.ts";
+import {
+  adoptTerminals,
+  directiveOfTerminal,
+  directiveTerminal,
+  setMcpUrl,
+} from "@/features/terminals/index.extension.ts";
+import { registerDirectiveLayout } from "@/features/directive-layout/index.extension.ts";
 import { withStageTabs } from "./stage-tabs.ts";
 import { runStage } from "./run-stage.ts";
 import {
@@ -111,6 +117,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push({ dispose: forget });
   }
   await adoptTerminals(context.workspaceState);
+
+  // Директива справа сверху, её терминал под ней: пару держит раскладка, кто чей — терминалы.
+  context.subscriptions.push(
+    registerDirectiveLayout({ terminalOf: directiveTerminal, directiveOf: directiveOfTerminal }),
+  );
 
   // Кнопки этапов в файле директивы — решение 0032. Объект читается на каждый вопрос заново:
   // директивы и этапы меняются, пока файл открыт. Читается только тот, в чьей папке файл.
