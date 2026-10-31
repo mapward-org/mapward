@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { centerZone, directiveZone, isDirectivePath, terminalZone } from "./zones.ts";
+import {
+  centerZone,
+  directiveZone,
+  isDirectivePath,
+  newDirectiveColumn,
+  terminalZone,
+} from "./zones.ts";
 
 type Content = { directives?: boolean; terminals?: boolean; others?: boolean };
 
@@ -28,47 +34,46 @@ describe("isDirectivePath", () => {
 });
 
 describe("directiveZone", () => {
-  it("одна группа — зоны директив ещё нет, центр ею не становится", () => {
-    expect(directiveZone([directives(1)])).toBeUndefined();
-  });
-
-  it("берёт правую группу с директивами", () => {
+  it("группа из одних директив — зона, в какой бы колонке ни стояла", () => {
     expect(directiveZone([files(1), directives(2), terminals(3)])).toBe(2);
+    expect(directiveZone([directives(1), files(2), terminals(3)])).toBe(1);
+    expect(directiveZone([directives(1)])).toBe(1);
   });
 
-  it("гостья в центре зоной его не делает", () => {
+  it("директива вперемешку с другими файлами — гостья, зоны нет", () => {
     expect(directiveZone([group(1, { directives: true, others: true }), files(2)])).toBeUndefined();
   });
 
   it("узнаётся по содержимому, а не по запомненному номеру: центр разрезали — номера съехали", () => {
-    // Была зона во второй колонке; центр разрезали надвое, зона стала третьей.
     expect(directiveZone([files(1), files(2), directives(3), terminals(4)], 2)).toBe(3);
-  });
-
-  it("группа из одних директив — зона, даже если её передвинули в первую колонку", () => {
-    expect(directiveZone([directives(1), files(2), terminals(3)])).toBe(1);
   });
 
   it("из двух подходящих — запомненная", () => {
     expect(directiveZone([files(1), directives(2), directives(3)], 2)).toBe(2);
   });
-
-  it("пустая запомненная группа держится — её не по чему узнать", () => {
-    expect(directiveZone([files(1), group(2), terminals(3)], 2)).toBe(2);
-    expect(directiveZone([files(1), group(2), terminals(3)], 4)).toBeUndefined();
-  });
 });
 
 describe("terminalZone", () => {
-  it("не центр и не группа директив", () => {
-    expect(terminalZone([files(1), directives(2), terminals(3)], 2)).toBe(3);
+  it("группа из одних терминалов", () => {
+    expect(terminalZone([files(1), directives(2), terminals(3)])).toBe(3);
     expect(
-      terminalZone([group(1, { terminals: true, others: true }), directives(2)], 2),
+      terminalZone([group(1, { terminals: true, others: true }), directives(2)]),
     ).toBeUndefined();
   });
 
   it("узнаётся по содержимому, а не по запомненному номеру", () => {
-    expect(terminalZone([files(1), files(2), directives(3), terminals(4)], 3, 3)).toBe(4);
+    expect(terminalZone([files(1), files(2), directives(3), terminals(4)], 3)).toBe(4);
+  });
+});
+
+describe("newDirectiveColumn", () => {
+  it("справа от всего открытого", () => {
+    expect(newDirectiveColumn([files(1)])).toBe(2);
+    expect(newDirectiveColumn([files(1), files(2)])).toBe(3);
+  });
+
+  it("ничего не открыто — первая группа", () => {
+    expect(newDirectiveColumn([group(1)])).toBe(1);
   });
 });
 
