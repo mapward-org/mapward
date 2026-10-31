@@ -97,10 +97,6 @@ function terminalsZone(): number | undefined {
   return terminalsColumn;
 }
 
-/** Колонка правее всех: открытие туда заводит новую группу справа. */
-const nextColumn = (): number =>
-  Math.max(1, ...vscode.window.tabGroups.all.map((group) => group.viewColumn)) + 1;
-
 /**
  * Директива в своей группе. Группы нет — она заводится справа от всего открытого и закрепляется.
  * Курсор уходит в директиву: её открывают, чтобы читать и отвечать; раз фокус там — группа
@@ -128,13 +124,33 @@ export function openDirective(
 }
 
 /**
+ * Завести центр, когда его нет — все группы заняты директивами и терминалами: колонка слева на
+ * всю высоту окна, а директива с терминалом — правой колонкой друг над другом.
+ *
+ * Разрез группы делит только её клетку, поэтому новая группа ставится первой (над первой группой),
+ * а затем окну задаётся раскладка: VS Code раздаёт клеткам существующие группы по порядку на
+ * экране, так что первая — центр — встаёт слева, остальные — справа, со своими вкладками.
+ */
+async function makeCenter(): Promise<number> {
+  await vscode.commands.executeCommand("workbench.action.focusFirstEditorGroup");
+  await vscode.commands.executeCommand("workbench.action.newGroupAbove");
+  const right = vscode.window.tabGroups.all.length - 1;
+  await vscode.commands.executeCommand("vscode.setEditorLayout", {
+    orientation: 0,
+    groups: [{ size: 0.6 }, { size: 0.4, groups: Array.from({ length: right }, () => ({})) }],
+  });
+  return 1;
+}
+
+/**
  * Открыть обычный файл в центре, а не в активной группе: активной часто бывает группа директив,
- * а закреплённую VS Code обходит и уводит файл к соседям — к терминалам. Центра нет, все группы
- * заняты зонами — файл заводит себе группу справа.
+ * а закреплённую VS Code обходит и уводит файл к соседям — к терминалам.
  */
 export async function openFile(path: string): Promise<void> {
-  const directives = directivesZone();
-  const column = centerZone(groups(), directives, terminalsZone()) ?? nextColumn();
+  const column = await serial(async () => {
+    const directives = directivesZone();
+    return centerZone(groups(), directives, terminalsZone()) ?? (await makeCenter());
+  });
   await vscode.window.showTextDocument(vscode.Uri.file(path), { viewColumn: column });
 }
 

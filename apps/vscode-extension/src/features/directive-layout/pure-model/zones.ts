@@ -47,13 +47,11 @@ export function terminalZone(groups: GroupView[], remembered?: number): number |
 }
 
 /**
- * Куда завести группу директив, когда её нет: справа от всего открытого. Ничего не открыто —
- * одна пустая группа — она и становится группой директив.
+ * Куда завести группу директив, когда её нет: справа от всех групп. Даже одна пустая группа
+ * остаётся слева центром — туда, на всю высоту окна, лягут обычные файлы.
  */
 export function newDirectiveColumn(groups: GroupView[]): number {
-  const open = groups.filter((group) => group.directives || group.terminals || group.others);
-  if (open.length === 0) return groups[0]?.column ?? 1;
-  return Math.max(...groups.map((group) => group.column)) + 1;
+  return Math.max(0, ...groups.map((group) => group.column)) + 1;
 }
 
 /**

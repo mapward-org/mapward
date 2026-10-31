@@ -72,8 +72,8 @@ describe("newDirectiveColumn", () => {
     expect(newDirectiveColumn([files(1), files(2)])).toBe(3);
   });
 
-  it("ничего не открыто — первая группа", () => {
-    expect(newDirectiveColumn([group(1)])).toBe(1);
+  it("ничего не открыто — всё равно справа: пустая группа остаётся центром", () => {
+    expect(newDirectiveColumn([group(1)])).toBe(2);
   });
 });
 
