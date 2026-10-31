@@ -1,9 +1,9 @@
-import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
 import type { ResolvedMap } from "@mapward/core";
 import { useBridgeClient } from "../../../ports/bridge.tsx";
 import { useViewStates } from "../../../services/state/ports.tsx";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { MapsList } from "../adapters/maps-list.ts";
 import { MapsView, type RevealSource } from "../model/maps-view.ts";
 import { Accordion, AccordionSection, Searching } from "../ui/accordion.tsx";
@@ -13,7 +13,7 @@ import { Empty } from "../ui/empty.tsx";
  * The feature knows how many maps there are and nothing about what a map looks like — that
  * arrives through `renderMap`.
  */
-export const Maps = observer(function Maps(props: {
+export function Maps(props: {
   renderMap: (map: ResolvedMap) => ReactNode;
   /** Просьбы перейти к объекту: свёрнутая секция их карты раскрывается. */
   focus?: RevealSource | undefined;
@@ -23,6 +23,7 @@ export const Maps = observer(function Maps(props: {
   const maps = useLocalStore(
     () => new MapsView(new MapsList(bridge), views.slot<string[]>("maps:closed", []), props.focus),
   );
+  useWatch(maps);
   const { screen } = maps;
 
   return screen.kind === "loading" ? (
@@ -46,4 +47,4 @@ export const Maps = observer(function Maps(props: {
       ))}
     </Accordion>
   );
-});
+}

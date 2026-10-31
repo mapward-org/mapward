@@ -1,16 +1,20 @@
+import { Reactive, type Watchable } from "../../../lib/store/reactive.ts";
 import { isHistory, type History } from "../pure-model/navigation.ts";
 
-type Slot = { value: unknown; ready: boolean; set(value: unknown): void };
+type Slot = Watchable & { value: unknown; ready: boolean; set(value: unknown): void };
 
 /**
  * История карты в сайдбаре — в состоянии вида, по карте своя (решение 0036). Пока хранилище не
  * ответило, её нет: переход, сделанный раньше ответа, затёрла бы пришедшая следом история.
+ * Хранилище спрашивается, пока на историю подписаны: вид зовёт `useWatch(saved)`.
  */
-export class SavedHistory {
+export class SavedHistory extends Reactive {
   private readonly slot: Slot;
 
   constructor(views: { slot<T>(key: string, initial: T): Slot }, mapPath: string) {
+    super();
     this.slot = views.slot<unknown>(`history:${mapPath}`, undefined);
+    this.depend(this.slot);
   }
 
   get ready(): boolean {

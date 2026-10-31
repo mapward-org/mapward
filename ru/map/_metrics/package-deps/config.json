@@ -1,11 +1,27 @@
 {
   "label": "Зависимости пакетов",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "script",
-      "run": "node \"${{ mapward:// }}/_metrics/package-deps/deps.mjs\" \"${{ mapward://@ }}\""
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward:// }}/_metrics/package-deps/deps.mjs\" \"${{ mapward://@ }}\"",
+        "env": {
+          "MAPWARD_MAP_PATH": "${{ mapward:// }}"
+        }
+      }
+    },
+    "empty": "внутренних зависимостей нет"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward:// }}/_metrics/package-deps/deps.mjs\" \"${{ mapward://@ }}\"",
+      "env": {
+        "MAPWARD_MAP_PATH": "${{ mapward:// }}"
+      }
     }
-  ],
-  "display": { "kind": "list", "empty": "внутренних зависимостей нет" }
+  }
 }

@@ -1,36 +1,26 @@
-import type { ActionPermissions, MapObject } from "@mapward/core";
-import type { Cancellation, OutputListener, ProcessEnv, ProcessResult } from "../../ports/index.ts";
+import type { MapObject } from "@mapward/core";
+import type { Observable } from "rxjs";
 import type { MapRef } from "../../kernel/map-ref.ts";
 
 /**
  * Порты прогонов к соседним фичам — решение 0041: объявляет потребитель, стыкует сборка сервера.
  */
 
-/** От карты: экшон и объект, на котором его нажали. */
+/** От карты: объект, на котором нажали экшон, — по адресу, без детей. */
 export type RunsMapSource = {
-  current(ref: MapRef): Promise<MapObject>;
+  object(ref: MapRef, address: string): Promise<MapObject | undefined>;
 };
 
-/** От запуска: скрипт и агент — тем же кодом, что у метрик (решение 0038). */
-export type RunsExecutor = {
-  script(params: {
-    command: string;
-    cwd: string;
-    env: ProcessEnv;
-    input?: string;
-    cancel?: Cancellation;
-    output?: OutputListener;
-  }): Promise<ProcessResult>;
-  prompt(params: {
-    owner?: MapObject;
-    text: string;
-    tail?: string;
-    cwd: string;
-    env: ProcessEnv;
-    cancel?: Cancellation;
-    permissions?: ActionPermissions;
-    output?: OutputListener;
-  }): Promise<ProcessResult>;
+/**
+ * От плагинов: экшон — изменяющий метод плагина. Самоописание нужно ради схемы параметров —
+ * из неё строится форма; вызов — поток, отписка от него — остановка.
+ */
+export type RunsPlugins = {
+  describe(
+    ref: MapRef,
+    plugin: string,
+  ): Promise<{ methods: Record<string, { params?: unknown } | undefined> }>;
+  call(ref: MapRef, plugin: string, method: string, args: unknown): Observable<unknown>;
 };
 
 /** Пункт ленты про прогон экшона: где он, чей и как зовётся. */
@@ -51,9 +41,4 @@ export type RunsActivityTurn = {
 export type RunsActivity = {
   actionStarted(turn: RunsActivityTurn, kind?: "action" | "metric"): void;
   actionEnded(turn: RunsActivityTurn, failed: boolean, kind?: "action" | "metric"): void;
-};
-
-/** От метрик: пересобрать метрику после успешного экшона. */
-export type RunsMetricRefresh = {
-  run(ref: MapRef, address: string): Promise<unknown>;
 };

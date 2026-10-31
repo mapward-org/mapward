@@ -1,0 +1,37 @@
+{
+  "name": "@mapward/component",
+  "version": "0.0.0",
+  "description": "The window API a metric component gets from the map: plugin hooks, navigation, view state, actions, the object card and the props types. Plugin streams are rxjs Observables; the map hands rxjs itself to the component, like react.",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "rxjs": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unrun": "catalog:"
+  },
+  "peerDependencies": {
+    "@types/react": "^19.0.0"
+  }
+}

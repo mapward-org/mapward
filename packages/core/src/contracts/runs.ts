@@ -13,7 +13,7 @@ export const RunSource = T.Union([
   T.Literal("cli"),
   /** Метрика собралась сама: при открытии объекта или по интервалу. */
   T.Literal("refresh"),
-  /** Метрика пересобрана после успешного экшона — она из `refreshes`. */
+  /** Прежнее: метрика пересобрана после экшона. Экшон больше этого не делает. */
   T.Literal("action"),
   /** Метрику перезапустил вотчер шага: под его `watch` поменялся файл (решение 0043). */
   T.Literal("watch"),
@@ -39,6 +39,25 @@ export const RunStep = T.Object({
 });
 
 /**
+ * Сообщение о ходе — так метод, которого позвал экшон, говорит, что делает: начался шаг, строка
+ * вывода, строка хода и ошибок. Платформа пишет их в прогон по мере прихода; всё остальное, что
+ * метод отдаёт, — его итог. Сам метод об истории не знает: зовут его и мимо экшона.
+ */
+export type RunMessage =
+  | { progress: "step"; name: string }
+  | { progress: "out" | "log"; text: string };
+
+export function runMessage(value: unknown): RunMessage | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { progress, name, text } = value as Record<string, unknown>;
+  if (progress === "step" && typeof name === "string") return { progress, name };
+  if ((progress === "out" || progress === "log") && typeof text === "string") {
+    return { progress, text };
+  }
+  return undefined;
+}
+
+/**
  * Прогон экшона или метрики — решение 0038. Живёт локально, в `.mapward/runs/` карты: это
  * операционка, а не история проекта, и в git не попадает.
  */
@@ -58,6 +77,8 @@ export const Run = T.Object({
   /** Конфиг после подстановок — тот, по которому прогон действительно шёл. */
   config: T.Optional(T.Unknown()),
   steps: T.Array(RunStep),
+  /** Итог метода: последнее его значение, которое не сообщение о ходе. */
+  result: T.Optional(T.Unknown()),
   /** Почему прогон не удался, одной строкой. */
   error: T.Optional(T.String()),
 });

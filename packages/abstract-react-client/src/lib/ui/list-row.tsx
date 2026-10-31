@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
-import { Popup } from "../mobx/popup.ts";
-import { useLocalStore } from "../mobx/use-local-store.ts";
+import { Popup } from "../store/popup.ts";
+import { useLocalStore } from "../store/use-local-store.ts";
+import { useWatch } from "../store/use-watch.ts";
 import { RowMenu, type MenuAction } from "./row-menu.tsx";
 import { Spinner } from "./spinner.tsx";
 
@@ -22,7 +22,7 @@ export type { MenuAction };
  *
  * Крестик остаётся на наведении: он справа, и мышь едет к нему поперёк списка, а не вниз.
  */
-export const ListRow = observer(function ListRow(props: {
+export function ListRow(props: {
   label: string;
   /** Подробность, которой не место в строке: висит тултипом. */
   title?: string;
@@ -39,6 +39,7 @@ export const ListRow = observer(function ListRow(props: {
 }) {
   // Меню лежит `fixed`: прокрутка списка его закрывает, иначе оно уедет от строки.
   const popup = useLocalStore(() => new Popup(undefined, true));
+  useWatch(popup);
 
   const menu = props.menu;
   const select = props.onSelect ?? (menu ? () => popup.toggle() : undefined);
@@ -95,4 +96,4 @@ export const ListRow = observer(function ListRow(props: {
       {props.children}
     </div>
   );
-});
+}

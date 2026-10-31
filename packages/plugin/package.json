@@ -1,0 +1,37 @@
+{
+  "name": "@mapward/plugin",
+  "version": "0.0.0",
+  "description": "The server side of a mapward plugin: definePlugin, the context the platform hands every method, the protocol over stdio and stream helpers. Built into one file with everything inside, rxjs and typebox included: the platform hands those to every plugin.",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./dist/index.mjs": "./dist/index.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "rxjs": "catalog:",
+    "typebox": "catalog:"
+  },
+  "devDependencies": {
+    "@mapward/core": "workspace:*",
+    "@mapward/vfs": "workspace:*",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unrun": "catalog:"
+  }
+}

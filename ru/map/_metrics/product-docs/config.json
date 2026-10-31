@@ -1,25 +1,20 @@
 {
   "label": "Доки продукта",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "static",
-      "value": {
-        "items": [
-          {
-            "label": "Идеи",
-            "description": "что хочется сделать, очередь без обязательств",
-            "link": "${{ mapward://@ }}/ru/docs/ideas.md"
-          },
-          {
-            "label": "Требования",
-            "description": "продуктовое описание: что такое mapward и зачем",
-            "link": "${{ mapward://@ }}/ru/docs/requirements.md"
-          }
-        ]
-      }
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "data": {
+      "items": [
+        {
+          "label": "Идеи",
+          "description": "что хочется сделать, очередь без обязательств",
+          "link": "${{ mapward://@ }}/ru/docs/ideas.md"
+        },
+        {
+          "label": "Требования",
+          "description": "продуктовое описание: что такое mapward и зачем",
+          "link": "${{ mapward://@ }}/ru/docs/requirements.md"
+        }
+      ]
     }
-  ],
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "list" }
+  }
 }

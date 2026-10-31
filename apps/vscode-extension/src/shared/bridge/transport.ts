@@ -6,7 +6,8 @@ type VsCodeApi = {
   getState: () => unknown;
   setState: (value: unknown) => void;
 };
-type WebviewLike = {
+/** Вебвью для моста: настоящий редактора или поддельный поверх http (`/bridge` у MCP-сервера). */
+export type WebviewLike = {
   postMessage: (message: unknown) => unknown;
   onDidReceiveMessage: (handler: (message: unknown) => void) => { dispose: () => void };
 };

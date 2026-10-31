@@ -1,23 +1,26 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
-import type { Layout, MapMetric, MapObject } from "@mapward/core";
+import type { MapMetric, MapObject, MetricGroup } from "@mapward/core";
+import type { CardMap } from "./model/card-store.ts";
 
 /**
  * Что карточке объекта нужно от соседей — решение 0042. Сама карточка умеет немного: найти
  * объект, выбрать вкладку и уложиться в размер. Всё внутри рисуют фичи, которые это уже умеют,
  * и стыкует их точка входа: сетка метрик внутри карточки снова может нарисовать карточку.
+ * Объект карточка берёт у карты (`object`, `feed`) — он приходит с сервера ресурсом.
  */
-export type ObjectCardPort = {
-  find(address: string): MapObject | undefined;
+export type ObjectCardPort = CardMap & {
   /** Клик по имени — объект на месте. */
   open(link: string): void;
   /** Ctrl + клик по имени — отдельным табом; хост без табов — поля нет (решение 0026). */
   openTab?: ((link: string) => void) | undefined;
-  /** Сетка метрик вкладки — та же, что на экране объекта, со своей подпиской; карточка просит компактную. */
+  /**
+   * Метрики вкладки — те же, что на экране объекта: её раскладкой или списком, со своими
+   * подписками; карточка просит компактный вид.
+   */
   Grid: ComponentType<{
     object: MapObject;
     metrics: MapMetric[];
-    layout?: Layout | undefined;
-    group?: string | undefined;
+    group?: MetricGroup | undefined;
     compact?: boolean | undefined;
   }>;
   /** Меню экшонов объекта — то же, что в шапке экрана. */

@@ -1,23 +1,26 @@
-import type { Observable } from "rxjs";
-import type { MapMetric, MapObject, MapOp, RunSource } from "@mapward/core";
+import { endWith, firstValueFrom, map as mapStream, type Observable } from "rxjs";
+import { MAP_ROOT } from "@mapward/core";
+import type { MapEditOp, PluginEvent, RunSource } from "@mapward/core";
+import { builtinPlugins } from "@mapward/plugins";
 import type { ServerPorts } from "../ports/index.ts";
 import type { MapRef } from "../kernel/map-ref.ts";
-import { MapModel } from "../features/map/index.ts";
-import { ApplySteps, EditHistory, EditMap, ToggleEdit } from "../features/objects-map/index.ts";
-import { Executor } from "../features/execution/index.ts";
-import { BuildDisplay, DisplayBuilds, DisplaySchema } from "../features/displays/index.ts";
+import { ActionConfig, MapModel, MetricConfig, ObjectIndex } from "../features/map/index.ts";
 import {
-  Builtins,
-  CollectMetric,
-  GitStatus,
-  MetricCache,
-  MetricStore,
-  TransformMetric,
-  type MetricSettings,
-  type ReadOptions,
-  type RunOptions,
-} from "../features/metrics/index.ts";
+  ApplySteps,
+  CheckTarget,
+  EditHistory,
+  EditMap,
+  FieldOps,
+  ToggleEdit,
+} from "../features/map-edits/index.ts";
+import {
+  BUILD_STAMP,
+  BuildCache,
+  BuildComponent,
+  ComponentBuilds,
+} from "../features/components/index.ts";
 import { RunStore } from "../features/action-runs/index.ts";
+import { BuildPlugin, CheckPlugin, InstallPlugin, PluginHost } from "../features/plugins/index.ts";
 import { TurnStore, type TurnKey } from "../features/directive-turns/index.ts";
 import {
   CreateDirective,
@@ -38,63 +41,138 @@ export type MapServer = ReturnType<typeof createMapServer>;
  *
  * Ничего платформенного здесь нет, всё приходит портами. Поэтому один и тот же сервер живёт в
  * расширении и в cli, а его подписки одинаково работают через любой транспорт.
- */
-export type ServerSettings = MetricSettings;
-
-/**
+ *
+ *
  * Сборка вручную, в одном месте — решение 0041: явные создания в порядке зависимостей, без
  * контейнера. Связку портов получает только она и раздаёт каждому классу его порты; фичи друг
  * друга не знают, их порты стыкуются здесь.
  */
-export function createMapServer(ports: ServerPorts, settings: ServerSettings = {}) {
-  const { files, shell, agent, clock, timers, env } = ports;
+export function createMapServer(ports: ServerPorts) {
+  const { files, clock, timers, env } = ports;
 
   // Карта — одна на сервер, и все записи сервера в неё идут через неё: тот, кто записал,
   // следом читает модель и должен видеть своё, не дожидаясь вотчера.
   const map = new MapModel(files, files, timers, clock);
   const writer = map.writer(files);
 
-  const executor = new Executor(shell, agent);
-  const schema = new DisplaySchema(files);
-  const displays = new DisplayBuilds(
+  // Правка карты — базовый набор платформы: перенос переписывает адреса по всей карте, поэтому
+  // план считается по модели целиком. Переносы и удаления папок идут мимо `writer`, и тронутое
+  // модель перечитывает сама (`refresh`): следующая операция пачки видит своё.
+  const editSource = {
+    current: async (ref: MapRef) => {
+      const root = await map.subtree(ref, MAP_ROOT, Infinity);
+      if (!root) throw new Error(`карта ${ref.mapPath} не читается`);
+      return root;
+    },
+    refresh: (paths: string[]) => map.refresh(paths),
+  };
+  const editHistory = new EditHistory();
+  const applySteps = new ApplySteps(
+    files,
+    files,
+    files.move ? { move: files.move.bind(files) } : undefined,
+    editSource,
+  );
+  const undoEdit = new ToggleEdit(applySteps, editHistory, "done");
+  const redoEdit = new ToggleEdit(applySteps, editHistory, "undone");
+
+  const components = new ComponentBuilds(
     map,
-    new BuildDisplay(files, clock, ports.bundler),
+    new BuildComponent(files, clock, ports.bundler),
     files,
     timers,
     clock,
+    // Сборки — на диске карты, в `.mapward/builds/`: окно открывается с ними, а не со сборщиком.
+    new BuildCache(files, BUILD_STAMP),
   );
 
-  // Кэш метрик в модель карты не входит, и перечитывать её ради своей записи незачем: пишет
-  // он мимо неё, а вотчер увидит сам.
-  const cache = new MetricCache(files, files);
-  const builtins = new Builtins(new GitStatus(shell, files, env, timers, clock));
+  // Плагины: процесс на плагин на карту. Сборку пишет мимо `writer` — это `.mapward`, а не
+  // карта, и модели перечитывать её незачем.
+  // Установка встроенного тоже мимо `writer`: `_plugins` — код, а не объекты карты.
+  const installPlugin = new InstallPlugin(files, ports.trust, builtinPlugins, ports.packages);
+  const buildPlugin = new BuildPlugin(files, ports.bundler);
+  const plugins = new PluginHost(
+    map,
+    buildPlugin,
+    installPlugin,
+    files,
+    timers,
+    clock,
+    env,
+    ports.plugins,
+    ports.trust,
+    ports.editor,
+    ports.webview,
+    {
+      edit: (ref, ops) => editMap.run(ref, ops),
+      undo: (ref, id) => undoEdit.run(ref, id),
+      redo: (ref, id) => redoEdit.run(ref, id),
+    },
+  );
 
-  // Прогоны метрик и экшонов — одна история (решение 0038). Стор метрик сообщает о своих, а
-  // хранилище прогонов после успешного экшона просит его пересобрать метрики: ссылка по кругу,
-  // поэтому стор берётся через замыкание — к первому прогону он уже есть.
+  // Проверка плагина стыкует сборку, процесс, карту и сборку компонента метрики.
+  const checkPlugin = new CheckPlugin({
+    build: (ref, plugin) => buildPlugin.run(ref, plugin),
+    describe: (ref, plugin) => plugins.describe(ref, plugin),
+    first: (ref, plugin, method, args, timeout) =>
+      plugins.first(ref, plugin, method, args, timeout),
+    // Вся карта по смыслу: проверка ищет метрики, которые зовут плагин, где бы они ни лежали.
+    // Разовое чтение по просьбе человека, а не подписка.
+    map: async (ref) => {
+      const root = await map.subtree(ref, MAP_ROOT, Infinity);
+      if (!root) throw new Error(`карта ${ref.mapPath} не читается`);
+      return root;
+    },
+    buildComponent: (ref, metric) => components.buildOnce(ref, metric),
+  });
+
+  // Правке нужны плагины — проверить запись по их самоописанию и шаблонам, — а плагинам правка:
+  // `ctx.editMap`. Хост зовёт её лениво, поэтому собирается она после него.
+  const editPlugins = {
+    describe: (ref: MapRef, plugin: string) => plugins.describe(ref, plugin),
+    first: (ref: MapRef, plugin: string, method: string, args: unknown, timeout: number) =>
+      plugins.first(ref, plugin, method, args, timeout),
+    check: (ref: MapRef, plugin: string, timeout: number) =>
+      checkPlugin
+        .run(ref, plugin, timeout)
+        .then(({ ok, steps }) => ({ target: plugin, ok, steps })),
+    installDeps: (ref: MapRef, plugin: string) => installPlugin.installDeps(ref, plugin),
+  };
+  const editMap = new EditMap(
+    editSource,
+    files,
+    applySteps,
+    editHistory,
+    new FieldOps(
+      files,
+      { object: ObjectIndex, metric: MetricConfig, action: ActionConfig },
+      editPlugins,
+    ),
+    new CheckTarget(
+      {
+        metric: (ref, address) => components.buildOnce(ref, address),
+        layout: (ref, address, group) => components.buildLayoutOnce(ref, address, group),
+        actionForm: (ref, action) => components.buildActionFormOnce(ref, action),
+      },
+      editPlugins,
+    ),
+    editPlugins,
+  );
+
+  // История прогонов — только у экшонов (решение 0038), и только у вызовов через экшон: сам
+  // экшон — метод плагина, и платформа, маршрутизируя вызов, его записывает. Ленту сайдбара
+  // она делит с директивами.
   const turns = new TurnStore();
   const runs = new RunStore(
     files,
-    executor,
     map,
-    { run: (ref, address) => metrics.run(ref, address, { wait: false, source: "action" }) },
-    env,
+    {
+      describe: (ref, plugin) => plugins.describe(ref, plugin),
+      call: (ref, plugin, method, args) => plugins.call(ref, plugin, method, args),
+    },
     timers,
     clock,
     turns,
-  );
-  const metrics = new MetricStore(
-    map,
-    cache,
-    new CollectMetric(files, cache, schema, executor, env, clock),
-    new TransformMetric(builtins, cache, schema, executor, env, clock),
-    builtins,
-    schema,
-    timers,
-    clock,
-    files,
-    settings,
-    runs,
   );
 
   const locator = new DirectiveLocator(map);
@@ -110,30 +188,19 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     state,
     turns,
   );
-  // Правка карты с холста и агентом — решение 0044. Пишет мимо `writer`: перенос папок он не
-  // умеет, поэтому тронутое перечитывается разом, когда шаги сделаны.
-  const history = new EditHistory();
-  const applySteps = new ApplySteps(
-    files,
-    files,
-    files.move ? { move: files.move.bind(files) } : undefined,
-    map,
-  );
-  const editMap = new EditMap(map, files, applySteps, history);
-  const undoEdit = new ToggleEdit(applySteps, history, "done");
-  const redoEdit = new ToggleEdit(applySteps, history, "undone");
-
   return {
     capabilities: () => ports.capabilities,
 
-    getMap: (ref: MapRef): Promise<MapObject> => map.current(ref),
-
     /**
-     * Карту правят руками и агентами, поэтому источник истины — файловая система. Подписчик
-     * сразу получает то, что есть, потом каждое изменение: модель одна на сервер и следит за
-     * картой сама (решение 0041).
+     * Объект по адресу и `depth` уровней его детей (`0` — без детей, `Infinity` — всё под ним).
+     * Читается путь к нему и то, что под ним на этой глубине; нет такого — `undefined`.
      */
-    watchMap: (ref: MapRef): Observable<MapObject> => map.watch(ref),
+    readObject: (params: MapRef & { address: string; depth: number }) =>
+      map.subtree(params, params.address, params.depth),
+
+    /** Предки объекта разово — от корня, без него самого. */
+    readAncestors: (params: MapRef & { address: string }) =>
+      firstValueFrom(map.ancestors(params, params.address)),
 
     /**
      * Перечитать карту — кнопка рядом с навигацией, как в браузере (решение 0041): для того,
@@ -142,43 +209,45 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     reloadMap: (ref: MapRef): Promise<void> => map.reload(ref),
 
     /**
-     * Файлы карты для клиента — решение 0041: у клиента та же живая модель, и файлы он читает
-     * сам, по подписке, из того же чтения, что у сервера. Только внутри папки карты.
+     * Объект для клиента: модель карты одна — у сервера, клиент на неё смотрит. Свои поля и
+     * ближайшие дети без внуков, одно значение на пачку; `null` — объекта нет.
      */
-    watchMapFile: (params: MapRef & { path: string }) => map.watchFile(params, params.path),
-    watchMapFolder: (params: MapRef & { path: string }) => map.watchFolder(params, params.path),
+    watchObject: (params: MapRef & { address: string }) => map.view(params, params.address),
 
-    /**
-     * Группа — это вкладка объекта: метрики вне неё не собираются вовсе (решение 0025).
-     * Названные ключи бьют группу — так подписывается таб одной метрики (решение 0026).
-     */
-    watchMetrics: (params: MapRef & { address?: string; group?: string; metrics?: string[] }) =>
-      metrics.watch(params, params.address, {
-        ...(params.group === undefined ? {} : { group: params.group }),
-        ...(params.metrics === undefined ? {} : { metrics: params.metrics }),
-      }),
+    /** Предки объекта для крошек: читаются только папки на пути. */
+    watchAncestors: (params: MapRef & { address: string }) => map.ancestors(params, params.address),
 
     /**
      * Собранный компонент метрики — решение 0037. Пересобирается сам, когда меняется компонент
      * или то, что он импортирует; подписка приносит новую сборку.
      */
-    watchDisplay: (params: MapRef & { metric: string }) => displays.watch(params, params.metric),
+    watchComponent: (params: MapRef & { metric: string }) =>
+      components.watch(params, params.metric),
 
-    /** Сборка без слежки: ей отвечает `mapward display check`. */
-    buildDisplay: (params: MapRef & { metric: string }) =>
-      displays.buildOnce(params, params.metric),
+    /** Собранная раскладка группы объекта: пересобирается так же, как компонент метрики. */
+    watchLayout: (params: MapRef & { address: string; group: string }) =>
+      components.watchLayout(params, params.address, params.group),
 
-    runMetric: (params: MapRef & { metric: string } & RunOptions & { wait?: boolean }) =>
-      metrics.run(params, params.metric, params),
+    /** Собранная своя форма экшона: пересобирается так же, как компонент метрики. */
+    watchActionForm: (params: MapRef & { action: string }) =>
+      components.watchActionForm(params, params.action),
 
     /**
-     * Запустить экшон — решение 0038. Номер прогона уходит сразу, прогон идёт у сервера; поля
-     * формы проверяются здесь, и при ошибке прогона нет, а в ответе — что не так с полями.
+     * Стереть сохранённые сборки компонентов карты (`.mapward/builds/` и память сервера): то, на
+     * что смотрят, собирается заново. На случай, когда сверка входов чего-то не заметила.
+     */
+    clearBuildCache: (ref: MapRef) => components.clearCache(ref),
+
+    /**
+     * Запустить экшон — решение 0038: вызвать его метод плагина с параметрами и данными формы и
+     * записать вызов в историю. Номер прогона уходит сразу, прогон идёт у сервера; поля формы
+     * проверяются здесь, и при ошибке прогона нет, а в ответе — что не так с полями.
      */
     runAction: (
       params: MapRef & { action: string; inputs?: Record<string, unknown>; source?: RunSource },
     ) => runs.start(params, params.action, params.inputs, params.source),
 
+    /** Остановить прогон — отписаться от вызова метода. */
     stopRun: (params: { mapPath: string; id: string }) => {
       runs.stop(params.mapPath, params.id);
     },
@@ -194,11 +263,13 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
       runs.watch(params.mapPath, params.address),
 
     /**
-     * Что показано сейчас: этим MCP отдаёт метрики в собранном виде. Без опций — только кэш,
-     * с `refresh: "on-display"` дешёвое досчитывается (решение 0016).
+     * Правка карты пачкой операций: свои поля по адресу (`get`/`set`/`delete`), структура
+     * (`create`, `move`, `setFolder`, `copy`), сырые файлы, `check`, `installDeps`. Ответ — номер
+     * пачки, переезды адресов и ответы операций; отмена и повтор — по номеру.
      */
-    readMetrics: (ref: MapRef, object: MapObject, options?: ReadOptions) =>
-      metrics.read(ref, object, options),
+    editMap: (params: MapRef & { ops: MapEditOp[] }) => editMap.run(params, params.ops),
+    undoEdit: (params: MapRef & { id: string }) => undoEdit.run(params, params.id),
+    redoEdit: (params: MapRef & { id: string }) => redoEdit.run(params, params.id),
 
     /** Объект файлом, как он написан на диске — решение 0009: агент видит и мердж, и исходник. */
     readIndexFile: (objectPath: string) => files.read(`${objectPath}/_index.json`),
@@ -208,12 +279,6 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
 
     /** Текст этапа без его запуска. */
     readStage: (params: MapRef & { address: string; stage: string }) => readStage.run(params),
-
-    /**
-     * Почему метрика красная, написано в логах прогона, а не во флаге `ok`. Читаются они по
-     * просьбе: логи жирные, и в каждый ответ им не место — решение 0016.
-     */
-    readMetricLogs: (metric: MapMetric) => cache.readLogs(metric),
 
     createDirective: (params: { objectPath: string; title: string }) => createDirective.run(params),
 
@@ -251,15 +316,62 @@ export function createMapServer(ports: ServerPorts, settings: ServerSettings = {
     },
 
     /**
-     * Правка карты пачкой операций — решение 0044: холст по мосту, агент через MCP, одни и те же
-     * операции. Номер пачки из ответа — то, по чему её отменяют.
+     * Метод плагина потоком значений. Плагин — абсолютный путь к его папке. Отписка — отмена.
      */
-    editMap: (params: MapRef & { ops: MapOp[] }) => editMap.run(params, params.ops),
+    callPlugin: (
+      params: MapRef & { plugin: string; method: string; args?: unknown },
+    ): Observable<unknown> => plugins.call(params, params.plugin, params.method, params.args ?? {}),
 
-    /** Отмена пачки: файлы, поменянные мимо неё, не затираются — отказ с их перечнем. */
-    undoEdit: (params: MapRef & { id: string }) => undoEdit.run(params, params.id),
+    /** То же для моста: у моста своего конца у потока нет, конец приходит событием. */
+    watchPluginCall: (
+      params: MapRef & { plugin: string; method: string; args?: unknown },
+    ): Observable<PluginEvent> =>
+      plugins.call(params, params.plugin, params.method, params.args ?? {}).pipe(
+        mapStream((value): PluginEvent => ({ kind: "next", value })),
+        endWith<PluginEvent>({ kind: "complete" }),
+      ),
 
-    /** Повтор отменённой пачки, с той же проверкой. */
-    redoEdit: (params: MapRef & { id: string }) => redoEdit.run(params, params.id),
+    /**
+     * Первое значение метода или отказ по сроку — так ждёт агент: бесконечно ему некогда, а
+     * своих сроков платформа плагину не ставит, их называет зовущий.
+     */
+    pluginFirst: (
+      params: MapRef & { plugin: string; method: string; args?: unknown },
+      timeout: number,
+    ) => plugins.first(params, params.plugin, params.method, params.args ?? {}, timeout),
+
+    /** Все значения до конца потока — так ждут долгий изменяющий метод. */
+    pluginAll: (
+      params: MapRef & { plugin: string; method: string; args?: unknown },
+      timeout: number,
+    ) => plugins.all(params, params.plugin, params.method, params.args ?? {}, timeout),
+
+    /** Самоописание плагина: методы, схемы, читающий или изменяющий. */
+    describePlugin: (params: MapRef & { plugin: string }) =>
+      plugins.describe(params, params.plugin),
+
+    /** Хвост stderr плагина — почему он не отвечает. */
+    pluginLog: (params: MapRef & { plugin: string }) => plugins.log(params, params.plugin),
+
+    /**
+     * Скопировать встроенный плагин в карту: в `_plugins/<имя>` или в названную папку внутри
+     * неё. Папка уже есть — отказ: существующую копию mapward не перезаписывает никогда.
+     */
+    installPlugin: (params: MapRef & { name: string; path?: string }) =>
+      installPlugin.run(params, params.name, params.path),
+
+    /**
+     * Работает ли плагин: сборка, процесс и рукопожатие, самоописание, метрики карты, которые на
+     * него ссылаются. Ей отвечают `mapward plugin check` и `check_plugin`. `timeout` — на каждый
+     * пробный запрос для агента.
+     */
+    checkPlugin: (params: MapRef & { plugin: string }, timeout: number) =>
+      checkPlugin.run(params, params.plugin, timeout),
+
+    /** Имена встроенных плагинов — что можно поставить. */
+    builtinPlugins: () => installPlugin.names(),
+
+    /** Погасить процессы плагинов вместе с платформой. */
+    stopPlugins: () => plugins.stopAll(),
   };
 }

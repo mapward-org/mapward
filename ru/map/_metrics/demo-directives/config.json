@@ -1,11 +1,20 @@
 {
   "label": "Директивы — компонент",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "script",
-      "run": "node \"${{ mapward:// }}/_metrics/demo-directives/collect.mjs\""
+  "component": "./display.tsx",
+  "params": {
+    "command": "node \"${{ mapward:// }}/_metrics/demo-directives/collect.mjs\"",
+    "env": {
+      "MAPWARD_MAP_PATH": "${{ mapward:// }}"
     }
-  ],
-  "display": { "kind": "component", "component": "./display.tsx", "schema": "./schema.json" }
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward:// }}/_metrics/demo-directives/collect.mjs\"",
+      "env": {
+        "MAPWARD_MAP_PATH": "${{ mapward:// }}"
+      }
+    }
+  }
 }

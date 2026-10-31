@@ -1,15 +1,50 @@
 {
   "label": "Требования",
-  "refresh": "on-display",
-  "collapsed": true,
-  "collectors": [
-    {
-      "kind": "read-dir",
-      "basePath": "${{ mapward://~#props.requirementsPath }}",
-      "include": ["**/*.md"],
-      "content": true
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own",
+        "env": {
+          "MAPWARD_MAP_PATH": "${{ mapward:// }}",
+          "MAPWARD_OBJECT_PATH": "${{ mapward://~ }}"
+        },
+        "from": {
+          "plugin": "${{ mapward:// }}/_plugins/files",
+          "method": "tree",
+          "params": {
+            "path": "${{ mapward://~#props.requirementsPath }}",
+            "include": ["**/*.md"],
+            "content": true,
+            "git": true
+          }
+        }
+      }
+    },
+    "empty": "требований нет",
+    "collapsed": true
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own",
+      "env": {
+        "MAPWARD_MAP_PATH": "${{ mapward:// }}",
+        "MAPWARD_OBJECT_PATH": "${{ mapward://~ }}"
+      },
+      "from": {
+        "plugin": "${{ mapward:// }}/_plugins/files",
+        "method": "tree",
+        "params": {
+          "path": "${{ mapward://~#props.requirementsPath }}",
+          "include": ["**/*.md"],
+          "content": true,
+          "git": true
+        }
+      }
     }
-  ],
-  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --own" }, { "kind": "git-status" }],
-  "display": { "kind": "tree", "empty": "требований нет" }
+  }
 }

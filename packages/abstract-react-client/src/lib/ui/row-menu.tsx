@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
-import { Anchor } from "../mobx/popup.ts";
-import { useLocalStore } from "../mobx/use-local-store.ts";
+import { Anchor } from "../store/popup.ts";
+import { useLocalStore } from "../store/use-local-store.ts";
+import { useWatch } from "../store/use-watch.ts";
 import { Spinner } from "./spinner.tsx";
 
 /** `busy` — пункт идёт сейчас: лоадер рядом с подписью. */
@@ -16,7 +16,7 @@ export type MenuAction = { key?: string; label: string; busy?: boolean; onSelect
  * внутри него, обрезалось бы его краем. Место меряется по кнопке в момент открытия, а закрывает
  * меню от прокрутки тот, кто держит его открытым.
  */
-export const RowMenu = observer(function RowMenu(props: {
+export function RowMenu(props: {
   /** Слово или иконка — что понятнее в этом списке. Иконке нужен `title`. */
   label: ReactNode;
   title?: string;
@@ -25,6 +25,7 @@ export const RowMenu = observer(function RowMenu(props: {
   onOpen: (open: boolean) => void;
 }) {
   const anchor = useLocalStore(() => new Anchor());
+  useWatch(anchor);
 
   return (
     <>
@@ -65,4 +66,4 @@ export const RowMenu = observer(function RowMenu(props: {
       )}
     </>
   );
-});
+}

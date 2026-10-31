@@ -1,0 +1,9 @@
+{
+  "name": "mapward-plugin-objects-map",
+  "private": true,
+  "description": "Холст карты mapward: вьюха объектов и её правка. Зависимости ставит mapward при установке плагина: npm install --omit=dev --omit=peer.",
+  "type": "module",
+  "dependencies": {
+    "@xyflow/react": "^12.10.0"
+  }
+}

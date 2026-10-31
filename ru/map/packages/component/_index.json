@@ -1,0 +1,10 @@
+{
+  "name": "component",
+  "extends": "mapward://prototypes/package",
+  "props": {
+    "codePath": "packages/component",
+    "docsPath": "ru/docs/architecture/packages.md",
+    "packageName": "@mapward/component",
+    "architectureDoc": "ru/docs/architecture/component.md"
+  }
+}

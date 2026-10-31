@@ -1,41 +1,54 @@
-import type { ActionRef, MapAction, MapObject } from "@mapward/core";
-import type { DisplayAction } from "@mapward/display";
-import { keyClashes } from "../../../kernel/clashes.ts";
+import type { MapAction, MapObject } from "@mapward/core";
+import type { ActionHandle } from "@mapward/component";
+import type { ActionRef } from "../../../kernel/action-ref.ts";
+import { Reactive, type Watchable } from "../../../lib/store/reactive.ts";
 import { actionLabel } from "../pure-model/actions.ts";
 import type { Launcher } from "./launcher.ts";
 
-/** Где искать экшон, названный полным адресом: объект карты по адресу. */
-export type ActionsMap = { find(address: string): MapObject | undefined };
-
 /**
- * Кнопка экшона готовыми полями — её рисует `ui`, а решает, что на ней, стор. Сколько прогонов
- * идёт, спрашивается отдельно: число рисует своя вью рядом с кнопкой.
+ * Где искать экшон, названный полным адресом: объект карты по адресу и его ресурс. Пока объект
+ * не пришёл, `object` даёт `undefined`; вид, который его читает, подписан на `feed`.
  */
-export type ButtonView = {
-  label: string;
-  description?: string;
-  /** Экшона нет: кнопка остаётся на месте и говорит об этом, а не пропадает молча. */
-  missing?: string;
+export type ActionsMap = {
+  object(address: string): MapObject | undefined;
+  feed(address: string): Watchable;
+  /** Сервер ответил, что объекта нет; пока ответа нет — `false`. */
+  missing(address: string): boolean;
 };
 
-/** Пункт меню строки: ссылка из данных и экшон, если он есть. */
-export type RowMenuEntry = { key: string; ref: ActionRef; action?: MapAction };
+/** Сколько прогонов экшона идёт: прогоны одного экшона бывают параллельными. */
+export type RunCounts = Watchable & { running(address: string): number };
 
-const described = (action: MapAction | undefined) =>
-  action?.config.description === undefined ? {} : { description: action.config.description };
+/** Объект, которому принадлежит экшон с полным адресом `mapward://…/_actions/<ключ>`. */
+const ownerOf = (run: string) => run.replace(/\/_actions\/[^/]+$/, "");
 
 /**
- * Экшоны экрана — решение 0038. Кнопки в шапке, в клетке раскладки, на строке дисплея и в
- * компоненте запускают экшон одним путём — через `Launcher`, а число идущих прогонов берут у
- * прогонов объекта.
+ * Экшоны экрана — решение 0038. Меню в шапке и компонент (`useAction`) запускают экшон одним
+ * путём — через `Launcher`, а число идущих прогонов берут у прогонов объекта.
  */
-export class ActionsStore {
+export class ActionsStore extends Reactive {
   constructor(
     readonly launcher: Launcher,
-    /** Сколько прогонов экшона идёт: прогоны одного экшона бывают параллельными. */
-    readonly running: (address: string) => number,
+    private readonly runs: RunCounts,
     private readonly map: ActionsMap,
-  ) {}
+  ) {
+    super();
+    // Форма запуска сюда не входит: её вид подписан на `launcher` сам, а кнопкам до неё дела нет.
+    this.depend(runs);
+  }
+
+  /** Сколько прогонов экшона идёт. */
+  running(address: string): number {
+    return this.runs.running(address);
+  }
+
+  /**
+   * Ресурс объекта, у которого искать экшон, названный строкой: полный адрес ведёт в чужой
+   * объект. Ключ ищется у своего — ресурса нет. Вид, читающий такую кнопку, подписан и на него.
+   */
+  source(run: string): Watchable | undefined {
+    return run.startsWith("mapward://") ? this.map.feed(ownerOf(run)) : undefined;
+  }
 
   /**
    * Какой экшон назван — решение 0038: ключ экшона объекта или полный адрес
@@ -43,71 +56,37 @@ export class ActionsStore {
    */
   resolve(object: MapObject, run: string): MapAction | undefined {
     if (!run.startsWith("mapward://")) return object.actions.find((one) => one.key === run);
-    const owner = run.replace(/\/_actions\/[^/]+$/, "");
-    return this.map.find(owner)?.actions.find((one) => one.address === run);
-  }
-
-  /** Экшоны, которые раскладка может поставить в клетку: ключ, занятый метрикой, — нет. */
-  cells(object: MapObject): MapAction[] {
-    const clashes = keyClashes(object.metrics, object.actions);
-    return object.actions.filter((action) => !clashes.includes(action.key));
-  }
-
-  /** Экшоны объекта для компонента-дисплея: пропсом, с числом идущих прогонов. */
-  list(object: MapObject): DisplayAction[] {
-    return object.actions.map((action) => ({
-      key: action.key,
-      address: action.address,
-      label: actionLabel(action),
-      ...described(action),
-      inputs: action.config.inputs ?? {},
-      running: this.running(action.address),
-    }));
-  }
-
-  button(action: MapAction): ButtonView {
-    return {
-      label: actionLabel(action),
-      ...described(action),
-    };
-  }
-
-  /** Кнопка по ссылке из данных метрики: экшона может и не быть. */
-  buttonFor(object: MapObject, ref: ActionRef, label?: string): ButtonView {
-    const action = this.resolve(object, ref.run);
-    if (!action) return { label: label ?? ref.run, missing: ref.run };
-    return { ...this.button(action), ...(label === undefined ? {} : { label }) };
+    return this.map.object(ownerOf(run))?.actions.find((one) => one.address === run);
   }
 
   /**
-   * Пункты меню строки: экшон, если нашёлся, и ключ пункта. Ненайденный остаётся пунктом —
-   * ошибкой этого пункта, а не всей строки.
+   * Экшон для компонента — `useAction`: подпись, идущие прогоны и запуск. Не нашёлся — подпись
+   * ссылкой и `missing`, но только когда сервер ответил: объект-владелец, который ещё не пришёл,
+   * — это «ещё не знаем», а не «нет».
    */
-  menuFor(object: MapObject, refs: ActionRef[]): RowMenuEntry[] {
-    return refs.map((ref, index) => {
-      const action = this.resolve(object, ref.run);
-      return { key: `${index}:${ref.run}`, ref, ...(action ? { action } : {}) };
-    });
+  handle(object: MapObject, ref: ActionRef): ActionHandle {
+    const action = this.resolve(object, ref.run);
+    return {
+      label: action ? actionLabel(action) : ref.run,
+      description: action?.config.description,
+      missing: !action && !this.arriving(ref.run),
+      running: action ? this.running(action.address) : 0,
+      // Значения запуска — поверх тех, что даны хуку; экшона нет — запускать нечего.
+      run: (inputs) => {
+        if (action) this.launcher.launch(action, { ...ref.inputs, ...inputs }, "display");
+      },
+    };
   }
 
-  /** Сколько прогонов идёт у экшона, названного строкой: не нашёлся — ни одного. */
-  runningFor(object: MapObject, ref: ActionRef): number {
-    const action = this.resolve(object, ref.run);
-    return action ? this.running(action.address) : 0;
+  /** Экшон назван полным адресом, а его объект ещё не пришёл с сервера. */
+  private arriving(run: string): boolean {
+    if (!run.startsWith("mapward://")) return false;
+    const owner = ownerOf(run);
+    return this.map.object(owner) === undefined && !this.map.missing(owner);
   }
 
   launch(action: MapAction): void {
     this.launcher.launch(action, {}, "ui");
-  }
-
-  /** Строка дисплея называет экшон ключом или адресом; не нашёлся — запускать нечего. */
-  launchRef(object: MapObject, ref: ActionRef): void {
-    const action = this.resolve(object, ref.run);
-    if (action) this.launcher.launch(action, ref.inputs ?? {}, "display");
-  }
-
-  run(object: MapObject, run: string, inputs?: Record<string, unknown>): void {
-    this.launchRef(object, inputs === undefined ? { run } : { run, inputs });
   }
 
   /** Форма запуска слушает Escape, пока открыта: жизнь ей даёт стор экшонов. */

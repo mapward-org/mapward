@@ -1,39 +1,36 @@
 import type { ReactNode } from "react";
-import { cellAttribute } from "../pure-model/grid.ts";
+
+/** Поля вокруг метрик: слева место под свёртку клетки; в компактном виде свёртки нет. */
+const space = (compact: boolean | undefined) => (compact ? "p-1" : "p-2 pl-6");
 
 /**
- * Рамка сетки метрик. Высоту сетке код не задаёт (решение 0033): она растёт по содержимому, а
- * прокручивается область вокруг. Таб одной метрики — исключение: там метрика и есть весь экран.
+ * Группа без раскладки — вертикальный список, по метрике на строку. Высоту код не задаёт
+ * (решение 0033): список растёт по содержимому, а прокручивается область вокруг. Таб одной
+ * метрики — исключение: там метрика и есть весь экран, один трек на всю высоту.
  *
- * `content-start` прижимает ряды кверху, когда сетке досталось больше места, чем нужно
- * метрикам: иначе css растягивает ряды `auto` на весь остаток. Ряд `1fr` это не трогает.
+ * `content-start` прижимает строки кверху, когда места больше, чем нужно метрикам.
  */
 export function GridFrame(props: {
-  scope: string;
-  /** Правила раскладки — тегом `<style>` рядом с сеткой. */
-  css?: string | undefined;
   solo?: { gridTemplateColumns: string; gridTemplateRows: string } | undefined;
-  /** Компактный вид: поля и зазоры минимальные, левого поля под свёртку нет — свёртки нет. */
+  /** Компактный вид: поля и зазоры минимальные. */
   compact?: boolean | undefined;
   children: ReactNode;
 }) {
-  const space = props.compact ? "gap-1 p-1" : "gap-2 p-2 pl-6";
+  const gap = props.compact ? "gap-1" : "gap-2";
   return (
     <div
-      className={`${props.scope} grid content-start ${space} ${props.solo ? "h-full min-h-0" : ""}`}
+      className={`grid content-start ${gap} ${space(props.compact)} ${props.solo ? "h-full min-h-0" : ""}`}
       {...(props.solo ? { style: props.solo } : {})}
     >
-      {props.css && <style>{props.css}</style>}
       {props.children}
     </div>
   );
 }
 
-/** Клетка экшона: та же метка, что у клетки метрики, — место назначает css раскладки. */
-export function ActionCell(props: { cell: string; children: ReactNode }) {
-  return (
-    <div {...{ [cellAttribute]: props.cell }} className="min-w-0">
-      {props.children}
-    </div>
-  );
+/**
+ * Рамка раскладки группы: поля вокруг, а как стоят метрики, решает раскладка. Во всю высоту
+ * области — чтобы сетка раскладки со `height: 100%` растягивалась на экран.
+ */
+export function LayoutFrame(props: { compact?: boolean | undefined; children: ReactNode }) {
+  return <div className={`h-full min-h-0 ${space(props.compact)}`}>{props.children}</div>;
 }

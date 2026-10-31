@@ -1,0 +1,551 @@
+import type { ObjectsMap } from "../model/types.ts";
+import { useRef } from "react";
+import { useViewState } from "@mapward/component";
+import { useLocalStore, useWatch } from "./reactive.ts";
+import { ObjectsMapStore } from "./store.ts";
+import { objectTool } from "./tools.ts";
+import {
+  ALIGNS,
+  alignIcon,
+  ARROWS,
+  FONT_SIZES,
+  railObjects,
+  ROUTES,
+  routeIcon,
+  WIDTHS,
+} from "./bar.ts";
+import type { CanvasPort } from "./ports.ts";
+import { Graph } from "./flow.tsx";
+import {
+  Backdrop,
+  BarFrame,
+  BarIcon,
+  BarSep,
+  BarSlot,
+  ColorExtras,
+  ColorGrid,
+  Confirm,
+  EditDialog,
+  FillDot,
+  HeadIcon,
+  MapFrame,
+  MenuFrame,
+  MenuLabel,
+  Message,
+  PopoverCorner,
+  PopoverFrame,
+  PopoverHead,
+  Presets,
+  RailButton,
+  RailChip,
+  RailFolded,
+  RailFrame,
+  RailMoreItem,
+  RailMoreList,
+  RailSep,
+  RecentColors,
+  RelationRow,
+  Segmented,
+  Stepper,
+  StrokeRing,
+  TextMark,
+} from "./parts.tsx";
+
+type Props = { store: ObjectsMapStore; map: ObjectsMap };
+
+/**
+ * Рейка инструментов слева, как в Miro: фигуры, чипы прототипов цветом прототипа (сверх шести —
+ * под «+»), связи образцом своей линии, внизу отмена и повтор. Сворачивается в одну кнопку, когда
+ * карту смотрят, а не правят.
+ */
+function Rail(props: Props) {
+  useWatch(props.store);
+  const store = props.store;
+  return store.railFolded ? (
+    <RailFolded onOpen={() => store.toggleRail()} />
+  ) : (
+    <RailFrame>
+      <RailButton icon="‹" title="Свернуть инструменты" onClick={() => store.toggleRail()} />
+      <RailSep />
+      <RailButton
+        icon="↖"
+        title="Выбрать и двигать"
+        on={store.isTool({ kind: "select" })}
+        onClick={() => store.choose({ kind: "select" })}
+      />
+      <RailButton
+        icon="▭"
+        title="Прямоугольник — пометка, не объект"
+        on={store.isTool({ kind: "shape", shape: "rect" })}
+        onClick={() => store.choose({ kind: "shape", shape: "rect" })}
+      />
+      <RailButton
+        icon="◯"
+        title="Эллипс — пометка, не объект"
+        on={store.isTool({ kind: "shape", shape: "ellipse" })}
+        onClick={() => store.choose({ kind: "shape", shape: "ellipse" })}
+      />
+      <RailButton
+        icon="T"
+        title="Текст — пометка, не объект"
+        on={store.isTool({ kind: "shape", shape: "text" })}
+        onClick={() => store.choose({ kind: "shape", shape: "text" })}
+      />
+      <RailButton
+        icon="╱"
+        title="Линия — пометка, не связь: клик в начало, клик в конец"
+        on={store.isTool({ kind: "line" })}
+        onClick={() => store.choose({ kind: "line" })}
+      />
+      <RailSep />
+      {railObjects(props.map.palette.objects).shown.map((item) => (
+        <RailChip
+          key={item.prototype}
+          color={item.color}
+          label={item.label}
+          title={item.label}
+          on={store.isTool(objectTool(item))}
+          onClick={() => store.choose(objectTool(item))}
+        />
+      ))}
+      {railObjects(props.map.palette.objects).more.length > 0 && (
+        <BarSlot
+          menu={
+            store.railMore && (
+              <RailMoreList>
+                {railObjects(props.map.palette.objects).more.map((item) => (
+                  <RailMoreItem
+                    key={item.prototype}
+                    color={item.color}
+                    label={item.label}
+                    on={store.isTool(objectTool(item))}
+                    onClick={() => store.choose(objectTool(item))}
+                  />
+                ))}
+              </RailMoreList>
+            )
+          }
+        >
+          <RailButton
+            icon="+"
+            title="Ещё прототипы"
+            on={store.railMore}
+            onClick={() => store.toggleRailMore()}
+          />
+        </BarSlot>
+      )}
+      {props.map.palette.relations.length > 0 && <RailSep />}
+      {props.map.palette.relations.map((item) => (
+        <RailChip
+          key={item.prototype}
+          arrow
+          line={item.line}
+          color={item.color}
+          label={item.label}
+          title={item.label}
+          on={store.isTool({ kind: "relation", prototype: item.prototype })}
+          onClick={() => store.choose({ kind: "relation", prototype: item.prototype })}
+        />
+      ))}
+      <RailSep />
+      <RailButton
+        icon="↶"
+        title="Отменить (Ctrl+Z)"
+        disabled={!store.canUndo}
+        onClick={() => store.undo()}
+      />
+      <RailButton
+        icon="↷"
+        title="Повторить (Ctrl+Shift+Z)"
+        disabled={!store.canRedo}
+        onClick={() => store.redo()}
+      />
+    </RailFrame>
+  );
+}
+
+/**
+ * Контекстная панель у выделенного: только применимые кнопки, выпадашка под своей кнопкой —
+ * одна за раз.
+ */
+function ContextBar(props: Props) {
+  useWatch(props.store);
+  const store = props.store;
+  const map = props.map;
+  return store.bar(map).length > 0 ? (
+    <BarFrame>
+      {store.bar(map).map((key, index) =>
+        key === "|" ? (
+          <BarSep key={index} />
+        ) : key === "fill" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "fill" && (
+                <MenuFrame>
+                  <ColorGrid
+                    value={store.look(map).fill}
+                    onPick={(color) => store.apply("fill", color, map)}
+                  />
+                  <RecentColors
+                    value={store.look(map).fill}
+                    recent={store.recent}
+                    onPick={(color) => store.apply("fill", color, map)}
+                  />
+                  <ColorExtras
+                    value={store.look(map).fill}
+                    onPick={(color) => store.apply("fill", color, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Заливка"
+              on={store.menu === "fill"}
+              onClick={() => store.toggleMenu("fill")}
+            >
+              <FillDot color={store.look(map).fill} />
+            </BarIcon>
+          </BarSlot>
+        ) : key === "stroke" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "stroke" && (
+                <MenuFrame>
+                  <ColorGrid
+                    value={store.look(map).stroke}
+                    onPick={(color) => store.apply("stroke", color, map)}
+                  />
+                  <RecentColors
+                    value={store.look(map).stroke}
+                    recent={store.recent}
+                    onPick={(color) => store.apply("stroke", color, map)}
+                  />
+                  <ColorExtras
+                    value={store.look(map).stroke}
+                    onPick={(color) => store.apply("stroke", color, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Цвет линии"
+              on={store.menu === "stroke"}
+              onClick={() => store.toggleMenu("stroke")}
+            >
+              <StrokeRing color={store.look(map).stroke} />
+            </BarIcon>
+          </BarSlot>
+        ) : key === "text" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "text" && (
+                <MenuFrame>
+                  <MenuLabel text="Цвет текста" />
+                  <ColorGrid
+                    value={store.look(map).textColor}
+                    onPick={(color) => store.apply("textColor", color, map)}
+                  />
+                  <RecentColors
+                    value={store.look(map).textColor}
+                    recent={store.recent}
+                    onPick={(color) => store.apply("textColor", color, map)}
+                  />
+                  <ColorExtras
+                    value={store.look(map).textColor}
+                    onPick={(color) => store.apply("textColor", color, map)}
+                  />
+                  <MenuLabel text="Размер текста" />
+                  <Presets
+                    value={store.look(map).fontSize}
+                    presets={FONT_SIZES}
+                    onPick={(size) => store.apply("fontSize", size, map)}
+                  />
+                  <Stepper
+                    value={store.look(map).fontSize}
+                    title="Размер текста"
+                    onPick={(size) => store.apply("fontSize", size, map)}
+                    onStep={(delta) => store.step("fontSize", delta, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Текст: цвет и размер"
+              on={store.menu === "text"}
+              onClick={() => store.toggleMenu("text")}
+            >
+              <TextMark color={store.look(map).textColor} size={store.look(map).fontSize} />
+            </BarIcon>
+          </BarSlot>
+        ) : key === "width" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "width" && (
+                <MenuFrame>
+                  <Presets
+                    value={store.look(map).width}
+                    presets={WIDTHS}
+                    onPick={(width) => store.apply("width", width, map)}
+                  />
+                  <Stepper
+                    value={store.look(map).width}
+                    title="Толщина линии"
+                    onPick={(width) => store.apply("width", width, map)}
+                    onStep={(delta) => store.step("width", delta, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Толщина"
+              on={store.menu === "width"}
+              onClick={() => store.toggleMenu("width")}
+            >
+              ≡
+            </BarIcon>
+          </BarSlot>
+        ) : key === "route" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "route" && (
+                <MenuFrame>
+                  <Segmented
+                    value={store.look(map).route ?? "straight"}
+                    options={ROUTES}
+                    onPick={(route) => store.apply("route", route, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Путь: ломаная, скруглённая, прямые углы"
+              on={store.menu === "route"}
+              onClick={() => store.toggleMenu("route")}
+            >
+              {routeIcon(store.look(map).route)}
+            </BarIcon>
+          </BarSlot>
+        ) : key === "arrows" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "arrows" && (
+                <MenuFrame>
+                  <Segmented
+                    value={store.look(map).arrows ?? "end"}
+                    options={ARROWS}
+                    onPick={(arrows) => store.apply("arrows", arrows, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Стрелки линии"
+              on={store.menu === "arrows"}
+              onClick={() => store.toggleMenu("arrows")}
+            >
+              →
+            </BarIcon>
+          </BarSlot>
+        ) : key === "align" ? (
+          <BarSlot
+            key={key}
+            menu={
+              store.menu === "align" && (
+                <MenuFrame>
+                  <Segmented
+                    value={store.look(map).align ?? "center"}
+                    options={ALIGNS}
+                    onPick={(align) => store.apply("align", align, map)}
+                  />
+                </MenuFrame>
+              )
+            }
+          >
+            <BarIcon
+              title="Выравнивание текста"
+              on={store.menu === "align"}
+              onClick={() => store.toggleMenu("align")}
+            >
+              {alignIcon(store.look(map).align)}
+            </BarIcon>
+          </BarSlot>
+        ) : key === "edit" ? (
+          <BarIcon key={key} title="Править имя и адрес" onClick={() => store.editSelected(map)}>
+            ✎
+          </BarIcon>
+        ) : key === "show" ? (
+          <BarIcon
+            key={key}
+            title="Копия-отображение рядом: тот же объект ещё раз (Alt+Shift+перетаскивание)"
+            onClick={() => store.showSelected(map)}
+          >
+            ⧉
+          </BarIcon>
+        ) : key === "dive" ? (
+          <BarIcon key={key} title="Провалиться в объект" onClick={() => store.diveSelected(map)}>
+            ↘
+          </BarIcon>
+        ) : (
+          <BarIcon key={key} title="Удалить" danger onClick={() => store.removeSelected(map)}>
+            🗑
+          </BarIcon>
+        ),
+      )}
+    </BarFrame>
+  ) : null;
+}
+
+/** Поповер: карточка объекта с ✎ ↘ × в шапке или список склеенных связей. */
+function PopoverContent(props: Props & { Card: CanvasPort["Card"] }) {
+  useWatch(props.store);
+  const store = props.store;
+  return store.popoverAddress !== undefined ? (
+    <PopoverFrame bare>
+      <props.Card
+        object={store.popoverAddress}
+        actions={
+          <>
+            <HeadIcon
+              icon="✎"
+              title="Править имя и адрес"
+              onClick={() => store.startEdit(store.popoverAddress ?? "", props.map)}
+            />
+            <HeadIcon
+              icon="↘"
+              title="Провалиться в объект"
+              onClick={() => store.dive(store.popoverAddress ?? "")}
+            />
+            <HeadIcon icon="×" title="Закрыть" onClick={() => store.closePopover()} />
+          </>
+        }
+      />
+    </PopoverFrame>
+  ) : store.popoverItems.length > 0 ? (
+    <PopoverFrame>
+      <PopoverHead title="Стрелка собрана из связей" onClose={() => store.closePopover()} />
+      {store.popoverItems.map((item) => (
+        <RelationRow
+          key={item.link}
+          label={item.label}
+          link={item.link}
+          onPick={() => store.openRelation(item.link)}
+        />
+      ))}
+    </PopoverFrame>
+  ) : null;
+}
+
+/** Слот настройки смотрящего: значение — с последней отрисовки, запись уходит хосту. */
+type Slot<T> = { value: T; set(value: T): void };
+
+function useSlot<T>(key: string, initial: T): Slot<T> {
+  const [value, set] = useViewState(key, initial);
+  const slot = useRef<Slot<T>>({ value, set }).current;
+  slot.value = value;
+  slot.set = set;
+  return slot;
+}
+
+/**
+ * Холст карты (решение 0044): что показать, как нарисовать и куда тянутся стрелки, собрал процесс
+ * плагина, а здесь это ложится на `@xyflow/react`. Холст ничего не решает сам: каждое действие —
+ * операция правки через порт. Пока новое значение не пришло, холст рисует картинку стора —
+ * значение с ожидающими правками поверх, — и узлы не прыгают.
+ *
+ * Масштаб и сдвиг, свёрнутая рейка и последний стиль — настройки смотрящего: их хранит хост
+ * (`useViewState`), у человека, а не в карте.
+ */
+export function Canvas(props: { map: ObjectsMap; port: CanvasPort }) {
+  const slots: Record<string, Slot<unknown>> = {
+    [`viewport:${props.map.view}`]: useSlot<unknown>(`viewport:${props.map.view}`, undefined),
+    "objects-map:rail-folded": useSlot<unknown>("objects-map:rail-folded", false),
+    "objects-map:last-style": useSlot<unknown>("objects-map:last-style", {}),
+  };
+  // Стор спрашивает ровно эти три ключа — их и заводит холст.
+  const views = { slot: <T,>(key: string) => slots[key] as Slot<T> };
+  const store = useLocalStore(
+    () => new ObjectsMapStore(props.port, views, props.map.view),
+    [props.map.view],
+  );
+  useWatch(store);
+  const editing = store.editing;
+  const message = store.message;
+
+  return (
+    <MapFrame>
+      <Rail store={store} map={props.map} />
+      <Graph
+        map={store.picture(props.map)}
+        mapPath={props.port.mapPath}
+        viewport={store.view}
+        tool={store.tool}
+        renaming={store.renaming}
+        hint={store.cursorHint}
+        onOpenTab={props.port.openTab}
+        onViewport={(viewport) => store.pan(viewport)}
+        onEdit={(ops) => store.edit(ops, props.map)}
+        onPopover={(next) => (next ? store.open(next) : store.closePopover())}
+        onRename={(id) => store.rename(id)}
+        onDelete={(target) => store.ask(target)}
+        onSay={(text) => store.say(text)}
+        onToolDone={() => store.choose({ kind: "select" })}
+        onUndo={() => store.undo()}
+        onRedo={() => store.redo()}
+        onEscape={() => store.escape()}
+        onPlace={(draft) => store.place(draft, props.map)}
+        onDraft={(name) => store.commitDraft(name, props.map)}
+        onDraftCancel={() => store.dropDraft()}
+        onSelect={(chosen) => store.select(chosen)}
+        onLine={(end) => store.lineAt(end, props.map)}
+        onDrawLine={(from, to) => store.drawLine(from, to, props.map)}
+        onDrawShape={(shape) => store.drawShape(shape, props.map)}
+        onRelate={(from, to, prototype, sides) =>
+          store.relate(from, to, prototype, props.map, sides)
+        }
+        pinned={[
+          {
+            ...store.barAt(props.map),
+            side: "top",
+            content: <ContextBar store={store} map={props.map} />,
+          },
+        ]}
+        renderCard={(item) => <props.port.Card {...item} draggable />}
+      />
+      <PopoverCorner>
+        <PopoverContent store={store} map={props.map} Card={props.port.Card} />
+      </PopoverCorner>
+      {editing && <Backdrop onClose={() => store.closeEdit()} />}
+      {editing && (
+        <EditDialog
+          name={editing.name}
+          folder={editing.folder}
+          onSave={(name, folder) => store.save(name, folder, props.map)}
+          onClose={() => store.closeEdit()}
+        />
+      )}
+      {store.confirmText && <Backdrop onClose={() => store.cancel()} />}
+      {store.confirmText && (
+        <Confirm
+          text={store.confirmText}
+          onYes={() => store.remove(props.map)}
+          onNo={() => store.cancel()}
+        />
+      )}
+      {message && (
+        <Message text={message.text} error={message.error} onClose={() => store.say(undefined)} />
+      )}
+    </MapFrame>
+  );
+}

@@ -13,6 +13,8 @@ const action = (config: ActionConfig): MapAction => ({
 function runner(answer: { errors?: Record<string, string> } = {}) {
   const sent: Record<string, unknown>[] = [];
   const run: LaunchRunner = {
+    // Схема метода `tag`: метка обязательна, репозиторий задан экшоном.
+    form: async () => ({ fields: { name: { type: "string", required: true } } }),
     run: async (_action, inputs) => {
       sent.push(inputs);
       return { id: "1", ...answer } as never;
@@ -92,4 +94,44 @@ test("без confirm и с полной формой — запуск сразу
   expect(launcher.opened).toBeUndefined();
   await settled();
   expect(sent).toEqual([{ path: "a" }]);
+});
+
+test("экшон над методом: форма — схема метода, она приходит от плагина", async () => {
+  const { run, sent } = runner();
+  const launcher = new Launcher(run);
+  const tag = action({ plugin: "/map/_plugins/git", method: "tag", params: { repo: "core" } });
+
+  launcher.launch(tag, {});
+  await settled();
+  expect(launcher.fields.map((field) => [field.name, field.required])).toEqual([["name", true]]);
+
+  launcher.change("name", "v1");
+  launcher.submit();
+  await settled();
+  expect(sent).toEqual([{ name: "v1" }]);
+});
+
+test("своя форма экшона открывается всегда и шлёт свои значения поверх переданных", async () => {
+  const { run, sent } = runner();
+  const launcher = new Launcher(run);
+  const custom = action({
+    plugin: "/x/_plugins/tag",
+    method: "tag",
+    component: "/x/form.tsx",
+  });
+
+  // Всё заполнено, вопроса нет — а форма всё равно открыта: автор написал её, чтобы её видели.
+  launcher.launch(custom, { name: "v1", repo: "a" });
+  await settled();
+  expect(launcher.component).toBe("/x/form.tsx");
+  const props = launcher.componentProps;
+  expect(props?.params).toEqual({ name: "v1" });
+  expect(props?.fields).toEqual({ name: { type: "string", required: true } });
+  // Пока форма та же — пропсы те же: компонент не перерисовывается зря.
+  expect(launcher.componentProps).toBe(props);
+
+  props?.submit({ name: "v2" });
+  await settled();
+  expect(sent).toEqual([{ name: "v2", repo: "a" }]);
+  expect(launcher.opened).toBeUndefined();
 });

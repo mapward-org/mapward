@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { CardSize } from "@mapward/core";
+import type { CardSize } from "../../../kernel/object-ref.ts";
 import { canvasClasses } from "../../../lib/ui/canvas-classes.ts";
 import { GripIcon } from "../../../lib/ui/icons.tsx";
 import { tabHover } from "../../../lib/ui/tab-hover.ts";

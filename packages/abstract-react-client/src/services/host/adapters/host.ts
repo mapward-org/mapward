@@ -1,5 +1,6 @@
-import { once } from "@mapward/core";
 import type { AppBridge, BridgeClient, Capabilities } from "@mapward/core";
+import { once } from "../../../lib/store/feed.ts";
+import { Reactive } from "../../../lib/store/reactive.ts";
 
 const NOTHING: Capabilities = {
   terminals: false,
@@ -14,11 +15,17 @@ type Ref = { mapPath: string; basePath: string; name: string };
 /**
  * Хост, поднявший клиент, — решение 0014: что он умеет и что умеет открыть. Клиент рисует
  * только то, что хост обещал: из терминала терминалов нет, и кнопки за ними тоже.
+ *
+ * Что хост умеет — ресурс: спрашивается, когда на хост подписались. Вид или стор, читающий
+ * `can`, зависит от хоста.
  */
-export class Host {
+export class Host extends Reactive {
   private readonly capabilities = once(() => this.bridge.getCapabilities());
 
-  constructor(private readonly bridge: BridgeClient<AppBridge>) {}
+  constructor(private readonly bridge: BridgeClient<AppBridge>) {
+    super();
+    this.depend(this.capabilities);
+  }
 
   /** Пока хост не ответил, он не умеет ничего: кнопка, которая появится позже, лучше мёртвой. */
   get can(): Capabilities {

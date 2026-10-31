@@ -1,6 +1,6 @@
-import { action, makeObservable, observable } from "mobx";
 import type { MapAction } from "@mapward/core";
-import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
+import { Anchor, Popup } from "../../../lib/store/popup.ts";
+import { Reactive } from "../../../lib/store/reactive.ts";
 import { matchActions } from "../pure-model/actions.ts";
 
 /**
@@ -8,8 +8,8 @@ import { matchActions } from "../pure-model/actions.ts";
  * редактора. Поиск стоит сразу: от прототипа экшонов приезжает много, и нужен обычно один.
  * Запрос, как и у поиска директив, никуда не сохраняется — закрыли меню, и он пуст.
  */
-export class MenuStore {
-  query = "";
+export class MenuStore extends Reactive {
+  private readonly typed = this.state("");
   // Меню лежит порталом поверх всего — в шапке карточки его иначе обрезала бы её рамка.
   readonly popup = new Popup(() => this.clear(), true);
   readonly anchor = new Anchor();
@@ -18,11 +18,13 @@ export class MenuStore {
     private readonly actions: () => MapAction[],
     private readonly run: (action: MapAction) => void,
   ) {
-    makeObservable<MenuStore, "clear">(this, {
-      query: observable,
-      setQuery: action,
-      clear: action,
-    });
+    super();
+    // Открыто ли меню и где оно стоит — тоже его состояние: вид смотрит на один стор.
+    this.depend(this.popup, this.anchor);
+  }
+
+  get query(): string {
+    return this.typed.value;
   }
 
   get found(): MapAction[] {
@@ -36,11 +38,11 @@ export class MenuStore {
   }
 
   setQuery(query: string): void {
-    this.query = query;
+    this.typed.set(query);
   }
 
   private clear(): void {
-    this.query = "";
+    this.typed.set("");
   }
 
   select(target: MapAction): void {

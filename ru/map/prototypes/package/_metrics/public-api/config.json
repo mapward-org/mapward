@@ -1,13 +1,25 @@
 {
   "label": "Public API",
-  "refresh": "manual",
-  "collectors": [
-    {
-      "kind": "prompt",
-      "prompt": "Собери публичный API пакета по пути ${{ mapward://~#props.fullPath }}: посмотри точку входа и экспорты, перечисли экспортируемые имена с краткой сигнатурой. Верни { label, link } — ссылку на файл точки входа и подписью количество экспортов."
+  "component": "${{ mapward:// }}/_plugins/views/link.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/agent",
+      "method": "ask",
+      "params": {
+        "prompt": "Собери публичный API пакета по пути ${{ mapward://~#props.fullPath }}: посмотри точку входа и экспорты, перечисли экспортируемые имена с краткой сигнатурой. Верни { label, link } — ссылку на файл точки входа и подписью количество экспортов.",
+        "shape": "link",
+        "cache": "${{ mapward://~ }}/_metrics/public-api/answer.json"
+      }
+    },
+    "refresh": "refresh"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/agent",
+    "method": "ask",
+    "params": {
+      "prompt": "Собери публичный API пакета по пути ${{ mapward://~#props.fullPath }}: посмотри точку входа и экспорты, перечисли экспортируемые имена с краткой сигнатурой. Верни { label, link } — ссылку на файл точки входа и подписью количество экспортов.",
+      "shape": "link",
+      "cache": "${{ mapward://~ }}/_metrics/public-api/answer.json"
     }
-  ],
-  "collectorsCache": true,
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "link" }
+  }
 }

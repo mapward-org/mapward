@@ -1,0 +1,13 @@
+{
+  "updatedAt": "2026-09-20T13:37:08.140Z",
+  "data": {
+    "items": [
+      {
+        "label": "Дети объекта показываются графом",
+        "description": "Сдвиг и масштаб холста сохраняются, но не восстанавливаются. `useViewState('viewport:…')` читает значение асинхронно (`useStored` → `bridge.getViewState`), а `Graph` уже смонтирован с `viewport === undefined`. В @xyflow/react и `defaultViewport`, и `fitView` применяются только при инициализации (`ZoomPane`: эффект с `XYPanZoom({ viewport: defaultViewport })` имеет пустой массив зависимостей), поэтому приехавшее позже значение игнорируется — при каждом открытии объекта холст делает fitView, а не возвращает позу смотрящего. См. children-map.tsx:15 и graph.tsx:82.",
+        "link": "d:/my-space/mapward/ru/requirements/ui/дисплеи/дети-показываются-графом.md",
+        "status": "fail"
+      }
+    ]
+  }
+}

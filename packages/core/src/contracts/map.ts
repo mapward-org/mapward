@@ -29,50 +29,26 @@ export const Capabilities = T.Object({
 });
 
 export const mapBridge = {
-  getMap: createBridgeMethod(MapRef, T.Unknown()),
-  watchMap: createBridgeSubscription(MapRef, T.Unknown()),
   /**
    * Перечитать карту — кнопка рядом со стрелками навигации, как в браузере (решение 0041).
    * Карта у сервера одна и следит за собой сама; кнопка — для того, что вотчер пропустил.
    */
   reloadMap: createBridgeMethod(MapRef, T.Void()),
   /**
-   * Файл карты по подписке — решение 0041: клиент держит ту же живую модель, что сервер, и
-   * читает её файлы сам. Приходит содержимое и дальше каждое изменение; `null` — файла нет.
-   * Путь — только внутри папки карты: сервер другой не отдаёт.
+   * Объект карты по подписке: свои поля после наследования и подстановок и ближайшие дети без
+   * внуков. Модель карты одна — у сервера; клиент её не собирает, а смотрит на неё. Приходит
+   * объект и дальше каждое его изменение, одно на пачку; `null` — объекта по адресу нет.
    */
-  watchMapFile: createBridgeSubscription(
-    T.Object({ mapPath: T.String(), basePath: T.String(), name: T.String(), path: T.String() }),
-    T.Union([T.String(), T.Null()]),
-  ),
-  /** Папка карты по подписке: имена, папка ли, размер. Папки нет — пусто. */
-  watchMapFolder: createBridgeSubscription(
-    T.Object({ mapPath: T.String(), basePath: T.String(), name: T.String(), path: T.String() }),
-    T.Array(T.Object({ name: T.String(), isDirectory: T.Boolean(), size: T.Optional(T.Number()) })),
-  ),
-  getCapabilities: createBridgeMethod(T.Void(), Capabilities),
-  /**
-   * Значения метрик объекта. Подписка — это и есть «объект открыт»: пока она жива, сервер
-   * держит метрики свежими, отписались — гасит интервалы (решение 0013).
-   *
-   * С группами открыт не объект, а вкладка: `group` отбирает метрики до сбора, и у закрытой
-   * вкладки не тикают интервалы и не живут вотчеры — решение 0025.
-   */
-  watchMetrics: createBridgeSubscription(
-    T.Object({
-      mapPath: T.String(),
-      basePath: T.String(),
-      name: T.String(),
-      address: T.Optional(T.String()),
-      group: T.Optional(T.String()),
-      /**
-       * Ключи метрик поверх группы: таб одной метрики открыт ради неё одной, и поднимать
-       * ради него всю вкладку незачем — решение 0026.
-       */
-      metrics: T.Optional(T.Array(T.String())),
-    }),
+  watchObject: createBridgeSubscription(
+    T.Object({ mapPath: T.String(), basePath: T.String(), name: T.String(), address: T.String() }),
     T.Unknown(),
   ),
+  /** Предки объекта от корня, без него самого, — для крошек: адрес и имя. */
+  watchAncestors: createBridgeSubscription(
+    T.Object({ mapPath: T.String(), basePath: T.String(), name: T.String(), address: T.String() }),
+    T.Array(T.Object({ address: T.String(), name: T.String() })),
+  ),
+  getCapabilities: createBridgeMethod(T.Void(), Capabilities),
   /**
    * Открыть объект отдельным табом редактора — решение 0026. Таб всегда показывает объект;
    * `group` говорит, какая вкладка в нём открыта, `metric` — что показана одна метрика во всю
@@ -117,7 +93,7 @@ export const mapBridge = {
    * Собранный компонент метрики — решение 0037. Подписка, а не вызов: правка компонента или
    * того, что он импортирует, пересобирает его, и ячейка перерисовывается сама.
    */
-  watchDisplay: createBridgeSubscription(
+  watchComponent: createBridgeSubscription(
     T.Object({
       mapPath: T.String(),
       basePath: T.String(),
@@ -126,12 +102,31 @@ export const mapBridge = {
     }),
     T.Unknown(),
   ),
-  runMetric: createBridgeMethod(
+  /**
+   * Собранная своя форма экшона (`component` в его `config.json`) — тем же сборщиком, что
+   * компоненты метрик, и так же пересобирается на правку.
+   */
+  watchActionForm: createBridgeSubscription(
     T.Object({
       mapPath: T.String(),
       basePath: T.String(),
       name: T.String(),
-      metric: T.String(),
+      action: T.String(),
+    }),
+    T.Unknown(),
+  ),
+  /**
+   * Собранная раскладка группы — компонент, которому группа отдаёт свои метрики. Собирает тот
+   * же сервер, что компоненты метрик, и так же пересобирает на правку. Раскладка ищется по
+   * объекту и ключу группы: путь к ней знает модель карты, а не клиент.
+   */
+  watchLayout: createBridgeSubscription(
+    T.Object({
+      mapPath: T.String(),
+      basePath: T.String(),
+      name: T.String(),
+      address: T.String(),
+      group: T.String(),
     }),
     T.Unknown(),
   ),
@@ -205,3 +200,18 @@ export const terminalBridge = {
 };
 
 export type Capabilities = Static<typeof Capabilities>;
+
+/**
+ * Собранный компонент — то, что приходит подпиской `watchComponent`, `watchLayout` и
+ * `watchActionForm` (решение 0037). Код — CommonJS: `react` и `@mapward/component` в нём не лежат,
+ * их отдаёт клиент, иначе на странице две копии React и хуки ломаются.
+ *
+ * `errors` вместо кода — сборка не прошла; строки уже с файлом и позицией, клиенту остаётся
+ * их показать.
+ */
+export type ComponentBuild = {
+  code?: string;
+  css?: string;
+  errors?: string[];
+  builtAt: string;
+};

@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import { useBridgeClient } from "../../../ports/bridge.tsx";
 import { useHost } from "../../../services/host/ports.tsx";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { Turns, type RunFocus } from "../adapters/turns.ts";
 import { TurnsPanel } from "../model/turns-panel.ts";
 import { turnKey } from "../pure-model/turns.ts";
@@ -22,11 +22,12 @@ import {
  * `focus` ведёт пункт экшона на экран прогонов его объекта — той же просьбой «перейди к
  * объекту», что кнопка в файле директивы, поэтому объект в другой карте окна тоже находится.
  */
-export const DirectiveTurns = observer(function DirectiveTurns(props: { focus?: RunFocus }) {
+export function DirectiveTurns(props: { focus?: RunFocus }) {
   const bridge = useBridgeClient();
   const host = useHost();
   const turns = useLocalStore(() => new Turns(bridge, props.focus, () => host.can.terminals));
   const panel = useLocalStore(() => new TurnsPanel());
+  useWatch(turns, panel);
 
   return turns.list.length === 0 ? null : (
     <TurnsDock hold={panel.popup.hold}>
@@ -65,4 +66,4 @@ export const DirectiveTurns = observer(function DirectiveTurns(props: { focus?: 
       />
     </TurnsDock>
   );
-});
+}

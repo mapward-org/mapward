@@ -1,4 +1,4 @@
-import { findObject } from "@mapward/core";
+import { MAP_ROOT } from "@mapward/core";
 import { objectPrompt } from "@mapward/abstract-server";
 import type { MapServer } from "@mapward/abstract-server";
 import {
@@ -31,8 +31,10 @@ export async function runStage(
   },
 ): Promise<{ id: string; name: string }> {
   const { text } = await server.stageRequest(params);
-  const map = await server.getMap(params);
-  const object = findObject(map, params.address) ?? map;
+  const object =
+    (await server.readObject({ ...params, depth: 0 })) ??
+    (await server.readObject({ ...params, address: MAP_ROOT, depth: 0 }));
+  if (!object) throw new Error(`Объект ${params.address} не найден`);
 
   const tab = { base: object.name, directive: params.directive, stage: params.stage };
   const existing = pickStageSession(params);

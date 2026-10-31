@@ -2,9 +2,10 @@ import { createBridge } from "./bridge.ts";
 import { configBridge } from "./config.ts";
 import { directiveBridge, mapBridge, terminalBridge } from "./map.ts";
 import { stateBridge } from "./state.ts";
-import { editBridge } from "./edit.ts";
 import { turnsBridge } from "./turns.ts";
 import { runsBridge } from "./runs.ts";
+import { pluginsBridge } from "./plugins.ts";
+import { editBridge } from "./edit.ts";
 
 /** One channel for the whole app: features add methods, apps wires the handlers. */
 export const appBridge = createBridge({
@@ -13,9 +14,10 @@ export const appBridge = createBridge({
   ...directiveBridge,
   ...terminalBridge,
   ...stateBridge,
-  ...editBridge,
   ...turnsBridge,
   ...runsBridge,
+  ...pluginsBridge,
+  ...editBridge,
 });
 
 export type AppBridge = typeof appBridge;

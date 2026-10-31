@@ -1,5 +1,5 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
-import type { Layout, MapMetric, MapObject } from "@mapward/core";
+import type { MapMetric, MapObject, MetricGroup } from "@mapward/core";
 import type { Terminals } from "./adapters/terminals.ts";
 
 /**
@@ -7,12 +7,11 @@ import type { Terminals } from "./adapters/terminals.ts";
  * объявляет, какие части ему нужны и что он им передаёт, а фичи подкладывает точка входа.
  */
 export type ScreenSlots = {
-  /** Сетка метрик вкладки; одна метрика во всю ширину — с `solo`. */
+  /** Метрики вкладки — её раскладкой или списком; одна метрика во всю ширину — с `solo`. */
   Metrics: ComponentType<{
     object: MapObject;
     metrics: MapMetric[];
-    layout?: Layout | undefined;
-    group?: string | undefined;
+    group?: MetricGroup | undefined;
     solo?: string | undefined;
   }>;
   /** Директивы кнопкой с меню в шапке — число на ней считает незакрытые (решение 0045). */

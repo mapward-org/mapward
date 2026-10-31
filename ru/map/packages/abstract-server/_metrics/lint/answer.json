@@ -1,0 +1,7 @@
+{
+  "updatedAt": "2026-10-30T00:42:19.892Z",
+  "data": {
+    "ok": true,
+    "summary": "Ошибок 0, предупреждений 10, только производительность: 5 × no-await-in-loop (await внутри цикла, в том числе в check-target.ts:89 и тестах), 4 × no-map-spread (spread внутри map в inherit.ts, raw-object.ts, mcp.ts) и 1 × no-accumulating-spread (edit-map.ts:85)."
+  }
+}

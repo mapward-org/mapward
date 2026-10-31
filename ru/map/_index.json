@@ -8,12 +8,7 @@
         "label": "Быстрый доступ",
         "description": "Что нужно чаще всего: дети карты и кнопка «Собрать и поставить» расширение в свой редактор.",
         "metrics": ["children-list"],
-        "details-metrics-layout": {
-          "areas": [["release"], ["children-list"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "layout": "./layout-quick.tsx"
       },
       {
         "key": "продукт",
@@ -27,81 +22,32 @@
           "decisions-drift",
           "requirements-links",
           "links"
-        ],
-        "details-metrics-layout": {
-          "areas": [
-            ["product-docs"],
-            ["requirements-todo"],
-            ["requirements"],
-            ["decisions"],
-            ["decisions-drift"],
-            ["requirements-links"],
-            ["links"]
-          ],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        ]
       },
       {
         "key": "архитектура",
         "label": "Архитектура",
         "description": "Как устроен монореп: доки, связи между пакетами и их качество.",
         "metrics": ["architecture-docs", "package-deps", "architecture-quality", "children"],
-        "details-metrics-layout": {
-          "areas": [
-            ["architecture-docs"],
-            ["package-deps"],
-            ["architecture-quality"],
-            ["children"]
-          ],
-          "style": {
-            "height": "100%",
-            "gridTemplateRows": "auto auto auto minmax(320px, 1fr)",
-            "gap": "8px"
-          }
-        }
+        "layout": "./layout-architecture.tsx"
       },
       {
         "key": "агенту",
         "label": "Агенту",
         "description": "То, что агенты спрашивают каждый прогон, — посчитанным. Витрина: агент берёт эти метрики по ключу и без вкладки.",
-        "metrics": ["agent-requirements", "agent-decisions", "agent-build", "agent-worktree"],
-        "details-metrics-layout": {
-          "areas": [
-            ["agent-requirements"],
-            ["agent-decisions"],
-            ["agent-build"],
-            ["agent-worktree"]
-          ],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "metrics": ["agent-requirements", "agent-decisions", "agent-build", "agent-worktree"]
       },
       {
         "key": "дисплеи",
         "label": "Тестовые дисплеи",
         "description": "Метрики, нарисованные своими React-компонентами (решение 0037): образцы, на которых проверяется дисплей `component`.",
-        "metrics": ["test-maps", "demo-directives", "demo-decisions", "demo-kit"],
-        "details-metrics-layout": {
-          "areas": [["test-maps"], ["demo-directives"], ["demo-decisions"], ["demo-kit"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "metrics": ["test-maps", "demo-directives", "demo-decisions", "demo-kit"]
       },
       {
         "key": "карта",
         "label": "Про карту",
         "description": "Из чего собрана карта и как ею пользуются.",
-        "metrics": ["prototypes", "shared-metrics", "guide", "directive-runs"],
-        "details-metrics-layout": {
-          "areas": [["prototypes"], ["shared-metrics"], ["guide"], ["directive-runs"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "metrics": ["prototypes", "shared-metrics", "guide", "directive-runs"]
       }
     ]
   }

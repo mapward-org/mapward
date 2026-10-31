@@ -1,24 +1,25 @@
 {
   "label": "Карта",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "objects-map",
-      "show": ["apps/*", "packages/*"],
-      "palette": {
-        "objects": ["mapward://prototypes/package", "mapward://prototypes/system"],
-        "relations": ["mapward://prototypes/relation"]
-      },
-      "placeObjects": "mapward://packages",
-      "placeRelations": "mapward://relations",
-      "style": {
-        "all": {
-          "view": "preview"
-        }
+  "component": "../../_plugins/objects-map/view.tsx",
+  "params": {
+    "show": ["apps/*", "packages/*"],
+    "palette": {
+      "objects": ["mapward://prototypes/package", "mapward://prototypes/system"],
+      "relations": ["mapward://prototypes/relation"]
+    },
+    "placeObjects": "mapward://packages",
+    "placeRelations": "mapward://relations",
+    "style": {
+      "all": {
+        "view": "preview"
       }
     }
-  ],
-  "display": {
-    "kind": "map"
+  },
+  "agent": {
+    "plugin": "../../_plugins/objects-map",
+    "method": "view",
+    "params": {
+      "view": "mapward://_metrics/children"
+    }
   }
 }

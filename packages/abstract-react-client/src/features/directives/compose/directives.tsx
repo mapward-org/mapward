@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import type { MapFile, MapObject } from "@mapward/core";
 import { useBridgeClient } from "../../../ports/bridge.tsx";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { Floating } from "../../../lib/ui/floating.tsx";
 import { DirectivesIcon } from "../../../lib/ui/icons.tsx";
 import { Section } from "../../../lib/ui/section.tsx";
@@ -26,10 +26,7 @@ import { DirectiveRow } from "../ui/directive-row.tsx";
  * весь экран, и сюда приходит уже отобранный список. Удалять отсюда можно, но только если хост
  * умеет спросить «точно?»: удаление — единственное необратимое на этом экране (0014).
  */
-export const DirectiveArchive = observer(function DirectiveArchive(props: {
-  object: MapObject;
-  files: MapFile[];
-}) {
+export function DirectiveArchive(props: { object: MapObject; files: MapFile[] }) {
   const port = useDirectivesPort();
   const bridge = useBridgeClient();
   const view = useLocalStore(
@@ -57,14 +54,14 @@ export const DirectiveArchive = observer(function DirectiveArchive(props: {
       )}
     </Section>
   );
-});
+}
 
 /**
  * Директивы объекта кнопкой с поиском — одна на экран и карточку (решение 0045): сверху
  * «новая», пункт на незакрытую директиву, клик открывает её файл — этапы запускают оттуда.
  * Кнопка есть всегда; чего хост не умеет, того в меню нет.
  */
-export const DirectiveMenu = observer(function DirectiveMenu(props: { object: MapObject }) {
+export function DirectiveMenu(props: { object: MapObject }) {
   const port = useDirectivesPort();
   const bridge = useBridgeClient();
   const view = useLocalStore(
@@ -80,6 +77,7 @@ export const DirectiveMenu = observer(function DirectiveMenu(props: { object: Ma
       ),
     [props.object, view],
   );
+  useWatch(menu);
 
   return (
     <DirectiveMenuBox hold={menu.popup.hold}>
@@ -112,4 +110,4 @@ export const DirectiveMenu = observer(function DirectiveMenu(props: { object: Ma
       )}
     </DirectiveMenuBox>
   );
-});
+}

@@ -1,0 +1,25 @@
+{
+  "updatedAt": "2026-10-12T13:08:15.353Z",
+  "data": {
+    "items": [
+      {
+        "label": "Раскладка сетки узлов переехала в core, хотя доки отводят её клиенту",
+        "description": "По packages.md: packages.md:43, core.md:28 и решение 0014:68 прямо говорят, что «раскладка сетки — клиент». Сейчас packages/core/src/index.ts:24 отдаёт наружу model/node-layout.ts, перенесённый из abstract-react-client/…/pure-model/layout.ts (переезд пока не закоммичен). Он тянет в core пиксельные размеры экрана: SIMPLE, PREVIEW, PAD, ROOM (node-layout.ts:18–32). Цепочка такая: core/src/model/map-edit.ts импортирует pinnedEnds из arrow-ends.ts, а arrow-ends.ts:4 импортирует layout/absolute из node-layout.ts. Через это сервер (edit-map.ts → planEdit) начинает зависеть от геометрии холста, а packages.md говорит, что сервер ничего не знает про экран. Если перенос задуман, его нужно провести через проверку человеком, как требует правило выноса в core, и поправить три места в доках.",
+        "link": "d:\\my-space\\mapward\\packages\\core\\src\\model\\node-layout.ts",
+        "status": "fail"
+      },
+      {
+        "label": "Пакет docs и зависимость abstract-server → docs не нарисованы в схеме",
+        "description": "По packages.md: в схеме и таблице пакетов есть core, abstract-server, abstract-react-client, display и mcp. Пакета @mapward/docs там нет. При этом packages/abstract-server/package.json объявляет зависимость \"@mapward/docs\": \"workspace:*\", а packages/abstract-server/src/entry/mcp.ts:12–13 импортирует из него LANGUAGES, section, sections и Language. Получается межпакетная связь, которой нет в записанной схеме зависимостей.",
+        "link": "d:\\my-space\\mapward\\packages\\abstract-server\\package.json",
+        "status": "fail"
+      },
+      {
+        "label": "Расширение знает внутреннюю зависимость клиента @xyflow/react",
+        "description": "По принципу (протекание абстракции): холст на @xyflow/react — внутреннее устройство abstract-react-client, его публичный вход отдаёт только MapwardApp, ObjectView и порты. Однако apps/vscode-extension/src/apps/webview/index.css:8 сам импортирует \"@xyflow/react/dist/style.css\", а apps/vscode-extension/package.json держит @xyflow/react в своих dependencies. Если клиент сменит библиотеку холста или её версию, придётся править приложение. Любой другой хост, например браузерное приложение, тоже будет вынужден знать эту деталь клиента.",
+        "link": "d:\\my-space\\mapward\\apps\\vscode-extension\\src\\apps\\webview\\index.css",
+        "status": "pending"
+      }
+    ]
+  }
+}

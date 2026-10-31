@@ -1,23 +1,41 @@
 import { useState } from "react";
-import type { DisplayProps } from "@mapward/display";
-import { ActionButton, StatusDot } from "@mapward/display";
-import type { Data } from "./display.data";
+import type { MetricProps } from "@mapward/component";
+import { useNavigation, usePlugin, useStream } from "@mapward/component";
+import type shell from "../../_plugins/shell/index.ts";
+import { ActionButton } from "../../_plugins/views/bricks/action-button.tsx";
+import { StatusDot } from "../../_plugins/views/bricks/status-dot.tsx";
+
+type Decision = { number: string; title: string; file: string; draft: boolean };
 
 /**
- * Тестовый дисплей-компонент (решение 0037): решения карточками с поиском. Проверяет ввод с
- * состоянием, сетку на произвольных колонках и `open` у своей кнопки. Схема лежит объектом
- * прямо в `config.json`.
+ * Тестовая метрика-компонент (решение 0037): решения карточками с поиском. Данные — вывод
+ * скрипта через `shell.json`, команда — в `params`. Проверяет ввод с состоянием, сетку на
+ * произвольных колонках и `useNavigation` у своей кнопки.
  */
-export default function Display({ data, open }: DisplayProps<Data>) {
+export default function Decisions({ params, metric }: MetricProps<{ command: string }>) {
+  const plugin = usePlugin<typeof shell>("../../_plugins/shell");
+  const answer = useStream(["shell.json", params.command], () =>
+    plugin.json({ command: params.command }),
+  );
   const [query, setQuery] = useState("");
+  const open = useNavigation();
+
+  if (answer.status === "error") {
+    return <div className="text-[var(--mw-errorForeground)]">{answer.error}</div>;
+  }
+  const data = answer.last as { decisions?: Decision[] } | undefined;
+  if (!data?.decisions) {
+    return <div className="text-[var(--mw-descriptionForeground)]">{metric.label}: загружается…</div>;
+  }
+  const decisions = data.decisions;
   const wanted = query.trim().toLowerCase();
-  const found = data.decisions.filter(
+  const found = decisions.filter(
     (decision) =>
       wanted === "" ||
       decision.number.includes(wanted) ||
       decision.title.toLowerCase().includes(wanted),
   );
-  const drafts = data.decisions.filter((decision) => decision.draft).length;
+  const drafts = decisions.filter((decision) => decision.draft).length;
 
   return (
     <div className="flex flex-col gap-2">
@@ -29,7 +47,7 @@ export default function Display({ data, open }: DisplayProps<Data>) {
           className="min-w-0 flex-1 rounded border border-[var(--mw-input-border,transparent)] bg-[var(--mw-input-background)] px-2 py-0.5 text-[var(--mw-input-foreground)] outline-none focus:border-[var(--mw-focusBorder)]"
         />
         <span className="shrink-0 text-[11px] opacity-70">
-          {found.length} из {data.decisions.length}, черновиков {drafts}
+          {found.length} из {decisions.length}, черновиков {drafts}
         </span>
       </div>
 

@@ -1,11 +1,28 @@
 {
   "label": "Версия",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "script",
-      "run": "node -e \"console.log(JSON.stringify({text:require('${{ mapward://~#props.fullPath }}/package.json').version}))\""
+  "component": "${{ mapward:// }}/_plugins/views/text.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node -e \"console.log(JSON.stringify({text:require('./package.json').version}))\"",
+        "cwd": "${{ mapward://~#props.fullPath }}",
+        "watch": {
+          "include": ["${{ mapward://~#props.fullPath }}/package.json"]
+        }
+      }
     }
-  ],
-  "display": { "kind": "text" }
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node -e \"console.log(JSON.stringify({text:require('./package.json').version}))\"",
+      "cwd": "${{ mapward://~#props.fullPath }}",
+      "watch": {
+        "include": ["${{ mapward://~#props.fullPath }}/package.json"]
+      }
+    }
+  }
 }

@@ -1,5 +1,6 @@
-import { action, makeObservable, observableRef } from "mobx";
+import type { Observable } from "rxjs";
 import type { AppBridge, BridgeClient } from "@mapward/core";
+import { Reactive } from "../../../lib/store/reactive.ts";
 
 /** `run` — сразу экран прогонов с этим прогоном: так ведёт пункт экшона в ленте. */
 export type FocusRequest = { mapPath: string; address: string; run?: string };
@@ -10,28 +11,37 @@ export type FocusTarget = Omit<FocusRequest, "mapPath">;
  * Сайдбар держит её, пока не выполнит: карта может быть свёрнута, история не прочитана, объект
  * ещё не загружен.
  *
- * Не `Resource`: тот одинаковое значение дальше не пускает, а второе нажатие на тот же объект,
- * после того как в сайдбаре ушли в сторону, — такая же просьба, как первая.
+ * Не `Feed`: тот одинаковое значение дальше не пускает, а второе нажатие на тот же объект,
+ * после того как в сайдбаре ушли в сторону, — такая же просьба, как первая. Каждая просьба —
+ * новый объект, и `State` её не глотает.
  */
-export class FocusInbox {
+export class FocusInbox extends Reactive {
   /** Ещё не выполненная просьба. */
-  pending: FocusRequest | undefined = undefined;
+  private readonly waiting = this.state<FocusRequest | undefined>(undefined);
   /**
    * Последняя пришедшая, выполнена она или нет: по ней раскрывается секция карты. Выполниться
    * просьба может раньше, чем секция раскрылась, — если карта в ней уже загружена.
    */
-  last: FocusRequest | undefined = undefined;
-
-  constructor(private readonly bridge: BridgeClient<AppBridge>) {
-    makeObservable(this, {
-      pending: observableRef,
-      last: observableRef,
-      receive: action,
-      take: action,
-    });
-  }
+  private readonly latest = this.state<FocusRequest | undefined>(undefined);
 
   private stop: (() => void) | undefined;
+
+  constructor(private readonly bridge: BridgeClient<AppBridge>) {
+    super();
+  }
+
+  get pending(): FocusRequest | undefined {
+    return this.waiting.value;
+  }
+
+  get last(): FocusRequest | undefined {
+    return this.latest.value;
+  }
+
+  /** Последняя просьба потоком — с текущей в начале. */
+  get last$(): Observable<FocusRequest | undefined> {
+    return this.latest.value$;
+  }
 
   /** Хост слушается, пока жив клиент. Табу просьбы не шлют — у него подписка пустая. */
   mount(): void {
@@ -47,8 +57,8 @@ export class FocusInbox {
   }
 
   receive(request: FocusRequest): void {
-    this.pending = request;
-    this.last = request;
+    this.waiting.set(request);
+    this.latest.set(request);
   }
 
   /** Куда просили перейти в этой карте, если просьба ещё не выполнена. */
@@ -62,6 +72,6 @@ export class FocusInbox {
 
   /** Просьба выполнена — её больше нет. */
   take(): void {
-    this.pending = undefined;
+    this.waiting.set(undefined);
   }
 }

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { findObject } from "@mapward/core";
+import { MAP_ROOT } from "@mapward/core";
 import type { MapServer } from "@mapward/abstract-server";
 import type { TabTarget } from "@mapward/abstract-react-client";
 import { serveBridge } from "./bridge-handler.ts";
@@ -23,8 +23,10 @@ type Place = Pick<TabTarget, "mapPath" | "basePath" | "name" | "address" | "metr
  * при открытии и при каждом переходе в табе: имя показывает то, что на экране.
  */
 async function titleOf(server: MapServer, target: Place): Promise<string> {
-  const map = await server.getMap(target);
-  const object = findObject(map, target.address) ?? map;
+  const object =
+    (await server.readObject({ ...target, depth: 0 })) ??
+    (await server.readObject({ ...target, address: MAP_ROOT, depth: 0 }));
+  if (!object) return target.address;
   if (target.metric === undefined) return object.name;
 
   const metric = object.metrics.find((entry) => entry.key === target.metric);

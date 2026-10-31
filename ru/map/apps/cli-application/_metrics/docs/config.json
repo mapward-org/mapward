@@ -1,9 +1,10 @@
 {
   "label": "Дока",
-  "refresh": "on-display",
-  "collectors": [
-    { "kind": "static", "value": { "label": "packages.md", "link": "${{ mapward://@ }}/ru/docs/architecture/packages.md" } }
-  ],
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "link" }
+  "component": "${{ mapward:// }}/_plugins/views/link.tsx",
+  "params": {
+    "data": {
+      "label": "packages.md",
+      "link": "${{ mapward://@ }}/ru/docs/architecture/packages.md"
+    }
+  }
 }

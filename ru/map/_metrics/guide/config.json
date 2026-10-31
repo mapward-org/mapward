@@ -1,9 +1,23 @@
 {
   "label": "Гайд по ведению карты",
-  "refresh": "on-display",
-  "collectors": [
-    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs/development-guide" }
-  ],
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "tree", "empty": "гайда нет" }
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/files",
+      "method": "tree",
+      "params": {
+        "path": "${{ mapward://@ }}/ru/docs/development-guide",
+        "git": true
+      }
+    },
+    "empty": "гайда нет"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/files",
+    "method": "tree",
+    "params": {
+      "path": "${{ mapward://@ }}/ru/docs/development-guide",
+      "git": true
+    }
+  }
 }

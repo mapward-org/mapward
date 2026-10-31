@@ -2,11 +2,12 @@
   "name": "@mapward/core",
   "version": "0.0.0",
   "private": true,
-  "description": "The map model: reading folders, validation, tracing. No VSCode, no UI.",
+  "description": "The link between the sides: bridge contracts and protocol, the types that travel over them, addresses and the small helpers both sides compute alike. The server builds the map; this is what it hands over.",
   "files": [
     "dist"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "exports": {
@@ -24,7 +25,6 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "mobx": "catalog:",
     "rxjs": "catalog:",
     "typebox": "catalog:"
   },

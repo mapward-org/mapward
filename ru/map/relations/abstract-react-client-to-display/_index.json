@@ -1,8 +1,0 @@
-{
-  "name": "использует",
-  "extends": "mapward://prototypes/relation",
-  "props": {
-    "from": "mapward://packages/abstract-react-client",
-    "to": "mapward://packages/display"
-  }
-}

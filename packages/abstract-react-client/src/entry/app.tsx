@@ -1,4 +1,3 @@
-import { observer } from "mobx-react-lite";
 import type { BridgeClient } from "@mapward/core";
 import type { AppBridge } from "@mapward/core";
 import { ProviderBridgeClient } from "../ports/bridge.tsx";
@@ -7,13 +6,15 @@ import { Host } from "../services/host/adapters/host.ts";
 import { ProvideHost, useHost } from "../services/host/ports.tsx";
 import { ViewStates } from "../services/state/index.ts";
 import { ProvideViewStates, useViewStates } from "../services/state/ports.tsx";
-import { useLocalStore } from "../lib/mobx/use-local-store.ts";
+import { useLocalStore } from "../lib/store/use-local-store.ts";
+import { useWatch } from "../lib/store/use-watch.ts";
 import { Loading } from "../lib/ui/loading.tsx";
 import { Maps } from "../features/maps/index.ts";
 import { SavedHistory, TabHistory, type History } from "../features/object-screen/index.ts";
 import { DirectiveTurns } from "../features/directive-turns/index.ts";
 import { FocusInbox } from "../features/focus/index.ts";
 import { ObjectView } from "./object-view.tsx";
+import type { Snapshot } from "../kernel/snapshot.ts";
 
 /**
  * На чём открыт таб — решение 0026: карта названа целиком, потому что таб живёт сам по себе и
@@ -28,6 +29,8 @@ export type TabTarget = {
   group?: string;
   metric?: string;
   history?: History;
+  /** Страница снимка (плагин `screenshot`): перекрытия на один снимок — `Snapshot`. */
+  snapshot?: Snapshot;
 };
 
 type MapRef = { mapPath: string; basePath: string; name: string };
@@ -36,12 +39,13 @@ type MapRef = { mapPath: string; basePath: string; name: string };
  * Объект карты в сайдбаре. История — в состоянии вида, по карте своя (решение 0036); пока
  * хранилище не ответило, объекта нет: переход раньше ответа затёрла бы пришедшая история.
  */
-const SidebarObject = observer(function SidebarObject(props: { map: MapRef; focus: FocusInbox }) {
+function SidebarObject(props: { map: MapRef; focus: FocusInbox }) {
   const views = useViewStates();
   const saved = useLocalStore(
     () => new SavedHistory(views, props.map.mapPath),
     [props.map.mapPath],
   );
+  useWatch(saved);
 
   return saved.ready ? (
     <ObjectView
@@ -53,16 +57,13 @@ const SidebarObject = observer(function SidebarObject(props: { map: MapRef; focu
   ) : (
     <Loading text="Читаем карту…" />
   );
-});
+}
 
 /**
  * Объект в табе: карта, место и история приезжают от хоста, а не из сайдбара. Каждый переход
  * таб сохраняет у себя и сообщает хосту — тот переписывает имя вкладки (решения 0026 и 0036).
  */
-const TabObject = observer(function TabObject(props: {
-  target: TabTarget;
-  onTarget?: (target: TabTarget) => void;
-}) {
+function TabObject(props: { target: TabTarget; onTarget?: (target: TabTarget) => void }) {
   const host = useHost();
   const { target } = props;
   const tab = useLocalStore(
@@ -80,9 +81,18 @@ const TabObject = observer(function TabObject(props: {
       }}
       history={target.history}
       onHistory={(history) => tab.save(history)}
+      {...(target.snapshot?.params !== undefined && target.metric !== undefined
+        ? {
+            override: {
+              object: target.address,
+              metric: target.metric,
+              params: target.snapshot.params,
+            },
+          }
+        : {})}
     />
   );
-});
+}
 
 /**
  * Сборка клиента: карты аккордеоном, внутри объект. Мост приходит снаружи — приложение решает,
@@ -92,7 +102,7 @@ const TabObject = observer(function TabObject(props: {
  * С `target` это тот же клиент, открытый на одном объекте: списка карт в табе нет — карту в нём
  * уже выбрали, и выбор её заново означал бы второй сайдбар внутри таба (решение 0026).
  */
-export const MapwardApp = observer(function MapwardApp(props: {
+export function MapwardApp(props: {
   client: BridgeClient<AppBridge>;
   icon?: RenderIcon;
   target?: TabTarget;
@@ -100,7 +110,11 @@ export const MapwardApp = observer(function MapwardApp(props: {
   onTarget?: (target: TabTarget) => void;
 }) {
   const host = useLocalStore(() => new Host(props.client), [props.client]);
-  const views = useLocalStore(() => new ViewStates(props.client), [props.client]);
+  // Страница снимка перекрывает состояние вида и не пишет в хранилище человека.
+  const views = useLocalStore(
+    () => new ViewStates(props.client, props.target?.snapshot),
+    [props.client],
+  );
   const { target, onTarget } = props;
   // Просьбы «перейди к объекту» слушает только сайдбар: таб хост поднимает сам.
   const focus = useLocalStore(() => new FocusInbox(props.client), [props.client]);
@@ -129,4 +143,4 @@ export const MapwardApp = observer(function MapwardApp(props: {
       </ProviderIcons>
     </ProviderBridgeClient>
   );
-});
+}

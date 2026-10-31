@@ -1,0 +1,10 @@
+{
+  "label": "Файлы (плагин)",
+  "component": "./view.tsx",
+  "params": { "path": "${{ mapward://~#props.fullPath }}" },
+  "agent": {
+    "plugin": "../../../../_plugins/files",
+    "method": "summary",
+    "params": { "path": "${{ mapward://~#props.fullPath }}" }
+  }
+}

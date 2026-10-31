@@ -1,11 +1,21 @@
 {
   "label": "Пакет и что стоит в редакторе",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "script",
-      "run": "node \"${{ mapward://apps/vscode-application }}/_metrics/release-vsix/vsix.mjs\" \"${{ mapward://@ }}\""
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward://apps/vscode-application }}/_metrics/release-vsix/vsix.mjs\" \"${{ mapward://@ }}\""
+      }
+    },
+    "empty": "ничего не собрано"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward://apps/vscode-application }}/_metrics/release-vsix/vsix.mjs\" \"${{ mapward://@ }}\""
     }
-  ],
-  "display": { "kind": "list", "empty": "ничего не собрано" }
+  }
 }

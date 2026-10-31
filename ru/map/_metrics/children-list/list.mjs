@@ -5,9 +5,9 @@
  * Ценность списка в том, чего в графе нет: у кого лежит непрогнанная директива. Поэтому
  * в строке имя и состояние очереди, а не имя и всё.
  *
- * На вход приходит выдача вьюхи `objects-map` — `{ nodes, relations, … }`; связи не нужны,
- * берутся только узлы, у каждого по-прежнему `label` и `link`. На выходе `{ items }` для
- * дисплея `list`.
+ * Дети — объекты на полках `apps`, `packages` и `тест-карты`: папки с `_index.json`, подпись —
+ * его `name`, без него — имя папки. Скрипт читает их сам: вьюха `objects-map` теперь плагин, а не
+ * коллектор, и звать её из пайплайна незачем. На выходе `{ items }` для дисплея `list`.
  *
  * Состояние директивы считается так же, как его считает карта: файл в `_directives/` без
  * своего `.state.json` (или со `status` не `done`) — непрогнанный; со `status: "done"`, но
@@ -70,13 +70,27 @@ function directives(folder) {
   return { total: files.length, fresh, changed };
 }
 
-const input = await new Promise((resolve) => {
-  let raw = "";
-  process.stdin.on("data", (chunk) => (raw += chunk));
-  process.stdin.on("end", () => resolve(raw));
-});
+/** Полки, чьи дети идут в список, — те же, что показывает карта корня. */
+const SHELVES = ["apps", "packages", "тест-карты"];
 
-const nodes = JSON.parse(input || "{}").nodes ?? [];
+const nameOf = (folder) => {
+  try {
+    const index = JSON.parse(read(join(mapPath, folder, "_index.json")) ?? "null");
+    return typeof index?.name === "string" && index.name !== "" ? index.name : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const nodes = SHELVES.flatMap((shelf) =>
+  listing(join(mapPath, shelf))
+    .filter((entry) => entry.isDirectory())
+    .filter((entry) => read(join(mapPath, shelf, entry.name, "_index.json")) !== null)
+    .map((entry) => {
+      const folder = `${shelf}/${entry.name}`;
+      return { label: nameOf(folder) ?? entry.name, link: `mapward://${folder}` };
+    }),
+);
 
 const items = nodes.map((node) => {
   const counts = directives(folderOf(node.link));

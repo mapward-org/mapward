@@ -1,7 +1,8 @@
 /**
  * Превращает файлы требований в дерево для дисплея — решение 0010.
  *
- * На вход приходит выдача read-dir с текстом файлов, на выходе { children }.
+ * На вход приходит дерево `files.tree` с текстом файлов и пометками git, на выходе { children };
+ * пометка git узла переходит в выход как есть.
  * Статус требования берётся из фронтматтера, заголовок — из первой строки с `#`,
  * иначе имя файла.
  *
@@ -13,7 +14,7 @@
  * как обстоят дела целиком.
  *
  * С флагом --own остаются только требования своего объекта — решение 0011. Свой адрес
- * скрипт берёт из MAPWARD_OBJECT_PATH: это путь от корня карты, то есть адрес без схемы.
+ * скрипт берёт из MAPWARD_OBJECT_PATH — папку объекта, которую кладёт в окружение метрика.
  * Требование без `object` считается продуктовым и принадлежит корню карты.
  */
 
@@ -55,9 +56,9 @@ const title = (text = "", name = "") =>
   /^#\s+(.+)$/m.exec(text.replace(/^---[\s\S]*?---/, ""))?.[1]?.trim() ?? name.replace(/\.md$/, "");
 
 /**
- * Свой адрес: путь объекта от корня карты — это он и есть, без схемы. MAPWARD_OBJECT_PATH
- * должен приходить относительным (0004), но старый рантайм кладёт туда абсолютный путь,
- * поэтому на всякий случай отрезаем корень карты сами — он рядом, в MAPWARD_MAP_PATH.
+ * Свой адрес: путь объекта от корня карты — это он и есть, без схемы. Метрика кладёт в
+ * MAPWARD_OBJECT_PATH папку объекта (`${{ mapward://~ }}`), а в MAPWARD_MAP_PATH — корень карты:
+ * его и отрезаем.
  */
 const slash = (value = "") => value.replaceAll("\\", "/").replace(/\/+$/, "");
 
@@ -78,7 +79,9 @@ const objectsOf = (meta) =>
     .map((value) => value.trim())
     .filter(Boolean);
 
-/** Дерево read-dir в дерево требований: у файлов статус из фронтматтера, у папок — свой. */
+const git = (node) => (node.git ? { git: node.git } : {});
+
+/** Дерево файлов в дерево требований: у файлов статус из фронтматтера, у папок — свой. */
 function convert(nodes = []) {
   const out = [];
 
@@ -87,7 +90,7 @@ function convert(nodes = []) {
       const children = convert(node.children);
       // Пустая после фильтра ветка — чужая: показывать нечего.
       if (children.length > 0) {
-        out.push({ label: node.label ?? node.name, link: node.link, isDir: true, children });
+        out.push({ label: node.label ?? node.name, link: node.link, isDir: true, children, ...git(node) });
       }
       continue;
     }
@@ -100,6 +103,7 @@ function convert(nodes = []) {
       link: node.link,
       isDir: false,
       children: [],
+      ...git(node),
     });
   }
 

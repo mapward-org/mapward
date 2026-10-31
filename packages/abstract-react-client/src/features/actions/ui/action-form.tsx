@@ -45,6 +45,26 @@ export function ActionFormFrame(props: {
   );
 }
 
+/**
+ * Рамка своей формы экшона: та же подложка и то же место, только не `<form>` — кнопки и отправку
+ * рисует компонент, и чужая отправка формы ему не нужна.
+ */
+export function ActionComponentFrame(props: { onCancel: () => void; children: ReactNode }) {
+  const { onCancel } = props;
+  return (
+    <div
+      className="absolute inset-0 z-[60] flex items-start justify-center overflow-auto bg-black/30 p-3"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div className="flex w-full max-w-md flex-col gap-2 rounded-sm border border-[var(--mw-menu-border,#8884)] bg-[var(--mw-menu-background,var(--mw-editor-background))] p-3 shadow-lg">
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
 export function FormHead(props: { title: string; description?: string | undefined }) {
   return (
     <>

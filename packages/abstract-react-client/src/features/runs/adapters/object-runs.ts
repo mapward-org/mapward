@@ -1,5 +1,7 @@
-import { Resource } from "@mapward/core";
+import { distinctUntilChanged, map, startWith } from "rxjs";
 import type { AppBridge, BridgeClient, Run } from "@mapward/core";
+import { Feed } from "../../../lib/store/feed.ts";
+import { Reactive, type Watchable } from "../../../lib/store/reactive.ts";
 import { lastRun, runningCount } from "../pure-model/runs.ts";
 
 const NONE: Run[] = [];
@@ -10,28 +12,39 @@ const NONE: Run[] = [];
  * Ими питаются экран прогонов, числа у кнопок экшонов и красная точка метрики: подписка одна на
  * вид. Открыли другой объект — читается другой ресурс, прежний отписывается сам.
  */
-export class ObjectRuns {
-  private readonly resources = new Map<string, Resource<Run[]>>();
+export class ObjectRuns extends Reactive {
+  private readonly feeds = new Map<string, Feed<Run[]>>();
 
   constructor(
     private readonly bridge: BridgeClient<AppBridge>,
     private readonly mapPath: string,
     private readonly address: () => string,
-  ) {}
+    /** То, вместе с чем меняется `address`: экран, перешедший на другой объект. */
+    moves: Watchable,
+  ) {
+    super();
+    // Стор смотрит на ресурс текущего объекта; сменился объект — сменился и ресурс.
+    this.dependOn(
+      moves.changed$.pipe(
+        startWith(undefined),
+        map(() => this.feed(this.address())),
+        distinctUntilChanged(),
+        map((feed) => [feed]),
+      ),
+    );
+  }
+
+  private feed(address: string): Feed<Run[]> {
+    let feed = this.feeds.get(address);
+    if (!feed) {
+      feed = new Feed(this.bridge.watchRuns({ mapPath: this.mapPath, address }));
+      this.feeds.set(address, feed);
+    }
+    return feed;
+  }
 
   get list(): Run[] {
-    const address = this.address();
-    let resource = this.resources.get(address);
-    if (!resource) {
-      resource = new Resource<Run[]>((next) => {
-        const subscription = this.bridge
-          .watchRuns({ mapPath: this.mapPath, address })
-          .subscribe(next);
-        return () => subscription.unsubscribe();
-      });
-      this.resources.set(address, resource);
-    }
-    return resource.value ?? NONE;
+    return this.feed(this.address()).value ?? NONE;
   }
 
   /** Сколько прогонов цели идёт сейчас: прогоны одного экшона бывают параллельными. */

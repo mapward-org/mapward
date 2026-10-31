@@ -1,57 +1,46 @@
 import { statSync } from "node:fs";
+import { join } from "node:path";
 import * as vscode from "vscode";
 import { bundleBuild, createMapServer, parseSettings, serveMcp } from "@mapward/abstract-server";
-import type { MapServer, ServerSettings } from "@mapward/abstract-server";
+import type { MapServer, Settings, WebviewPort } from "@mapward/abstract-server";
 import { readMaps, registerVirtualDocs } from "@/features/maps/index.extension.ts";
 import { createPorts } from "./ports/index.ts";
 import { MapViewProvider } from "./map-view.ts";
 import { openObjectTab, registerObjectTabs } from "./object-tab.ts";
 import { startMcpHttp } from "./mcp-http.ts";
+import { bridgeHttp } from "./bridge-http.ts";
+import { serveBridge } from "./bridge-handler.ts";
+import { announcePlatform } from "./platform-record.ts";
 import { adoptTerminals, setMcpUrl } from "@/features/terminals/index.extension.ts";
 import { withStageTabs } from "./stage-tabs.ts";
 import { runStage } from "./run-stage.ts";
 import {
+  directiveHolder,
   locateDirective,
   registerDirectiveButtons,
 } from "@/features/directive-buttons/index.extension.ts";
 import { FocusRequests, ShownTabs, focusTarget } from "@/features/object-focus/index.extension.ts";
 
 /**
- * Сборка: порты редактора, настройки карты и один сервер на окно. Стор метрик внутри него,
- * поэтому сайдбар и табы одного окна видят одно и то же — решения 0013 и 0014.
+ * Сборка: порты редактора, настройки карты и один сервер на окно. Процессы плагинов внутри
+ * него, поэтому сайдбар и табы одного окна видят одно и то же — решения 0013 и 0014.
  */
-async function createServer(): Promise<{ server: MapServer; mcpPort?: number }> {
-  const ports = createPorts();
+async function createServer(
+  webview: WebviewPort,
+): Promise<{ server: MapServer; mcpPort?: number }> {
+  const ports = { ...createPorts(), webview };
   const state = await readMaps();
   const configs =
     state.kind === "maps" ? [...new Set(state.maps.map((map) => map.configPath))] : [];
 
-  // Настройки рантайма лежат в том же `mapward.json` — решения 0007, 0013 и 0016. Сервер в окне
-  // один, а конфигов бывает несколько: по каждой настройке берём самую осторожную, иначе одна
-  // карта сняла бы ограничение, поставленное другой. Для свежести осторожнее меньшее — реже
-  // показываем старое.
-  const settings = await Promise.all(
+  // Настройки рантайма лежат в том же `mapward.json` — решение 0007. Из них окну нужен только
+  // порт MCP.
+  const settings: Settings[] = await Promise.all(
     configs.map(async (configPath) => {
       const text = await ports.files.read(configPath);
       return text ? parseSettings(text) : {};
     }),
   );
-
-  const strictest = (pick: (from: ServerSettings) => number | undefined) => {
-    const values = settings
-      .map(pick)
-      .filter((value): value is number => typeof value === "number" && value > 0);
-    return values.length > 0 ? Math.min(...values) : undefined;
-  };
-
-  const concurrency = strictest((from) => from.metricsConcurrency);
-  const collectors = strictest((from) => from.collectorsStaleTime);
-  const transforms = strictest((from) => from.transformsStaleTime);
-  // У дебаунса осторожнее большее: реже будит шаги (решение 0043).
-  const debounces = settings
-    .map((from) => from.watchDebounce)
-    .filter((value): value is number => typeof value === "number" && value >= 0);
-  const watchDebounce = debounces.length > 0 ? Math.max(...debounces) : undefined;
 
   // Порт осторожным не бывает: сервер один, и двух портов у него нет. Разные порты в разных
   // конфигах — ошибка настройки, берётся первый (решение 0032).
@@ -62,12 +51,7 @@ async function createServer(): Promise<{ server: MapServer; mcpPort?: number }> 
     );
   }
 
-  const server = createMapServer(ports, {
-    ...(concurrency === undefined ? {} : { metricsConcurrency: concurrency }),
-    ...(collectors === undefined ? {} : { collectorsStaleTime: collectors }),
-    ...(transforms === undefined ? {} : { transformsStaleTime: transforms }),
-    ...(watchDebounce === undefined ? {} : { watchDebounce }),
-  });
+  const server = createMapServer(ports);
   return { server, ...(mcpPorts[0] === undefined ? {} : { mcpPort: mcpPorts[0] }) };
 }
 
@@ -81,9 +65,13 @@ const mtimeOf = (path: string): number | undefined => {
 };
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // Клиент карты для плагинов (`ctx.webview`): адрес моста известен, когда встал MCP-сервер.
+  let webview: { assets: string; bridge: string } | undefined;
   // Обёртка ловит конец этапа, откуда бы он ни пришёл: сервер один и на мост, и на MCP.
-  const created = await createServer();
+  const created = await createServer(() => webview);
   const server = withStageTabs(created.server);
+  // Окно закрывается — гаснут и процессы плагинов: сироты с вотчерами никому не нужны.
+  context.subscriptions.push({ dispose: () => void created.server.stopPlugins() });
 
   // Агент в терминале должен видеть карту так же, как человек — решение 0009. Сервер живёт,
   // пока открыта карта, и его адрес уезжает в сессии терминалов.
@@ -92,10 +80,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Из какого бандла отвечает сервер — решение 0039: `__filename` здесь `dist/extension.cjs`,
     // и после `pnpm build` без перезагрузки окна он на диске новее загруженного.
     const build = bundleBuild(__filename, mtimeOf);
+    // Рядом с MCP — мост клиента по http: им безголовый браузер плагина `screenshot` видит
+    // карту так же, как вебвью. Табов и фокуса у такой страницы нет.
+    const bridge = bridgeHttp((page) =>
+      serveBridge(server, page, context.workspaceState, () => Promise.resolve()),
+    );
     const mcp = await startMcpHttp(
       (transport) => serveMcp(server, state.maps, transport, build),
       created.mcpPort,
+      bridge,
     );
+    if (mcp.bridge) webview = { assets: join(context.extensionPath, "dist"), bridge: mcp.bridge };
     if (created.mcpPort !== undefined && !mcp.fixed) {
       void vscode.window.showWarningMessage(
         `mapward: порт MCP ${String(created.mcpPort)} занят — терминалы этого окна не переживут перезагрузку`,
@@ -105,11 +100,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // обратно по имени вкладки (решение 0032).
     setMcpUrl(mcp.url, mcp.fixed);
     context.subscriptions.push({ dispose: mcp.stop });
+    // Одна платформа на карту: `mapward mcp` найдёт эту по файлу и станет её клиентом.
+    const forget = announcePlatform(state.maps, {
+      mcp: mcp.url,
+      ...(mcp.bridge ? { bridge: mcp.bridge } : {}),
+      host: "vscode",
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    });
+    context.subscriptions.push({ dispose: forget });
   }
   await adoptTerminals(context.workspaceState);
 
-  // Кнопки этапов в файле директивы — решение 0032. Карта читается на каждый вопрос заново:
-  // сервер держит её в кэше, а директивы и этапы меняются, пока файл открыт.
+  // Кнопки этапов в файле директивы — решение 0032. Объект читается на каждый вопрос заново:
+  // директивы и этапы меняются, пока файл открыт. Читается только тот, в чьей папке файл.
   const maps = state.kind === "maps" ? state.maps : [];
   // Кнопка «к объекту»: вкладка, которая объект показывает, или сайдбар. Список вкладок ведут
   // сами вкладки, просьбу сайдбару слушает он сам, когда поднимется.
@@ -117,8 +121,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const focusRequests = new FocusRequests();
   const find = async (uri: vscode.Uri) => {
     for (const map of maps) {
+      const address = directiveHolder(map.mapPath, uri.fsPath);
+      if (address === undefined) continue;
       // oxlint-disable-next-line no-await-in-loop
-      const located = locateDirective(await server.getMap(map), uri.fsPath);
+      const holder = await server.readObject({ ...map, address, depth: 0 });
+      const located = holder && locateDirective(holder, uri.fsPath);
       if (located) return { map, located };
     }
     return undefined;

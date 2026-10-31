@@ -1,21 +1,21 @@
-import { Check } from "typebox/value";
 import {
   confirmQuestion,
   findActionOwner,
-  findMetric,
-  findObject,
+  findMetricOwner,
   groupMetrics,
-  MapOp,
-  trail,
+  MAP_ROOT,
+  MapEditOp,
+  memberOwner,
 } from "@mapward/core";
-import type { EditResult, MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
+import type { MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
 import { projectDeep } from "../lib/projection.ts";
 import { fit } from "../lib/budget.ts";
 import type { MapRef } from "../kernel/map-ref.ts";
-import type { ReadOptions } from "../features/metrics/index.ts";
+import { PluginMissing } from "../features/plugins/index.ts";
+import { schemaErrors } from "../lib/schema-errors.ts";
 
 /**
  * MCP — ещё один транспорт к тем же юзкейсам, а не вторая модель карты (решения 0009 и 0014).
@@ -65,19 +65,36 @@ export function bundleBuild(
 const PROTOCOL = "2024-11-05";
 
 /**
- * Карта у сервера одна и догоняет диск вотчером (решение 0041). Агент, который только что
- * записал объект мимо сервера, может спросить о нём раньше, чем вотчер скажет. Поэтому промах по
- * адресу — повод перечитать карту и посмотреть ещё раз, а не сразу «не найден».
+ * Объект по адресу и `depth` уровней его детей — читается он, а не карта. Модель догоняет диск
+ * вотчером (решение 0041), и агент, который только что записал объект мимо сервера, может
+ * спросить о нём раньше, чем вотчер скажет. Поэтому промах по адресу — повод перечитать то, что
+ * модель держит, и посмотреть ещё раз, а не сразу «не найден».
  */
-async function freshMap(
+async function freshObject(
   server: MapServer,
   ref: MapRef,
-  found: (map: MapObject) => boolean,
-): Promise<MapObject> {
-  const map = await server.getMap(ref);
-  if (found(map)) return map;
+  address: string,
+  depth = 0,
+): Promise<MapObject | undefined> {
+  const found = await server.readObject({ ...ref, address, depth });
+  if (found) return found;
   await server.reloadMap(ref);
-  return server.getMap(ref);
+  return server.readObject({ ...ref, address, depth });
+}
+
+/** Экшон или метрика по адресу — у объекта, которому они принадлежат: читается только он. */
+async function memberOf(
+  server: MapServer,
+  ref: MapRef,
+  address: string,
+): Promise<{ action?: MapAction; metric?: MapMetric }> {
+  const owner = memberOwner(address);
+  const holder = owner === undefined ? undefined : await freshObject(server, ref, owner);
+  if (!holder) return {};
+  return {
+    action: findActionOwner(holder, address)?.action,
+    metric: findMetricOwner(holder, address)?.metric,
+  };
 }
 
 /**
@@ -94,8 +111,9 @@ const fileOf = (file: MapFile) => ({
 });
 
 /**
- * Экшон — решение 0038: чтобы запустить его через `run_action`, агенту нужны адрес и форма.
- * Исполнители — только видами: сам конфиг целиком приходит `read_index` по адресу экшона.
+ * Экшон — решение 0038: именованный ярлык на изменяющий метод плагина с заданными параметрами.
+ * Агенту нужны адрес и форма: `inputs`, если написаны, иначе форма — параметры метода из
+ * `describe_plugin` без заданных в `params`. Сам конфиг целиком приходит `read_index` по адресу.
  */
 const actionOf = (action: MapAction) => ({
   key: action.key,
@@ -106,8 +124,9 @@ const actionOf = (action: MapAction) => ({
   // Текст вопроса — как есть, с `${{ inputs.… }}`: данные формы агент подставит сам, а
   // run_action без `confirmed` вернёт уже заполненный вопрос.
   ...(action.config.confirm ? { confirm: action.config.confirm } : {}),
-  runners: (action.config.runners ?? []).map((runner) => String(runner.kind)),
-  ...(action.config.refreshes === undefined ? {} : { refreshes: action.config.refreshes }),
+  ...(action.config.plugin === undefined ? {} : { plugin: action.config.plugin }),
+  ...(action.config.method === undefined ? {} : { method: action.config.method }),
+  ...(action.config.params === undefined ? {} : { params: action.config.params }),
   configPath: action.configPath,
   ...(action.owner === undefined ? {} : { owner: action.owner }),
   layers: action.layers,
@@ -154,12 +173,54 @@ function digest(files: MapFile[], all: boolean) {
   };
 }
 
+/** Что из объекта класть в ответ: отбор метрик по ключам и полнота списка директив. */
+export type View = {
+  metrics?: string[];
+  group?: string;
+  directives: boolean;
+  /**
+   * Собирать ли значения. Только когда метрики назвали ключами или вкладкой: значение метрики-
+   * компонента — вызов плагина, а вызов будит процесс, и обход дерева без просьбы поднял бы все
+   * плагины поддерева.
+   */
+  values: boolean;
+};
+
+/** Сколько ждать запрос для агента, если зовущий не назвал своё: платформа своих сроков не ставит. */
+const AGENT_TIMEOUT_MS = 30_000;
+
 /**
- * Что из объекта класть в ответ: отбор метрик по ключам, полнота списка директив и логи
- * прогона. Логи только по просьбе — они жирные, а нужны, когда разбираются, почему метрика
- * красная (решение 0016).
+ * Что метрика показывает агенту: её запрос для агента — метод плагина. Компонент агент не
+ * исполняет, поэтому без запроса у него остаются только методы плагина. У дорогой метрики
+ * запрос — `agent.ask`: первым значением приходит сохранённый ответ, а не новый вопрос.
  */
-export type View = { metrics?: string[]; group?: string; directives: boolean; logs: boolean };
+async function agentValue(
+  server: MapServer,
+  ref: MapRef,
+  metric: MapMetric,
+  timeout: number,
+): Promise<Record<string, unknown>> {
+  const agent = metric.config.agent;
+  if (!agent) {
+    return {
+      collected: false,
+      hint: "у метрики нет запроса для агента: что она показывает человеку, видно по методам её плагинов — describe_plugin",
+    };
+  }
+  try {
+    const data = await server.pluginFirst(
+      { ...ref, plugin: agent.plugin, method: agent.method, args: agent.params ?? {} },
+      timeout,
+    );
+    return { collected: true, ok: true, data };
+  } catch (error) {
+    return {
+      collected: false,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 /**
  * Какие метрики объекта попадают в ответ — решение 0025.
@@ -193,9 +254,7 @@ function pickMetrics(object: MapObject, view: View, top: boolean): MapMetric[] {
 async function describe(
   server: MapServer,
   ref: MapRef,
-  root: MapObject,
   object: MapObject,
-  options: ReadOptions,
   depth: number,
   view: View,
   top = true,
@@ -203,18 +262,25 @@ async function describe(
   // Отбор идёт до сбора: метрика, которую не просили, не должна и считаться — иначе `depth`
   // поднимает процессы по всему поддереву ради значений, которые тут же выбрасываются.
   const wanted = pickMetrics(object, view, top);
-  const values = await server.readMetrics(ref, { ...object, metrics: wanted }, options);
-  const logs = view.logs
-    ? await Promise.all(wanted.map((metric) => server.readMetricLogs(metric)))
-    : undefined;
+  const values = view.values
+    ? Object.fromEntries(
+        await Promise.all(
+          wanted.map(
+            async (metric) =>
+              [metric.address, await agentValue(server, ref, metric, AGENT_TIMEOUT_MS)] as const,
+          ),
+        ),
+      )
+    : {};
   // Вверх по дереву — решение 0016: дети у объекта уже есть, а родителя без этого не видно,
   // и агент не мог уйти к соседу иначе как обходом от корня.
   //
   // Раскрытому ребёнку цепочка не нужна: он лежит внутри своего родителя, и повторять её у
   // каждого значит платить за одно и то же столько раз, сколько в ответе объектов.
+  //
+  // Предки читаются по папкам на пути, а не обходом карты от корня.
   const parents = top
-    ? trail(root, object.address)
-        .slice(0, -1)
+    ? (await server.readAncestors({ ...ref, address: object.address }))
         .toReversed()
         .map((ancestor) => ({ address: ancestor.address, name: ancestor.name }))
     : undefined;
@@ -225,11 +291,6 @@ async function describe(
     prototypeName: object.prototypeName,
     path: object.path,
     props: object.props,
-    // Раскладка и воркфлоу — только у верхнего объекта ответа, по тому же доводу, что и
-    // `parents`: раскрытый ребёнок лежит внутри родителя, и повторять у каждого пять этапов
-    // с путями значит платить за одно и то же столько раз, сколько в ответе объектов.
-    // Понадобились у ребёнка — он спрашивается своим вызовом, и там он верхний.
-    ...(top ? { layout: { details: object.detailsLayout } } : {}),
     // Из каких `_index.json` собран объект. Ссылками: конфиг слоя читается `read_index`
     // по названному адресу, а вложенный он повторил бы самое тяжёлое в ответе (решение 0019).
     layers: object.layers,
@@ -246,16 +307,18 @@ async function describe(
             ...(group.label === undefined ? {} : { label: group.label }),
             ...(group.description === undefined ? {} : { description: group.description }),
             metrics: group.metrics,
+            // Раскладка — компонент: агенту хватает пути, чтобы прочесть его, когда нужно.
+            ...(group.layout === undefined ? {} : { layout: group.layout }),
             // Превью объекта — это его вкладка: агент выбирает её тем же `group`.
             ...(group.defaultPreview === true ? { defaultPreview: true } : {}),
           })),
         }),
-    metrics: wanted.map((metric, at) => ({
+    metrics: wanted.map((metric) => ({
       key: metric.key,
       address: metric.address,
       label: metric.config.label ?? metric.key,
-      refresh: metric.config.refresh ?? "manual",
-      display: metric.config.display?.kind,
+      // Метрика — компонент, её значение для агента — запрос к плагину.
+      ...(metric.config.agent ? { agent: metric.config.agent } : {}),
       configPath: metric.configPath,
       // Заведена не здесь, а у прототипа: инвариант 0015 спрашивает именно это.
       ...(metric.owner === undefined ? {} : { owner: metric.owner }),
@@ -263,14 +326,25 @@ async function describe(
       layers: metric.layers,
       // Конфиг целиком: в нём видно и коллекторы, и `exclude` у карты детей.
       config: metric.config,
-      value: values[metric.address],
-      ...(logs?.[at] === undefined ? {} : { logs: logs[at] }),
+      ...(view.values ? { value: values[metric.address] } : {}),
     })),
+    // Значений нет, потому что не просили, а не потому что пусто: так и говорится.
+    ...(top && !view.values && wanted.length > 0
+      ? {
+          metricsHint:
+            "значения метрик не собирались — назови их в metrics или вкладкой в group: значение бывает вызовом плагина, и без просьбы его не будят",
+        }
+      : {}),
     directives: digest(object.directives, view.directives),
     actions: object.actions.map(actionOf),
     /**
      * Этапы, действующие на объекте: звать их теперь по имени, и узнать имя больше неоткуда —
      * по файлам не видно, что приехало от прототипа (решение 0017).
+     *
+     * Только у верхнего объекта ответа, по тому же доводу, что и `parents`: раскрытый ребёнок
+     * лежит внутри родителя, и повторять у каждого пять этапов с путями значит платить за одно и
+     * то же столько раз, сколько в ответе объектов. Понадобились у ребёнка — он спрашивается
+     * своим вызовом, и там он верхний.
      */
     ...(top
       ? {
@@ -288,9 +362,7 @@ async function describe(
     children:
       depth > 0
         ? await Promise.all(
-            object.children.map((child) =>
-              describe(server, ref, root, child, options, depth - 1, view, false),
-            ),
+            object.children.map((child) => describe(server, ref, child, depth - 1, view, false)),
           )
         : object.children.map((child) => ({ address: child.address, name: child.name })),
     map: ref.name,
@@ -310,30 +382,24 @@ const TOOLS = [
     description:
       "Объект карты так, как его видит человек: поля после наследования и подстановок, список метрик, директив, экшонов, родителей и детей. " +
       "layers — файлы, из которых собран мердж, у объекта и у каждой метрики: адрес и путь, от своего к дальнему прототипу. Сам конфиг слоя берётся read_index по этому адресу. " +
-      'С refresh: "on-display" дешёвые метрики досчитываются — зови так, чтобы увидеть то же, что человек на экране. ' +
       "Весь контекст разом: depth уводит вглубь по детям, metrics отбирает метрики по ключам, fields — поля в ответе. " +
       "У объекта с вкладками (поле groups) метрики разложены по группам: group отбирает одну из них, " +
-      "без него приходят метрики всех вкладок, а не названная ни в одной не приходит никогда — её не показывают и человеку. " +
+      "без него приходит перечень метрик всех вкладок без значений, а не названная ни в одной не приходит никогда — её не показывают и человеку. " +
+      "Значения собираются только у метрик, названных в metrics или вкладкой в group. Значение метрики — её запрос для агента к плагину (поле agent): у дорогой метрики это agent.ask — сохранённый ответ; спросить заново — call_plugin с методом refresh и теми же параметрами. " +
       'Начинай с обзора — { depth: 2, metrics: [], fields: ["address", "name", "prototypeName", "path", "props", "directives"] } — ' +
-      'и только потом зови нужные: { address, metrics: ["files"], refresh: "on-display" }. Названная одна метрика бюджетом не режется. ' +
+      'и только потом зови нужные: { address, metrics: ["files"] }. Названная одна метрика бюджетом не режется. ' +
       "Почти весь вес ответа сидит в metrics.value, поэтому metrics важнее fields. " +
-      "layout и workflow приходят только у верхнего объекта ответа: у раскрытых детей они те же самые.",
+      "workflow приходит только у верхнего объекта ответа: у раскрытых детей он тот же самый.",
     inputSchema: {
       type: "object",
       properties: {
         address: { type: "string", description: "mapward:// адрес; без него корень" },
         map: { type: "string", description: "имя карты; без него первая" },
-        refresh: {
-          type: "string",
-          enum: ["none", "on-display"],
-          description:
-            'по умолчанию "none" — только собранное раньше; "on-display" досчитывает дешёвые метрики и дожидается их. Дорогие (refresh: manual) не запускаются никогда — для них run_metric',
-        },
         metrics: {
           type: "array",
           items: { type: "string" },
           description:
-            'какие метрики включить, по ключам: ["files", "architecture"]. Пустой список — ни одной, и это правильный обзорный вызов. Без параметра приходят все, вместе со значениями; невключённая метрика не считается вовсе',
+            'какие метрики включить со значениями, по ключам: ["files", "architecture"]. Без параметра приходит перечень метрик без значений — значение бывает вызовом плагина, и без просьбы плагины не будятся. Пустой список — ни одной метрики, и это правильный обзорный вызов',
         },
         group: {
           type: "string",
@@ -360,11 +426,7 @@ const TOOLS = [
         depth: {
           type: "number",
           description:
-            'насколько глубоко раскрыть детей: 0 (по умолчанию) — именами, 1 и больше — такими же объектами. Вместе с refresh: "on-display" считает дешёвые метрики на всём поддереве',
-        },
-        timeout: {
-          type: "number",
-          description: "мс на стадию сбора; перебивает то, что задано на метрике",
+            "насколько глубоко раскрыть детей: 0 (по умолчанию) — именами, 1 и больше — такими же объектами",
         },
       },
     },
@@ -481,42 +543,20 @@ const TOOLS = [
     },
   },
   {
-    name: "run_metric",
-    description:
-      "Запустить метрику и вернуть её значение. Это тот же прогон, что по кнопке: скрипт или агент, запись кэша. " +
-      "Дорогая метрика переживает вызов: с wait: false управление возвращается сразу, а результат досматривается через read_object.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        address: { type: "string", description: "mapward:// адрес метрики" },
-        map: { type: "string", description: "имя карты; без него первая" },
-        timeout: {
-          type: "number",
-          description: "мс на стадию сбора; перебивает то, что задано на метрике",
-        },
-        wait: {
-          type: "boolean",
-          description:
-            "по умолчанию true — вызов дожидается значения. false отдаёт busy: true сразу и не ждёт: прогон идёт у сервера, и его досматривают read_object по этому же объекту",
-        },
-      },
-      required: ["address"],
-    },
-  },
-  {
     name: "run_action",
     description:
-      "Запустить экшон объекта — то же, что кнопка на карте: скрипт или headless-агент, прогон виден в объекте на экране прогонов. " +
-      "Экшоны и их поля формы приходят в read_object, поле actions. Поля проверяет сервер: не хватает обязательного — прогона нет, в ответе errors. " +
-      "По умолчанию вызов ждёт конца и отдаёт прогон целиком: шаги, логи, вывод. С wait: false отдаёт номер сразу, итог — read_run. " +
-      "Что экшон сделал, видно в метриках объекта: те, что названы в refreshes, пересобираются сами после успеха.",
+      "Запустить экшон объекта — то же, что кнопка на карте. Экшон — ярлык на изменяющий метод плагина (plugin, method, params): платформа зовёт метод и записывает вызов, ход и итог в историю — прогон виден в объекте на экране прогонов. " +
+      "Экшоны приходят в read_object, поле actions. Поля формы — inputs экшона, а без них — параметры метода из describe_plugin, кроме заданных в params. Поля проверяет сервер: не хватает обязательного — прогона нет, в ответе errors. " +
+      "По умолчанию вызов ждёт конца и отдаёт прогон целиком: шаги, логи, вывод, итог (result). С wait: false отдаёт номер сразу, итог — read_run. " +
+      "Метод можно позвать и напрямую, call_plugin, — тогда истории нет. Что экшон сделал, видно в метриках объекта: они подписаны на свои плагины и обновятся сами.",
     inputSchema: {
       type: "object",
       properties: {
         address: { type: "string", description: "mapward:// адрес экшона, как в read_object" },
         inputs: {
           type: "object",
-          description: "значения полей формы по именам; непереданное берёт умолчание",
+          description:
+            "значения полей формы по именам; непереданное берёт умолчание. Заданное экшоном в params формой не перебивается",
         },
         wait: {
           type: "boolean",
@@ -534,17 +574,143 @@ const TOOLS = [
     },
   },
   {
-    name: "edit_map",
+    name: "describe_plugin",
     description:
-      "Править карту теми же операциями, что человек на холсте (решение 0044): создать объект, провести связь, перенести объект в группу, " +
-      "переименовать, удалить, скопировать объекты с детьми и внутренними связями, добавить и убрать ссылку во вьюхе, поставить и убрать копию-отображение объекта, сдвинуть узлы, свернуть группу, поставить фигуру. " +
-      "Операции применяются по очереди одной пачкой, каждая — по модели, где уже есть сделанное предыдущими; отказ любой откатывает всю пачку. " +
-      "Перенос сам переписывает адреса в связях, прототипах, конфигах и состоянии вьюх — руками их не правь. " +
-      "Вьюха — адрес метрики с коллектором objects-map, как в read_object. В ответе id пачки — по нему undo_edit; стек отмены держи сам.",
+      "Самоописание плагина: его методы, читающий или изменяющий, JSON-схемы параметров и значений, и шаблоны метрик (templates: компонент, схема params, запрос для агента) — по ним метрику пишут короткой формой в edit_map set. " +
+      "Плагин — папка с кодом, путь от корня карты или абсолютный; у метрики-компонента он стоит в agent.plugin. " +
+      "Процесс плагина при этом поднимается, как на вызов. Плагина по пути нет — в ответе перечень встроенных: их ставит add_plugin.",
     inputSchema: {
       type: "object",
       properties: {
-        ops: { type: "array", items: MapOp, description: "операции пачки, по порядку" },
+        plugin: {
+          type: "string",
+          description: "путь к папке плагина: от корня карты или абсолютный",
+        },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["plugin"],
+    },
+  },
+  {
+    name: "check_plugin",
+    description:
+      "Работает ли плагин — после правки его кода: сборка (ошибки — файл:строка:колонка), процесс и рукопожатие, " +
+      "самоописание (методы и читаются ли их схемы), и метрики карты, которые на него ссылаются (agent.plugin — он или компонент в его папке): " +
+      "компонент собирается, запрос для агента зовётся пробно. Ответ — шаги со статусом ok/fail/skip и строками; ok — всё прошло. " +
+      "То же, что mapward plugin check в терминале.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin: {
+          type: "string",
+          description: "путь к папке плагина: от корня карты или абсолютный",
+        },
+        timeout: {
+          type: "number",
+          description: "сколько ждать каждый пробный запрос для агента, мс; по умолчанию 30000",
+        },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["plugin"],
+    },
+  },
+  {
+    name: "clear_build_cache",
+    description:
+      "Стереть сохранённые сборки компонентов карты — метрик, раскладок, своих форм экшонов: файлы .mapward/builds/ и память сервера. " +
+      "Сборка помнит все ответы файлов сборщику (прочитанное, промахи, пакеты в node_modules) и переиспользуется, только если они те же, — " +
+      "так что звать это нужно, лишь когда компонент явно показывает старое. То, на что сейчас смотрят, собирается заново. " +
+      "Ответ — { removed: сколько файлов стёрто, rebuilt: сколько сборок пересобирается }.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+    },
+  },
+  {
+    name: "add_plugin",
+    description:
+      "Поставить встроенный плагин в карту: его исходники копируются в _plugins/<имя> (или в названную папку внутри карты) и дальше это код проекта — его можно править. " +
+      "Существующую папку mapward не перезаписывает никогда: она есть — отказ. Скопированный плагин уже доверен. " +
+      "Есть у плагина package.json с dependencies — они ставятся в его папку (npm install --omit=dev); не поставились (нет сети) — отказ с командой, копия при этом остаётся. " +
+      "Встроенный, которого в _plugins/<имя> ещё нет, доставляется и сам, на первый вызов.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "имя встроенного плагина: files, navigation, objects-map, …",
+        },
+        path: {
+          type: "string",
+          description:
+            "папка от корня карты или абсолютная внутри неё; по умолчанию _plugins/<имя>",
+        },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "call_plugin",
+    description:
+      "Вызвать метод плагина — так же, как его зовёт компонент метрики. Метод отвечает потоком: " +
+      'по умолчанию приходит первое значение; wait: "complete" ждёт конца и отдаёт все значения — так ждут долгий изменяющий метод. ' +
+      "Изменяющие методы открыты агенту, отменять сделанное — забота плагина.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin: {
+          type: "string",
+          description: "путь к папке плагина: от корня карты или абсолютный",
+        },
+        method: { type: "string", description: "имя метода из describe_plugin" },
+        args: { type: "object", description: "аргументы метода по его схеме" },
+        wait: {
+          type: "string",
+          enum: ["first", "complete"],
+          description:
+            'по умолчанию "first" — первое значение; "complete" — все значения до конца потока',
+        },
+        timeout: { type: "number", description: "мс ожидания; по умолчанию 30000" },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["plugin", "method"],
+    },
+  },
+  {
+    name: "read_run",
+    description:
+      "Прогон экшона по номеру из run_action: статус, шаги, их логи и вывод, итог метода (result). Идущий прогон отдаётся как есть, не дожидаясь конца.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "номер прогона из run_action" },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "edit_map",
+    description:
+      "Написать карту методами, не ходя в файлы, — пачкой операций; тот же набор, что у интерфейса и у плагинов (ctx.editMap). " +
+      "Свои поля по адресу: get (как написаны, без наследования: { content, version }), set (полная замена с проверкой схемой, version — защита от записи поверх чужой правки), delete. " +
+      'Адрес — объект (_index.json), метрика (…/_metrics/<ключ>, её config.json), экшон (…/_actions/<ключ>), слой общей метрики (папка с config.json без _index.json; новый — set с kind: "layer"), этап (…/_directives.workflow/<имя>: { name, order, marksDone, text }). ' +
+      "Метрику можно писать шаблоном плагина: { label?, plugin, template, params } — шаблоны в describe_plugin; платформа развернёт в component и agent и проверит params. " +
+      "Несуществующие метрику, экшон, этап set создаёт; set индекса по адресу полки делает её объектом, delete с keepChildren — объект полкой. " +
+      "Структура: create (у родителя: content — _index.json целиком, folder — имя папки), move, setFolder (и для полок), copy. Папки неявные: create и writeFile их создают, опустевшая после delete/move папка уходит. " +
+      "Сырые файлы: readFile, writeFile, removeFile — пути внутри карты, кроме .mapward/ и _directives.state/. " +
+      "check — собрать компонент метрики (ошибки с файлом:строкой:столбцом) и спросить её запрос для агента, метрики групп объекта (и унаследованных) и его раскладки, форму экшона, папку плагина; installDeps — зависимости своего плагина. " +
+      "Операции идут по очереди, каждая — по карте, где уже есть сделанное предыдущими; отказ любой откатывает всю пачку, ошибки полей — в errors путём до поля. " +
+      "Перенос сам переписывает адрес везде, где он стоит строкой в _index.json и config.json карты, тексты директив не трогает. " +
+      "В ответе results — ответ каждой операции по порядку, id пачки — по нему undo_edit; created — новые адреса, moves — переезды { from, to }. Стек отмены держи сам. " +
+      "Холст (позиции, ссылки, стрелки на вьюхе) правит плагин objects-map — call_plugin, метод edit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ops: { type: "array", items: MapEditOp, description: "операции пачки, по порядку" },
         map: { type: "string", description: "имя карты; без него первая" },
       },
       required: ["ops"],
@@ -554,7 +720,7 @@ const TOOLS = [
     name: "undo_edit",
     description:
       "Отменить пачку edit_map по её id. Файлы, которые с тех пор поменяли мимо неё, не затираются: отказ с их перечнем. " +
-      "Пачки живут в памяти сервера — после перезапуска откатывают git.",
+      "Пачки живут в памяти сервера — после его перезапуска откатывают git.",
     inputSchema: {
       type: "object",
       properties: {
@@ -576,31 +742,7 @@ const TOOLS = [
       required: ["id"],
     },
   },
-  {
-    name: "read_run",
-    description:
-      "Прогон экшона по номеру из run_action: статус, шаги, их логи и вывод. Идущий прогон отдаётся как есть, не дожидаясь конца.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "номер прогона из run_action" },
-        map: { type: "string", description: "имя карты; без него первая" },
-      },
-      required: ["id"],
-    },
-  },
 ] as const;
-
-/** Один `timeout` в вызове кладётся на обе стадии: зовущий думает про ожидание целиком. */
-const timeouts = (args: Record<string, unknown>) =>
-  typeof args.timeout === "number"
-    ? { collectorsTimeout: args.timeout, transformsTimeout: args.timeout }
-    : {};
-
-const readOptions = (args: Record<string, unknown>): ReadOptions => ({
-  ...timeouts(args),
-  ...(args.refresh === "on-display" ? { refresh: "on-display" as const } : {}),
-});
 
 /** Списки строк приходят как есть; всё остальное считается «не назвали». */
 const names = (raw: unknown): string[] | undefined =>
@@ -615,18 +757,11 @@ const DEFAULT_BUDGET = 24_000;
 const budget = (args: Record<string, unknown>): number =>
   typeof args.budget === "number" ? args.budget : DEFAULT_BUDGET;
 
-/**
- * Логи читаются с диска, поэтому спрашиваются заранее — по самой проекции: назвал
- * `metrics.logs`, значит они тебе и нужны. Отдельного флага для этого заводить незачем.
- */
-const wantsLogs = (fields: string[] | undefined): boolean =>
-  fields?.some((path) => path === "metrics.logs" || path.startsWith("metrics.logs.")) ?? false;
-
 const view = (args: Record<string, unknown>): View => ({
   metrics: names(args.metrics),
   ...(typeof args.group === "string" ? { group: args.group } : {}),
   directives: args.directives === "all",
-  logs: wantsLogs(names(args.fields)),
+  values: (names(args.metrics)?.length ?? 0) > 0 || typeof args.group === "string",
 });
 
 /** Ответ инструмента: агент читает json как текст — так устроен протокол. */
@@ -707,8 +842,10 @@ export function serveMcp(
 
     if (name === "read_object") {
       const address = typeof args.address === "string" ? args.address : undefined;
-      const map = await freshMap(server, ref, (tree) => !address || !!findObject(tree, address));
-      const object = address ? findObject(map, address) : map;
+      // Поддерево — от названного объекта и на глубину ответа: дети последнего уровня приходят
+      // именами, поэтому читается на уровень глубже, чем `depth`. Корень — только если не назвали.
+      const depth = typeof args.depth === "number" && args.depth > 0 ? Math.floor(args.depth) : 0;
+      const object = await freshObject(server, ref, address ?? MAP_ROOT, depth + 1);
       if (!object) throw new Error(`Объект ${String(address)} не найден`);
       // `metrics: []` выключает метрики целиком, а `fields: ["metrics.key"]` спрашивает про
       // них же — вместе это всегда пустой список, который читается как «метрик у объекта нет».
@@ -737,16 +874,7 @@ export function serveMcp(
         );
       }
 
-      const depth = typeof args.depth === "number" && args.depth > 0 ? Math.floor(args.depth) : 0;
-      const described = await describe(
-        server,
-        ref,
-        map,
-        object,
-        readOptions(args),
-        depth,
-        view(args),
-      );
+      const described = await describe(server, ref, object, depth, view(args));
       const answer = projectDeep(described, names(args.fields));
       // Одна метрика, названная по имени, не режется. Отбор и бюджет иначе спорят: агент
       // делает ровно то, что велит дока — зовёт метрику поимённо, — и получает маркер вместо
@@ -757,23 +885,18 @@ export function serveMcp(
 
     if (name === "read_index") {
       const address = typeof args.address === "string" ? args.address : undefined;
-      const map = await freshMap(
-        server,
-        ref,
-        (tree) =>
-          !address ||
-          !!findObject(tree, address) ||
-          !!findActionOwner(tree, address) ||
-          !!findMetric(tree, address),
-      );
-      const object = address ? findObject(map, address) : map;
+      // Адрес метрики или экшона объектом не бывает: их ищут у владельца, не перечитывая карту
+      // ради промаха по объекту.
+      const member = address === undefined ? undefined : memberOwner(address);
+      const object =
+        member === undefined ? await freshObject(server, ref, address ?? MAP_ROOT) : undefined;
 
       // `_metrics` — служебная папка, объектом она не ищется, но у метрики есть собственный
       // адрес, и приходит он в ответе рядом с ключом. Поэтому сырой вид метрики спрашивается
       // тем же инструментом, а не своим параметром — решение 0019.
       if (!object) {
         // Экшон читается так же, как метрика: собственный конфиг и адрес следующего слоя.
-        const action = address ? findActionOwner(map, address)?.action : undefined;
+        const { action, metric } = address ? await memberOf(server, ref, address) : {};
         if (action) {
           if (typeof args.file === "string" || typeof args.stage === "string") {
             throw new Error("У экшона нет файлов и этапов: file и stage спрашивают у объекта.");
@@ -790,7 +913,6 @@ export function serveMcp(
           });
         }
 
-        const metric = address ? findMetric(map, address) : undefined;
         if (!metric) throw new Error(`Объект ${String(address)} не найден`);
         if (typeof args.file === "string" || typeof args.stage === "string") {
           throw new Error(
@@ -888,21 +1010,6 @@ export function serveMcp(
       return text(build ? { ...started, build: build() } : started);
     }
 
-    if (name === "run_metric") {
-      const address = String(args.address ?? "");
-      return text(
-        await server.runMetric({
-          ...ref,
-          metric: address,
-          ...timeouts(args),
-          source: "mcp",
-          // Ждать по умолчанию: прогон зовут ради значения. `wait: false` нужен дорогой
-          // метрике — прогон идёт дальше у сервера, а досматривается через read_object.
-          ...(args.wait === false ? { wait: false } : {}),
-        }),
-      );
-    }
-
     if (name === "run_action") {
       const address = String(args.address ?? "");
       const given =
@@ -911,8 +1018,7 @@ export function serveMcp(
           : {};
       // Вопрос перед запуском человек видит окном, агент — ответом: без явного «да» прогона нет.
       if (args.confirmed !== true) {
-        const map = await freshMap(server, ref, (tree) => !!findActionOwner(tree, address));
-        const action = findActionOwner(map, address)?.action;
+        const { action } = await memberOf(server, ref, address);
         const question = action && confirmQuestion(action.config, given);
         if (question !== undefined) {
           return text({
@@ -936,34 +1042,77 @@ export function serveMcp(
       return text(await server.waitRun({ mapPath: ref.mapPath, id }));
     }
 
-    if (name === "edit_map" || name === "undo_edit" || name === "redo_edit") {
-      const done = (result: EditResult) => {
-        if (!result.ok) throw new Error(result.error);
-        return text(result);
-      };
-      if (name === "edit_map") {
-        const ops = Array.isArray(args.ops) ? args.ops : [];
-        const wrong = ops.findIndex((op) => !Check(MapOp, op));
-        if (wrong !== -1) {
+    if (name === "describe_plugin" || name === "call_plugin" || name === "check_plugin") {
+      const given = String(args.plugin ?? "").replaceAll("\\", "/");
+      // Путь от корня карты — так его пишет агент; абсолютный — как он стоит в agent.plugin.
+      const plugin =
+        given.startsWith("/") || /^[a-zA-Z]:\//.test(given)
+          ? given
+          : `${ref.mapPath.replaceAll("\\", "/")}/${given.replace(/^\.\//, "")}`;
+      if (name === "check_plugin") {
+        const timeout = typeof args.timeout === "number" ? args.timeout : AGENT_TIMEOUT_MS;
+        return text(await server.checkPlugin({ ...ref, plugin }, timeout));
+      }
+      if (name === "describe_plugin") {
+        try {
+          return text({ plugin, ...(await server.describePlugin({ ...ref, plugin })) });
+        } catch (error) {
+          if (!(error instanceof PluginMissing)) throw error;
           throw new Error(
-            `Операция ${wrong + 1} не того вида: ${JSON.stringify(ops[wrong])}. Виды — в схеме ops.`,
+            `Плагина ${plugin} нет. Встроенные плагины: ${error.builtins.join(", ")} — ` +
+              "поставить в карту: add_plugin { name }.",
+            { cause: error },
           );
         }
-        if (ops.length === 0) throw new Error("Пустая пачка: ops не назвал ни одной операции");
-        return done(await server.editMap({ ...ref, ops: ops as MapOp[] }));
       }
-      const id = String(args.id ?? "");
-      return done(
-        name === "undo_edit"
-          ? await server.undoEdit({ ...ref, id })
-          : await server.redoEdit({ ...ref, id }),
-      );
+      const timeout = typeof args.timeout === "number" ? args.timeout : AGENT_TIMEOUT_MS;
+      const request = {
+        ...ref,
+        plugin,
+        method: String(args.method ?? ""),
+        args: typeof args.args === "object" && args.args !== null ? args.args : {},
+      };
+      if (args.wait !== "complete") {
+        return text({ value: await server.pluginFirst(request, timeout) });
+      }
+      const values = await server.pluginAll(request, timeout);
+      return text({ values });
+    }
+
+    if (name === "clear_build_cache") {
+      return text(await server.clearBuildCache(ref));
+    }
+
+    if (name === "add_plugin") {
+      const result = await server.installPlugin({
+        ...ref,
+        name: String(args.name ?? ""),
+        ...(typeof args.path === "string" && args.path ? { path: args.path } : {}),
+      });
+      if (!result.ok) throw new Error(result.error);
+      return text(result);
     }
 
     if (name === "read_run") {
       const run = server.readRun({ mapPath: ref.mapPath, id: String(args.id ?? "") });
       if (!run) throw new Error(`Прогона ${String(args.id)} нет`);
       return text(run);
+    }
+
+    if (name === "edit_map") {
+      // Пачку проверяет схема до плана: агент шлёт что угодно, а ответ называет поле.
+      const wrong = schemaErrors({ type: "array", items: MapEditOp }, args.ops);
+      if (wrong.length > 0) throw new Error(`ops не той формы: ${wrong.join("; ")}`);
+      return text(await server.editMap({ ...ref, ops: args.ops as MapEditOp[] }));
+    }
+
+    if (name === "undo_edit" || name === "redo_edit") {
+      const id = String(args.id ?? "");
+      return text(
+        name === "undo_edit"
+          ? await server.undoEdit({ ...ref, id })
+          : await server.redoEdit({ ...ref, id }),
+      );
     }
 
     throw new Error(`Инструмент ${name} не найден`);

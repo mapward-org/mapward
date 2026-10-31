@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import { NEVER, type Observable } from "rxjs";
-import { appBridge, findObject, type BridgeHandlers } from "@mapward/core";
+import { appBridge, MAP_ROOT, type BridgeHandlers } from "@mapward/core";
 import type { AppBridge } from "@mapward/core";
 import { objectPrompt } from "@mapward/abstract-server";
 import type { MapServer } from "@mapward/abstract-server";
 import { mapsHandlers } from "@/features/maps/index.extension.ts";
 import { createBridgeServer } from "@mapward/core";
-import { webviewTransport } from "@/shared/bridge/transport.ts";
+import { webviewTransport, type WebviewLike } from "@/shared/bridge/transport.ts";
 import {
   closeTerminal,
   listTerminals,
@@ -26,7 +26,7 @@ import { runStage } from "./run-stage.ts";
  */
 export function serveBridge(
   server: MapServer,
-  webview: vscode.Webview,
+  webview: WebviewLike,
   memento: vscode.Memento,
   openTab: (target: {
     mapPath: string;
@@ -49,14 +49,16 @@ export function serveBridge(
     ...mapsHandlers(),
 
     getCapabilities: () => server.capabilities(),
-    getMap: (ref) => server.getMap(ref),
-    watchMap: (ref) => server.watchMap(ref),
     reloadMap: (ref) => server.reloadMap(ref),
-    watchMapFile: (params) => server.watchMapFile(params),
-    watchMapFolder: (params) => server.watchMapFolder(params),
-    watchMetrics: (params) => server.watchMetrics(params),
-    watchDisplay: (params) => server.watchDisplay(params),
-    runMetric: (params) => server.runMetric(params),
+    watchObject: (params) => server.watchObject(params),
+    watchAncestors: (params) => server.watchAncestors(params),
+    watchComponent: (params) => server.watchComponent(params),
+    watchLayout: (params) => server.watchLayout(params),
+    watchActionForm: (params) => server.watchActionForm(params),
+
+    /** Компонент метрики зовёт свой плагин: процесс плагина живёт у платформы, мост — проводник. */
+    callPlugin: (params) => server.watchPluginCall(params),
+    describePlugin: (params) => server.describePlugin(params),
 
     /** Тот же объект во всю ширину редактора — решение 0026. */
     openInTab: (params) => openTab(params),
@@ -67,14 +69,15 @@ export function serveBridge(
     watchTurns: () => server.watchTurns(),
     dismissTurn: (params) => server.dismissTurn(params),
 
+    /** Правка карты — базовый набор платформы: интерфейсу она нужна сама, как агенту и плагинам. */
+    editMap: (params) => server.editMap(params),
+    undoEdit: (params) => server.undoEdit(params),
+    redoEdit: (params) => server.redoEdit(params),
+
     /** Экшоны и прогоны — решение 0038: запуск, остановка и история объекта у сервера. */
     runAction: (params) => server.runAction(params),
     stopRun: (params) => server.stopRun(params),
     watchRuns: (params) => server.watchRuns(params),
-
-    editMap: (params) => server.editMap(params),
-    undoEdit: (params) => server.undoEdit(params),
-    redoEdit: (params) => server.redoEdit(params),
 
     // Хранилище редактора: у каждого человека своё, в репозиторий не попадает.
     getViewState: (params) => memento.get(params.key),
@@ -112,8 +115,10 @@ export function serveBridge(
     },
 
     openObjectTerminal: async (params) => {
-      const map = await server.getMap(params);
-      const object = findObject(map, params.address) ?? map;
+      const object =
+        (await server.readObject({ ...params, depth: 0 })) ??
+        (await server.readObject({ ...params, address: MAP_ROOT, depth: 0 }));
+      if (!object) throw new Error(`Объект ${params.address} не найден`);
       // Терминал на объект, а не на директиву — решение 0017: директив у объекта много,
       // этапов у каждой несколько, и всё это греет один контекст.
       // Открывается в корне проекта: директива может тронуть что угодно в репозитории.

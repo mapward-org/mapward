@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { ActionConfig, MapAction, MapMetric, MapObject } from "@mapward/core";
+import type { ActionConfig, MapAction, MapObject } from "@mapward/core";
 import {
   formPayload,
   matchActions,
@@ -8,7 +8,6 @@ import {
   startValues,
   strayErrors,
 } from "./actions.ts";
-import { keyClashes } from "../../../kernel/clashes.ts";
 
 const action = (address: string, config: ActionConfig = {}): MapAction => ({
   key: address.split("/").at(-1) ?? "",
@@ -83,9 +82,4 @@ test("поиск — по словам в подписи, ключе и опис
   expect(matchActions([release, rerun], "")).toEqual([release, rerun]);
   expect(matchActions([release, rerun], "версию выпуст")).toEqual([release]);
   expect(matchActions([release, rerun], "RERUN")).toEqual([rerun]);
-});
-
-test("ключ, занятый и метрикой, и экшоном, — ошибка объекта", () => {
-  const metrics = [{ key: "release" }, { key: "files" }] as MapMetric[];
-  expect(keyClashes(metrics, [release, rerun])).toEqual(["release"]);
 });

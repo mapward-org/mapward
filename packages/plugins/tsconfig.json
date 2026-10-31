@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Исходники реестра — плагины, а плагин живёт в node: его типы нужны им, а не самому пакету.
+    "types": ["node"],
+    // Компонент метрики плагина — `.tsx` для вебвью (холст `objects-map`): ему нужен DOM.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // Компонент метрики плагина — `.tsx`: его собирает клиент, а проверяются типы здесь.
+    "jsx": "react-jsx",
+    // Css библиотеки (`import "@xyflow/react/dist/style.css"`) забирает сборщик компонента, а
+    // типов у css нет.
+    "noUncheckedSideEffectImports": false
+  },
+  "include": ["src/**/*.ts", "registry/**/*.ts", "registry/**/*.tsx", "tsdown.config.ts"]
+}

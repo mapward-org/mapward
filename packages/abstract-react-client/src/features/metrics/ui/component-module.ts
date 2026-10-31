@@ -1,8 +1,8 @@
-import type { ComponentType } from "react";
-import type { DisplayProps } from "@mapward/display";
+import type { JSXElementConstructor } from "react";
 import { evaluateModule } from "../pure-model/evaluate.ts";
 
-export type Loaded = { view?: ComponentType<DisplayProps>; error?: string };
+/** Пропсы у дисплея и у метрики-компонента разные: модулю всё равно, ему отдают объект. */
+export type Loaded = { view?: JSXElementConstructor<object>; error?: string };
 
 /**
  * Выполненные модули по их коду: одна и та же сборка на экране бывает в нескольких клетках, а
@@ -19,7 +19,9 @@ export function loadModule(code: string, provided: Record<string, unknown>): Loa
     const view = evaluateModule(code, provided);
     loaded =
       typeof view === "function"
-        ? { view: view as ComponentType<DisplayProps> }
+        ? // Автор пишет обычную функцию: на ответы плагинов компонент подписывают сами хуки
+          // набора, обёртка ему не нужна.
+          { view: view as JSXElementConstructor<object> }
         : { error: "модуль не экспортирует компонент по умолчанию" };
   } catch (error) {
     loaded = { error: error instanceof Error ? error.message : String(error) };

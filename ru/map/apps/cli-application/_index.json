@@ -6,39 +6,6 @@
     "fullPath": "${{ mapward://@ }}/${{ mapward://~#props.codePath }}",
     "architectureDoc": "ru/docs/architecture/cli.md"
   },
-  "details-metrics-layout": {
-    "min-width: 0px": {
-      "areas": [
-        ["code"],
-        ["docs"],
-        ["architecture"],
-        ["requirements-todo"],
-        ["architecture-drift"],
-        ["code-drift"],
-        ["decisions"],
-        ["requirements"],
-        ["files"]
-      ],
-      "style": {
-        "gap": "8px"
-      }
-    },
-    "min-width: 600px": {
-      "areas": [
-        ["code", "docs"],
-        ["architecture", "architecture"],
-        ["requirements-todo", "requirements-todo"],
-        ["architecture-drift", "architecture-drift"],
-        ["code-drift", "code-drift"],
-        ["decisions", "decisions"],
-        ["requirements", "requirements"],
-        ["files", "files"]
-      ],
-      "style": {
-        "gap": "8px"
-      }
-    }
-  },
   "metric-groups": {
     "groups": [
       {
@@ -54,20 +21,15 @@
           "decisions",
           "requirements",
           "files"
-        ]
+        ],
+        "layout": "./layout.tsx"
       },
       {
         "key": "превью",
         "label": "Карточка",
         "description": "Что видно на карточке объекта там, где он встречается на чужом экране.",
         "metrics": ["code"],
-        "defaultPreview": true,
-        "details-metrics-layout": {
-          "areas": [["code"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "defaultPreview": true
       }
     ]
   }

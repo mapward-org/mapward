@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import { useViewStates } from "../../../services/state/ports.tsx";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
-import { FollowBottom } from "../../../lib/mobx/follow-bottom.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
+import { FollowBottom } from "../../../lib/store/follow-bottom.ts";
 import { RunsScreenStore } from "../model/runs-screen.ts";
 import type { RunsTab } from "../pure-model/runs.ts";
 import { useRuns } from "../ports.tsx";
@@ -21,7 +21,7 @@ import { RunDot, RunItem, RunList, RunsEmpty, RunsFrame, RunsTabs } from "../ui/
  * живёт в истории экрана (решение 0036). Общего списка на карту нет: карта строится зонами, и
  * чужие прогоны были бы шумом.
  */
-export const RunsScreen = observer(function RunsScreen(props: {
+export function RunsScreen(props: {
   selected: string | undefined;
   onSelect: (id: string) => void;
 }) {
@@ -29,13 +29,10 @@ export const RunsScreen = observer(function RunsScreen(props: {
   const views = useViewStates();
   const screen = useLocalStore(
     () =>
-      new RunsScreenStore(
-        () => runs.list,
-        () => props.selected,
-        views.slot<RunsTab>("runs-tab", "actions"),
-      ),
+      new RunsScreenStore(runs, () => props.selected, views.slot<RunsTab>("runs-tab", "actions")),
     [runs, props.selected],
   );
+  useWatch(screen);
   const run = screen.open;
   // Лог идущего шага держится у конца, пока человек сам не отмотал вверх.
   const follow = useLocalStore(() => new FollowBottom());
@@ -103,6 +100,11 @@ export const RunsScreen = observer(function RunsScreen(props: {
               ))}
             </RunSteps>
           </RunBlock>
+          {screen.result !== undefined && (
+            <RunBlock title="Итог">
+              <RunText title="что отдал метод" text={screen.result} />
+            </RunBlock>
+          )}
           {screen.config !== undefined && (
             <RunBlock title="Конфиг">
               <RunText title="после подстановок" text={screen.config} />
@@ -112,4 +114,4 @@ export const RunsScreen = observer(function RunsScreen(props: {
       )}
     </RunsFrame>
   );
-});
+}

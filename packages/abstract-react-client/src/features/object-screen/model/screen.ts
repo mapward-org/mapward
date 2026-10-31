@@ -1,11 +1,11 @@
-import { action, computed, makeObservable, observableRef } from "mobx";
-import { groupLayout, groupMetrics, linkKind, pickGroup } from "@mapward/core";
-import type { Capabilities, Layout, MapMetric, MapObject, MetricGroup } from "@mapward/core";
-import { keyClashes } from "../../../kernel/clashes.ts";
-import { crumbsOf, type Crumb } from "../pure-model/breadcrumbs.ts";
+import { map as mapStream } from "rxjs";
+import { groupMetrics, linkKind, MAP_ROOT, pickGroup } from "@mapward/core";
+import type { Capabilities, MapMetric, MapObject, MetricGroup } from "@mapward/core";
+import { Reactive, type State, type Watchable } from "../../../lib/store/reactive.ts";
 import {
   amend,
   currentScreen,
+  parseScreen,
   startHistory,
   stepTarget,
   stepTo,
@@ -15,17 +15,42 @@ import {
 } from "../pure-model/navigation.ts";
 
 /**
- * Что экрану нужно от карты: объект по адресу, есть ли он, и его предки для крошек. Объект —
- * `MapObject`: живой узел модели им и является, и экран читает у него только свои поля.
+ * Что экрану нужно от карты: объект по адресу, есть ли он, и его предки для крошек. Объект
+ * приходит с сервера ресурсом: пока не пришёл — `undefined`. На ресурсы того, что экран читает,
+ * он подписан сам — через `feed`.
  */
 export type ScreenMap = {
-  object(address: string): MapObject;
+  object(address: string): MapObject | undefined;
   has(address: string): boolean;
-  ancestors(address: string): MapObject[];
+  /** Сервер ответил, что объекта по адресу нет; пока ответа нет — `false`. */
+  missing(address: string): boolean;
+  /** Родители-объекты от корня, без самого объекта: полки сервер не отдаёт. */
+  ancestors(address: string): Crumb[];
+  feed(address: string): Watchable;
+  ancestorsFeed(address: string): Watchable;
 };
 
+/** Объект, которого ещё нет: пока ответ не пришёл, экран рисует пустую шапку, а не падает. */
+const placeholder = (address: string): MapObject => ({
+  address,
+  path: "",
+  name: "",
+  isGroup: false,
+  props: {},
+  layers: [],
+  metrics: [],
+  directives: [],
+  actions: [],
+  workflow: [],
+  metricGroups: [],
+  children: [],
+});
+
+/** Крошка — ссылка на объект-родителя: только то, чем её рисуют и куда она ведёт. */
+export type Crumb = { address: string; name: string };
+
 /** Что экрану нужно от хоста: что он умеет и что умеет открыть. */
-export type ScreenHost = {
+export type ScreenHost = Watchable & {
   can: Capabilities;
   open(path: string): void;
   openExternal(url: string): void;
@@ -65,8 +90,8 @@ type Ref = { mapPath: string; basePath: string; name: string };
  * история хранится, экран не знает: у таба она едет с тем, на чём он открыт, у сайдбара лежит в
  * состоянии вида — для этого `onHistory`.
  */
-export class ScreenStore {
-  history: History;
+export class ScreenStore extends Reactive {
+  private readonly current: State<History>;
 
   constructor(
     private readonly map: ScreenMap,
@@ -75,25 +100,55 @@ export class ScreenStore {
     start: { history?: History | undefined; at?: StartAt | undefined },
     private readonly onHistory?: ((history: History) => void) | undefined,
   ) {
-    this.history = start.history ?? startHistory(startScreen(start.at));
-    makeObservable<ScreenStore, "screen">(this, {
-      history: observableRef,
-      update: action,
-      screen: computed,
-      object: computed,
-      openGroup: computed,
-      shown: computed,
-      layout: computed,
-      soloMetric: computed,
-      crumbs: computed,
-      back: computed,
-      forward: computed,
-      clashes: computed,
-    });
+    super();
+    // Что умеет хост, приходит ответом: пока не пришёл, табов нет, а пришёл — экран меняется.
+    this.depend(host);
+    this.current = this.state(start.history ?? startHistory(startScreen(start.at)));
+    // Экран смотрит на объект текущего шага, его предков, корень (пропавший объект ведёт к нему)
+    // и объекты соседних шагов истории — по ним стрелки. Сменился шаг — сменились и ресурсы.
+    this.dependOn(
+      this.current.value$.pipe(
+        mapStream((history) => {
+          const address = currentScreen(history).address;
+          const steps = new Set(history.entries.map((entry) => parseScreen(entry).address));
+          return [
+            this.map.feed(address),
+            this.map.ancestorsFeed(address),
+            this.map.feed(MAP_ROOT),
+            ...[...steps].map((step) => this.map.feed(step)),
+          ];
+        }),
+      ),
+    );
+  }
+
+  get history(): History {
+    return this.current.value;
+  }
+
+  /**
+   * Производное с тождеством: пока входы те же (`===`), отдаётся прежний объект. Группа заводит
+   * подписку по объекту, метрикам и раскладке — новый массив на каждый рендер означал бы новую
+   * подписку на каждый рендер.
+   */
+  private readonly memos = new Map<string, { inputs: unknown[]; value: unknown }>();
+
+  private remember<T>(key: string, inputs: unknown[], make: () => T): T {
+    const last = this.memos.get(key);
+    if (
+      last &&
+      last.inputs.length === inputs.length &&
+      last.inputs.every((one, at) => one === inputs[at])
+    ) {
+      return last.value as T;
+    }
+    const value = make();
+    this.memos.set(key, { inputs, value });
+    return value;
   }
 
   update(next: History): void {
-    this.history = next;
+    this.current.set(next);
     this.onHistory?.(next);
   }
 
@@ -101,9 +156,16 @@ export class ScreenStore {
     return currentScreen(this.history);
   }
 
-  /** Объект на экране; пропавший ведёт к корню. */
+  /**
+   * Объект на экране; пропавший ведёт к корню. Пропавший — значит, сервер ответил «нет такого»;
+   * пока ответа нет, это пустая шапка того же адреса.
+   */
   get object(): MapObject {
-    return this.map.object(this.screen.address);
+    const address = this.screen.address;
+    const found = this.map.object(address);
+    if (found) return found;
+    const root = this.map.missing(address) ? this.map.object(MAP_ROOT) : undefined;
+    return root ?? this.remember("placeholder", [address], () => placeholder(address));
   }
 
   get meta(): boolean {
@@ -131,7 +193,9 @@ export class ScreenStore {
 
   /** Открытая вкладка — решение 0025: названная, если она есть, иначе первая. */
   get openGroup(): MetricGroup | undefined {
-    return pickGroup(this.object, this.screen.group);
+    const object = this.object;
+    const group = this.screen.group;
+    return this.remember("group", [object, group], () => pickGroup(object, group));
   }
 
   get groupKey(): string | undefined {
@@ -141,14 +205,6 @@ export class ScreenStore {
   /** Описание открытой вкладки — разметкой над сеткой (решение 0025). */
   get groupDescription(): string | undefined {
     return this.hasGroups ? this.openGroup?.description : undefined;
-  }
-
-  /**
-   * Ключи, занятые и метрикой, и экшоном, — ошибка объекта (решение 0038): раскладка находит
-   * клетку по ключу, и такой ключ назвал бы две вещи сразу.
-   */
-  get clashes(): string[] {
-    return keyClashes(this.object.metrics, this.object.actions);
   }
 
   /** Что умеет хост: без этого кнопок терминалов и директив нет вовсе (решение 0014). */
@@ -167,11 +223,9 @@ export class ScreenStore {
 
   /** Метрики открытой вкладки. */
   get shown(): MapMetric[] {
-    return groupMetrics(this.object, this.screen.group);
-  }
-
-  get layout(): Layout | undefined {
-    return groupLayout(this.object, this.openGroup);
+    const object = this.object;
+    const group = this.screen.group;
+    return this.remember("shown", [object, group], () => groupMetrics(object, group));
   }
 
   /**
@@ -190,7 +244,7 @@ export class ScreenStore {
 
   /** Крошки: предки-объекты, от корня и без самого объекта (решение 0036). */
   get crumbs(): Crumb[] {
-    return crumbsOf(this.map.ancestors(this.object.address));
+    return this.map.ancestors(this.object.address);
   }
 
   /** Стрелки — назад и вперёд по истории, к родителю ведут крошки (0036). */
@@ -207,7 +261,7 @@ export class ScreenStore {
     if (index === undefined) return undefined;
     const target = currentScreen(stepTo(this.history, index)).address;
     return {
-      name: this.map.object(target).name,
+      name: this.map.object(target)?.name ?? "",
       address: target,
       go: () => this.update(stepTo(this.history, index)),
     };

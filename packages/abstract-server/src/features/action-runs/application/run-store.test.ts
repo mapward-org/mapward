@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
+import { Observable, type Subscriber } from "rxjs";
 import type { Run } from "@mapward/core";
-import type { FilesPort, ServerPorts } from "../../../ports/index.ts";
+import type { FilesPort } from "../../../ports/index.ts";
 import type { MapRef } from "../../../kernel/map-ref.ts";
 import { MapModel } from "../../map/index.ts";
-import { Executor } from "../../execution/index.ts";
 import { RunStore } from "./run-store.ts";
 
 /** Карта в памяти, куда можно и писать: прогоны ложатся на диск, и это проверяется. */
@@ -34,107 +34,139 @@ function memoryFiles(tree: Record<string, string>): FilesPort {
   };
 }
 
-type Calls = { shell: { command: string; env: Record<string, unknown>; input?: string }[] };
-
-function fakePorts(
-  tree: Record<string, string>,
-  calls: Calls,
-  agent: ServerPorts["agent"] = { run: () => Promise.resolve({ stdout: "готово", stderr: "" }) },
-): ServerPorts {
-  return {
-    files: memoryFiles(tree),
-    shell: {
-      run: () => Promise.resolve({ stdout: "", stderr: "" }),
-      pipe: (command, options) => {
-        calls.shell.push({ command, env: options.env, input: options.input });
-        if (command === "fail") return Promise.reject(new Error("упало"));
-        return Promise.resolve({ stdout: `вывод ${command}`, stderr: "" });
-      },
-    },
-    agent,
-    clock: { now: () => new Date().toISOString() },
-    timers: { every: () => () => undefined, after: () => () => undefined },
-    env: { vars: () => ({}) },
-    capabilities: {
-      terminals: false,
-      openFile: false,
-      ask: false,
-      virtualDocs: false,
-      tabs: false,
-    },
-  };
-}
+/** Вызов метода, как его видит платформа: аргументы и поток, которым тест отвечает сам. */
+type Call = {
+  plugin: string;
+  method: string;
+  args: unknown;
+  sink: Subscriber<unknown>;
+  stopped: boolean;
+};
 
 const MAP = "/map";
 const ref: MapRef = { mapPath: MAP, basePath: "/repo", name: "Карта" };
 
 const baseTree = (): Record<string, string> => ({
   "/map/_index.json": JSON.stringify({ name: "Карта" }),
+  // Экшон со своей формой над `shell.steps`: данные формы доезжают до метода полем `inputs`.
   "/map/_actions/release/config.json": JSON.stringify({
     label: "Выпуск",
     inputs: {
       level: { type: "choice", options: ["patch", "minor"], required: true },
       dry: { type: "boolean" },
     },
-    runners: [
-      { kind: "script", name: "сборка", run: "build ${{ inputs.level }}" },
-      { kind: "script", name: "выпуск", run: "publish" },
-    ],
-    refreshes: ["version"],
+    plugin: "/map/_plugins/shell",
+    method: "steps",
+    params: {
+      steps: [
+        { kind: "script", name: "сборка", command: "build ${{ inputs.level }}" },
+        { kind: "script", name: "выпуск", command: "publish" },
+      ],
+    },
   }),
-  "/map/_actions/broken/config.json": JSON.stringify({
-    runners: [
-      { kind: "script", run: "fail" },
-      { kind: "script", run: "never" },
-    ],
-  }),
-  "/map/_actions/ask/config.json": JSON.stringify({
-    inputs: { topic: { required: true } },
-    runners: [
-      { kind: "prompt", prompt: "расскажи про ${{ inputs.topic }}", permissions: "bypass" },
-    ],
+  // Экшон над методом: форма — схема метода без заданного в `params`.
+  "/map/_actions/tag/config.json": JSON.stringify({
+    label: "Метка",
+    plugin: "../../tools",
+    method: "tag",
+    params: { repo: "core" },
   }),
 });
 
-function store(tree: Record<string, string>, calls: Calls, agent?: ServerPorts["agent"]) {
-  const refreshed: string[] = [];
-  const ports = fakePorts(tree, calls, agent);
-  const { files, timers, clock } = ports;
-  const map = new MapModel(files, files, timers, clock);
-  const runs = new RunStore(
-    files,
-    new Executor(ports.shell, ports.agent),
-    map,
-    {
-      run: (_, address) => {
-        refreshed.push(address);
-        return Promise.resolve();
+/** Самоописание плагина `tools`: у метода `tag` три параметра, один задан экшоном. */
+const TOOLS = {
+  methods: {
+    tag: {
+      params: {
+        type: "object",
+        required: ["repo", "name"],
+        properties: {
+          repo: { type: "string" },
+          name: { type: "string" },
+          count: { type: "number" },
+        },
       },
     },
-    ports.env,
+  },
+};
+
+type Timers = { every: () => () => void; after: (ms: number, run: () => void) => () => void };
+
+function store(
+  tree: Record<string, string>,
+  options: { timers?: Timers; activity?: ConstructorParameters<typeof RunStore>[5] } = {},
+) {
+  const files = memoryFiles(tree);
+  const timers = options.timers ?? { every: () => () => {}, after: () => () => {} };
+  const clock = { now: () => new Date().toISOString() };
+  // У модели свои таймеры: её срок держать прочитанное не должен путаться с таймерами прогонов.
+  const map = new MapModel(files, files, { every: () => () => {}, after: () => () => {} }, clock);
+  const calls: Call[] = [];
+  const runs = new RunStore(
+    files,
+    map,
+    {
+      describe: () => Promise.resolve(TOOLS),
+      call: (_ref, plugin, method, args) =>
+        new Observable<unknown>((sink) => {
+          const call: Call = { plugin, method, args, sink, stopped: false };
+          calls.push(call);
+          return () => {
+            call.stopped = true;
+          };
+        }),
+    },
     timers,
     clock,
+    options.activity,
   );
-  return { runs, refreshed };
+  return { runs, calls };
+}
+
+/** Дождаться, пока вызов дойдёт до плагина: старт асинхронный. */
+async function called(calls: Call[], count = 1): Promise<Call> {
+  // Микротасками: типов node в пакете нет, а прогон здесь весь на моках.
+  // oxlint-disable-next-line no-await-in-loop
+  for (let tick = 0; tick < 100 && calls.length < count; tick++) await Promise.resolve();
+  const call = calls[count - 1];
+  if (!call) throw new Error("плагин не позвали");
+  return call;
 }
 
 test("fields are checked by the server: a missing required one means no run — decision 0038", async () => {
-  const calls: Calls = { shell: [] };
-  const { runs } = store(baseTree(), calls);
+  const { runs, calls } = store(baseTree());
 
   const started = await runs.start(ref, "mapward://_actions/release", { level: "major" });
 
   expect(started.id).toBeUndefined();
   expect(started.errors?.level).toContain("patch");
-  expect(calls.shell).toHaveLength(0);
+  expect(calls).toHaveLength(0);
 });
 
-test("a run goes step by step, gets the form, and refreshes its metrics after success", async () => {
+test("shell.steps: its messages become steps, the rest is the result", async () => {
   const tree = baseTree();
-  const calls: Calls = { shell: [] };
-  const { runs, refreshed } = store(tree, calls);
+  const { runs, calls } = store(tree);
 
   const started = await runs.start(ref, "mapward://_actions/release", { level: "minor" }, "cli");
+  const call = await called(calls);
+
+  expect(call.plugin).toBe("/map/_plugins/shell");
+  expect(call.method).toBe("steps");
+  // Форма доезжает до плагина полем `inputs`, конфиг — параметрами.
+  expect(call.args).toMatchObject({
+    steps: [
+      { kind: "script", name: "сборка", command: "build ${{ inputs.level }}" },
+      { kind: "script", name: "выпуск", command: "publish" },
+    ],
+    inputs: { level: "minor", dry: false },
+  });
+
+  call.sink.next({ progress: "step", name: "сборка" });
+  call.sink.next({ progress: "out", text: "собрано" });
+  call.sink.next({ progress: "step", name: "выпуск" });
+  call.sink.next({ progress: "log", text: "публикую" });
+  call.sink.next({ code: 0 });
+  call.sink.complete();
   const run = (await runs.wait(MAP, String(started.id))) as Run;
 
   expect(run.status).toBe("success");
@@ -143,11 +175,9 @@ test("a run goes step by step, gets the form, and refreshes its metrics after su
     ["сборка", "success"],
     ["выпуск", "success"],
   ]);
-  expect(run.steps[0]?.output).toBe("вывод build minor");
-  // Форма доезжает до скрипта и входом, и переменными.
-  expect(calls.shell[0]?.input).toBe(JSON.stringify({ level: "minor", dry: false }));
-  expect(calls.shell[0]?.env.MAPWARD_INPUT_LEVEL).toBe("minor");
-  expect(refreshed).toEqual(["mapward://_metrics/version"]);
+  expect(run.steps[0]?.output).toBe("собрано\n");
+  expect(run.steps[1]?.log).toBe("публикую\n");
+  expect(run.result).toEqual({ code: 0 });
 
   // Прогон лёг на диск карты, а папка сама себя прячет от git.
   expect(tree["/map/.mapward/.gitignore"]).toBe("*\n");
@@ -155,64 +185,62 @@ test("a run goes step by step, gets the form, and refreshes its metrics after su
   expect(saved.map((entry) => entry.id)).toEqual([started.id]);
 });
 
-test("a failed step stops the run, and nothing is refreshed", async () => {
-  const calls: Calls = { shell: [] };
-  const { runs, refreshed } = store(baseTree(), calls);
+test("a method that fails fails the run with its message", async () => {
+  const { runs, calls } = store(baseTree());
 
-  const started = await runs.start(ref, "mapward://_actions/broken");
+  const started = await runs.start(ref, "mapward://_actions/release", { level: "patch" });
+  const call = await called(calls);
+  call.sink.next({ progress: "step", name: "сборка" });
+  call.sink.error(new Error("упало"));
   const run = (await runs.wait(MAP, String(started.id))) as Run;
 
   expect(run.status).toBe("failure");
   expect(run.error).toBe("упало");
-  expect(run.steps.map((step) => step.status)).toEqual(["failure"]);
-  expect(calls.shell.map((call) => call.command)).toEqual(["fail"]);
-  expect(refreshed).toEqual([]);
+  expect(run.steps.map((step) => [step.status, step.log])).toEqual([["failure", "упало"]]);
 });
 
-test("a prompt runner gets the form in its text and the permissions it declared", async () => {
-  const seen: { prompt: string; permissions?: unknown }[] = [];
-  const agent: ServerPorts["agent"] = {
-    run: (params) => {
-      seen.push({ prompt: params.prompt, permissions: params.permissions });
-      return Promise.resolve({ stdout: "рассказал", stderr: "" });
-    },
-  };
-  const { runs } = store(baseTree(), { shell: [] }, agent);
+test("the form of an action over a method is the method schema minus its params", async () => {
+  const { runs, calls } = store(baseTree());
 
-  const started = await runs.start(ref, "mapward://_actions/ask", { topic: "карты" });
-  await runs.wait(MAP, String(started.id));
+  const missing = await runs.start(ref, "mapward://_actions/tag", {});
+  expect(missing.errors).toEqual({ name: "обязательное поле" });
+  // Заданное экшоном формой не перебивается: такого поля в форме нет.
+  const clash = await runs.start(ref, "mapward://_actions/tag", { name: "v1", repo: "x" });
+  expect(clash.errors).toEqual({ repo: "у экшона нет такого поля" });
+  expect(calls).toHaveLength(0);
 
-  expect(seen[0]?.prompt).toContain("расскажи про карты");
-  expect(seen[0]?.permissions).toBe("bypass");
+  const started = await runs.start(ref, "mapward://_actions/tag", { name: "v1", count: "2" });
+  const call = await called(calls);
+  // Путь плагина — от папки `config.json`; данные формы — рядом с заданными параметрами.
+  expect(call.plugin).toBe("/map/tools");
+  expect(call.args).toEqual({ repo: "core", name: "v1", count: 2 });
+
+  call.sink.next({ progress: "out", text: "готово" });
+  call.sink.complete();
+  const run = (await runs.wait(MAP, String(started.id))) as Run;
+  // Метод шагов не назвал — шаг один, плагином и методом.
+  expect(run.steps.map((step) => [step.name, step.output])).toEqual([["tools.tag", "готово\n"]]);
 });
 
-test("runs of one action go in parallel and each can be stopped on its own", async () => {
-  const pending: (() => void)[] = [];
-  const agent: ServerPorts["agent"] = {
-    run: (params) =>
-      new Promise((resolve, reject) => {
-        params.cancel?.onCancel(() => reject(new Error("снят")));
-        pending.push(() => resolve({ stdout: "ok", stderr: "" }));
-      }),
-  };
-  const { runs } = store(baseTree(), { shell: [] }, agent);
+test("runs of one action go in parallel, and stopping one unsubscribes from its call", async () => {
+  const { runs, calls } = store(baseTree());
 
-  const first = await runs.start(ref, "mapward://_actions/ask", { topic: "раз" });
-  const second = await runs.start(ref, "mapward://_actions/ask", { topic: "два" });
+  const first = await runs.start(ref, "mapward://_actions/release", { level: "patch" });
+  const second = await runs.start(ref, "mapward://_actions/release", { level: "minor" });
   expect(first.id).not.toBe(second.id);
+  const a = await called(calls, 1);
+  const b = await called(calls, 2);
 
   runs.stop(MAP, String(first.id));
-  // Дождаться, пока второй дойдёт до агента, и отпустить его.
-  // Микротасками: типов node в пакете нет, а прогон здесь весь на моках.
-  for (let tick = 0; tick < 100 && pending.length < 2; tick++) await Promise.resolve();
-  for (const release of pending) release();
+  b.sink.complete();
 
-  const [a, b] = await Promise.all([
+  const [one, two] = await Promise.all([
     runs.wait(MAP, String(first.id)),
     runs.wait(MAP, String(second.id)),
   ]);
-  expect(a?.status).toBe("stopped");
-  expect(b?.status).toBe("success");
+  expect(a.stopped).toBe(true);
+  expect(one?.status).toBe("stopped");
+  expect(two?.status).toBe("success");
 });
 
 test("a run recorded as running before a restart comes back stopped", async () => {
@@ -230,7 +258,7 @@ test("a run recorded as running before a restart comes back stopped", async () =
       steps: [],
     },
   ]);
-  const { runs } = store(tree, { shell: [] });
+  const { runs } = store(tree);
 
   const list = await new Promise<Run[]>((resolve) => {
     const subscription = runs.watch(MAP, "mapward://").subscribe((value) => {
@@ -247,44 +275,27 @@ test("a run recorded as running before a restart comes back stopped", async () =
  * Лог идущего шага растёт по ходу: вывод копится и уходит подписчику пачкой, по таймеру, а не
  * на каждой строке. Экшон при этом виден в ленте — запущен и упал.
  */
-test("a running step's log grows before the step ends, and the feed sees the action", async () => {
-  const tree = baseTree();
-  const calls: Calls = { shell: [] };
-  let finish: (() => void) | undefined;
-  const ports = fakePorts(tree, calls, {
-    run: (params) => {
-      params.output?.("→ Read a.ts\n", "err");
-      params.output?.("→ Bash pnpm test\n", "err");
-      return new Promise((_resolve, reject) => {
-        finish = () => reject(new Error("агент упал"));
-      });
-    },
-  });
+test("a running step log grows before the step ends, and the feed sees the action", async () => {
   const flushes: (() => void)[] = [];
-  const timers = {
-    ...ports.timers,
-    after: (_ms: number, run: () => void) => (flushes.push(run), () => {}),
-  };
   const feed: string[] = [];
-  const map = new MapModel(ports.files, ports.files, timers, ports.clock);
-  const runs = new RunStore(
-    ports.files,
-    new Executor(ports.shell, ports.agent),
-    map,
-    { run: () => Promise.resolve() },
-    ports.env,
-    timers,
-    ports.clock,
-    {
+  const { runs, calls } = store(baseTree(), {
+    timers: {
+      every: () => () => {},
+      after: (_ms: number, run: () => void) => (flushes.push(run), () => {}),
+    },
+    activity: {
       actionStarted: (turn) => feed.push(`идёт ${turn.label} ${turn.object}`),
       actionEnded: (turn, failed) => feed.push(`${failed ? "упал" : "кончился"} ${turn.label}`),
     },
-  );
+  });
   const seen: Run[][] = [];
   const subscription = runs.watch(MAP, "mapward://").subscribe((list) => seen.push(list));
 
-  const started = await runs.start(ref, "mapward://_actions/ask", { topic: "карту" });
-  expect(feed).toEqual(["идёт ask Карта"]);
+  const started = await runs.start(ref, "mapward://_actions/release", { level: "patch" });
+  expect(feed).toEqual(["идёт Выпуск Карта"]);
+  const call = await called(calls);
+  call.sink.next({ progress: "log", text: "→ Read a.ts" });
+  call.sink.next({ progress: "log", text: "→ Bash pnpm test" });
   // Две строки — одна пачка: таймер заведён один раз.
   expect(flushes).toHaveLength(1);
   const before = seen.length;
@@ -295,34 +306,8 @@ test("a running step's log grows before the step ends, and the feed sees the act
     log: "→ Read a.ts\n→ Bash pnpm test\n",
   });
 
-  finish?.();
+  call.sink.error(new Error("агент упал"));
   await runs.wait(MAP, String(started.id));
-  expect(feed).toEqual(["идёт ask Карта", "упал ask"]);
+  expect(feed).toEqual(["идёт Выпуск Карта", "упал Выпуск"]);
   subscription.unsubscribe();
-});
-
-/** Ручная метрика, запущенная человеком, видна в ленте как экшон; без пометки — нет. */
-test("a metric run marked for the feed shows up there and leaves on success", () => {
-  const ports = fakePorts(baseTree(), { shell: [] });
-  const feed: string[] = [];
-  const runs = new RunStore(
-    ports.files,
-    new Executor(ports.shell, ports.agent),
-    new MapModel(ports.files, ports.files, ports.timers, ports.clock),
-    { run: () => Promise.resolve() },
-    ports.env,
-    ports.timers,
-    ports.clock,
-    {
-      actionStarted: (turn, kind) => feed.push(`${kind} идёт ${turn.object}`),
-      actionEnded: (_turn, failed, kind) => feed.push(`${kind} ${failed ? "упал" : "кончился"}`),
-    },
-  );
-  const info = { target: "mapward://_metrics/m", object: "mapward://", label: "м", config: {} };
-
-  const listed = runs.recordMetric(MAP, { ...info, source: "ui", feed: { objectName: "Карта" } });
-  listed.end("failure", "упало");
-  runs.recordMetric(MAP, { ...info, source: "watch" }).end("success");
-
-  expect(feed).toEqual(["metric идёт Карта", "metric упал"]);
 });

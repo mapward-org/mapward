@@ -12,69 +12,27 @@
         "key": "продукт",
         "label": "Работа с продуктом",
         "description": "Что делаем и почему: требования на этом объекте и решения.",
-        "metrics": ["requirements-todo", "requirements", "decisions", "howto"],
-        "details-metrics-layout": {
-          "areas": [["requirements-todo"], ["requirements"], ["decisions"], ["howto"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "metrics": ["requirements-todo", "requirements", "decisions", "howto"]
       },
       {
         "key": "архитектура",
         "label": "Архитектура",
         "description": "Как устроено расширение: доки, расхождения с ними и файлы.",
         "metrics": ["code", "architecture", "architecture-drift", "code-drift", "files"],
-        "details-metrics-layout": {
-          "min-width: 0px": {
-            "areas": [
-              ["code"],
-              ["architecture"],
-              ["architecture-drift"],
-              ["code-drift"],
-              ["files"]
-            ],
-            "style": {
-              "gap": "8px"
-            }
-          },
-          "min-width: 600px": {
-            "areas": [
-              ["code", "architecture"],
-              ["architecture-drift", "architecture-drift"],
-              ["code-drift", "code-drift"],
-              ["files", "files"]
-            ],
-            "style": {
-              "gap": "8px"
-            }
-          }
-        }
+        "layout": "./layout.tsx"
       },
       {
         "key": "публикация",
         "label": "Публикация",
         "description": "Локальный выпуск: что собрано и что стоит в редакторе. Кнопка «Собрать и поставить» — на корне карты, во вкладке «Быстрый доступ». Витрины пока нет.",
-        "metrics": ["release-version", "release-vsix"],
-        "details-metrics-layout": {
-          "areas": [["release-version"], ["release-vsix"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "metrics": ["release-version", "release-vsix"]
       },
       {
         "key": "превью",
         "label": "Карточка",
         "description": "Что видно на карточке объекта там, где он встречается на чужом экране.",
         "metrics": ["code"],
-        "defaultPreview": true,
-        "details-metrics-layout": {
-          "areas": [["code"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "defaultPreview": true
       }
     ]
   }

@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
-import type { ObjectRef } from "@mapward/core";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import type { ObjectRef } from "../../../kernel/object-ref.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { CardStore } from "../model/card-store.ts";
 import { useObjectCardPort } from "../ports.tsx";
 import { CardBody, CardFrame, CardHead, CardName, CardNote } from "../ui/card.tsx";
@@ -13,7 +13,7 @@ import { CardBody, CardFrame, CardHead, CardName, CardNote } from "../ui/card.ts
  * подпиской.
  * Кнопки и сетку рисуют их фичи, карточка получает их портом (решение 0042).
  */
-export const ObjectCard = observer(function ObjectCard(props: {
+export function ObjectCard(props: {
   item: ObjectRef;
   /**
    * Слот действий: карточка сама ничего не правит, а тот, кто её показывает, кладёт сюда своё —
@@ -25,9 +25,10 @@ export const ObjectCard = observer(function ObjectCard(props: {
 }) {
   const port = useObjectCardPort();
   const card = useLocalStore(
-    () => new CardStore((address) => port.find(address), props.item.object, props.item.group),
+    () => new CardStore(port, props.item.object, props.item.group),
     [props.item.object, props.item.group],
   );
+  useWatch(card);
 
   return card.object === undefined ? (
     <CardFrame width={props.item.width}>
@@ -66,12 +67,11 @@ export const ObjectCard = observer(function ObjectCard(props: {
           <port.Grid
             object={card.preview.object}
             metrics={card.preview.metrics}
-            layout={card.preview.layout}
-            group={card.preview.group.key}
+            group={card.preview.group}
             compact
           />
         </CardBody>
       )}
     </CardFrame>
   );
-});
+}

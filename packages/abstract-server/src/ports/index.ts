@@ -5,8 +5,7 @@
  * что там внутри, и поэтому одинаково работает в обоих.
  */
 
-import type { ActionPermissions, Capabilities } from "@mapward/core";
-import type { Cancellation } from "../lib/cancellation.ts";
+import type { Capabilities } from "@mapward/core";
 import type { ProcessEnv } from "../lib/env.ts";
 
 /**
@@ -24,6 +23,10 @@ export type FileEntry = { name: string; isDirectory: boolean; size?: number };
 export type FileReader = {
   read(path: string): Promise<string | undefined>;
   list(path: string): Promise<FileEntry[]>;
+  /** Содержимое байтами — для `bytes$` модели файлов (`@mapward/vfs`). Файла нет — `undefined`. */
+  bytes?(path: string): Promise<Uint8Array | undefined>;
+  /** Размер и время изменения без чтения — для `stat$`. Файла нет — `undefined`. */
+  stat?(path: string): Promise<{ size: number; mtimeMs: number } | undefined>;
   /**
    * Настоящий путь за ссылками. Нужен сборке компонента (решение 0037): пакеты pnpm лежат по
    * ссылкам и свои зависимости находят от настоящего места. Хост не умеет — путь как есть.
@@ -62,54 +65,6 @@ export type FileMover = { move(from: string, to: string): Promise<void> };
 /** Все разом — так файлы отдаёт приложение; классам сборка раздаёт их по отдельности. */
 export type FilesPort = FileReader & FileWriter & FileWatcher & Partial<FileMover>;
 
-export type ProcessResult = { stdout: string; stderr: string };
-
-/**
- * Вывод по ходу: куски приходят по мере появления, `out` — то, что шаг отдаёт, `err` — ход и
- * ошибки. Итог запуска от этого не меняется — весь вывод по-прежнему приходит в конце. Хост,
- * который потока не умеет, слушателя просто не зовёт, и лог появляется в конце шага.
- */
-export type OutputListener = (chunk: string, stream: "out" | "err") => void;
-
-export type ShellPort = {
-  /** Команда оболочки: вывод отдаётся целиком, ошибка бросается. */
-  run(
-    command: string,
-    options: { cwd: string; env: ProcessEnv; cancel?: Cancellation; output?: OutputListener },
-  ): Promise<ProcessResult>;
-  /** Команда со входом в stdin — так трансформу не нужно ничего экранировать. */
-  pipe(
-    command: string,
-    options: {
-      cwd: string;
-      env: ProcessEnv;
-      input: string;
-      cancel?: Cancellation;
-      output?: OutputListener;
-    },
-  ): Promise<ProcessResult>;
-};
-
-/**
- * Агент в headless-режиме: один вопрос, один ответ, промпт уходит в stdin.
- *
- * `permissions` — что ему можно (решение 0038): метрике не нужно ничего, она читает, а экшону
- * нужно писать. Во флаги агента их превращает приложение: какой агент, знает оно одно.
- *
- * `output` получает ход агента строками — «читает файл», «запускает команду», текст ответа, — а
- * итогом, как и без него, приходит только последний ответ: значение метрики берётся оттуда.
- */
-export type AgentPort = {
-  run(params: {
-    prompt: string;
-    cwd: string;
-    env: ProcessEnv;
-    cancel?: Cancellation;
-    permissions?: ActionPermissions;
-    output?: OutputListener;
-  }): Promise<ProcessResult>;
-};
-
 export type ClockPort = { now(): string };
 
 /** Таймеры тоже из среды: интервальная метрика тикает, пока объект открыт — решение 0013. */
@@ -129,7 +84,64 @@ export type EnvPort = { vars(): ProcessEnv };
  */
 export type BundlerPort = { wasm(): Promise<Uint8Array> };
 
-export type { Cancellation, ProcessEnv };
+/**
+ * Процесс плагина: долгоживущий, разговор строками протокола через stdio. Запускает его node
+ * самой платформы — в редакторе это node расширения, в cli тот, что запустил cli: ставить свой
+ * проекту не нужно.
+ */
+export type PluginProcess = {
+  send(line: string): void;
+  /** Строка stdout — одно сообщение протокола. */
+  onLine(listener: (line: string) => void): void;
+  /** stderr — лог плагина: туда же уходит его `console.log`. */
+  onLog(listener: (text: string) => void): void;
+  /** Слушателей бывает несколько: выход ждут и старт, и остановка. */
+  onExit(listener: (code: number | null) => void): void;
+  kill(): void;
+};
+
+export type PluginProcessPort = {
+  start(params: { script: string; cwd: string; env: ProcessEnv }): PluginProcess;
+};
+
+/**
+ * Доверие к плагину: чужой код карты запускается, только когда человек сказал «да». Спрашивает
+ * и помнит ответ приложение — у пользователя, а не в репозитории: иначе чужой репозиторий
+ * приносил бы «доверено» с собой. Где спросить некого, приложение просто отвечает, что знает.
+ */
+export type TrustPort = {
+  allow(params: { mapPath: string; plugin: string }): Promise<boolean>;
+  /**
+   * Запомнить «да» без вопроса: так помечается встроенный плагин, который mapward скопировал в
+   * карту сам, — его код пришёл с инструментом, а не с чужим репозиторием.
+   */
+  grant(params: { mapPath: string; plugin: string }): Promise<void>;
+};
+
+/**
+ * Зависимости плагина — `dependencies` в его `package.json`, например библиотека холста у
+ * встроенного `objects-map`. Ставит их приложение: `npm` в папке плагина (`PLUGIN_INSTALL`).
+ * Промис отклоняется с выводом npm — по нему платформа и говорит, что не так (нет сети, нет npm).
+ */
+export type PackagesPort = { install(dir: string): Promise<void> };
+
+/** Редактор для плагинов: `ctx.vscode`. Нет его — плагин узнаёт об этом из `ctx.isVscode`. */
+export type EditorPort = {
+  openFile(path: string, options: { line?: number; column?: number }): Promise<void>;
+  /** Показать файл или папку в проводнике редактора. */
+  reveal(path: string): Promise<void>;
+  showMessage(text: string, level: "info" | "warning" | "error"): Promise<void>;
+  terminal(command: string, options: { name?: string; cwd?: string }): Promise<void>;
+  executeCommand(command: string, args: unknown[]): Promise<unknown>;
+};
+
+/**
+ * Клиент карты для плагинов — `ctx.webview`: сборка вебвью и адрес моста до платформы по http.
+ * Ответ `undefined` — клиента нет (платформа без редактора) или мост ещё не поднят.
+ */
+export type WebviewPort = () => { assets: string; bridge: string } | undefined;
+
+export type { ProcessEnv };
 
 /**
  * Что умеет хост, поднявший сервер — решение 0014. Тип общий с клиентом и живёт в `core`:
@@ -143,12 +155,19 @@ export type { Capabilities };
  */
 export type ServerPorts = {
   files: FilesPort;
-  shell: ShellPort;
-  agent: AgentPort;
   clock: ClockPort;
   timers: TimersPort;
   env: EnvPort;
   capabilities: Capabilities;
   /** Хоста без сборщика компонент метрики не показывает, а говорит, что собрать нечем. */
   bundler?: BundlerPort;
+  /** Без процессов плагины не запускаются: вызов отвечает ошибкой, карта живёт. */
+  plugins?: PluginProcessPort;
+  /** Без него недоверенных плагинов нет — запускается всё. Так только в тестах. */
+  trust?: TrustPort;
+  /** Без него встроенный плагин с зависимостями копируется, а поставить их просят человека. */
+  packages?: PackagesPort;
+  editor?: EditorPort;
+  /** Есть только у редактора: им рисует плагин `screenshot`. */
+  webview?: WebviewPort;
 };

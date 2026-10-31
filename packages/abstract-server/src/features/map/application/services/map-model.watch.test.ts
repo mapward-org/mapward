@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { MAP_ROOT } from "@mapward/core";
 import type { MapObject } from "@mapward/core";
 import type { FilesPort } from "../../../../ports/index.ts";
 import { MapModel } from "./map-model.ts";
@@ -43,13 +44,15 @@ function liveFiles(tree: Record<string, string>) {
     },
     watch: (_root, onChange) => {
       listeners.push(onChange);
-      return () => undefined;
+      return () => {
+        listeners.splice(listeners.indexOf(onChange), 1);
+      };
     },
   };
   const changed = (...paths: string[]) => {
     for (const path of paths) for (const listener of listeners) listener(path);
   };
-  return { files, changed, reads };
+  return { files, changed, reads, watchers: () => listeners.length };
 }
 
 /** Таймеры по-настоящему, но быстро: дебаунс вотчера ждёт тишины по часам. */
@@ -73,13 +76,18 @@ const tree = (): Record<string, string> => ({
 
 const names = (map: MapObject) => map.children.map((child) => child.name);
 
+/** Корень с детьми без внуков — тестам хватает его: карта в них в один уровень. */
+const root$ = (model: MapModel, at: typeof ref) => model.object$(at, MAP_ROOT, "children");
+const root = async (model: MapModel, at: typeof ref) =>
+  (await model.object(at, MAP_ROOT, "children")) as MapObject;
+
 test("правка файла доходит до подписчика карты без перечитывания всей карты", async () => {
   const disk = tree();
   const { files, changed, reads } = liveFiles(disk);
   const model = new MapModel(files, files, timers, clock);
   const seen: MapObject[] = [];
-  const subscription = model.watch(ref).subscribe((map) => seen.push(map));
-  await model.current(ref);
+  const subscription = root$(model, ref).subscribe((map) => seen.push(map as MapObject));
+  await root(model, ref);
   const before = reads.length;
 
   disk["/map/core/_index.json"] = JSON.stringify({ name: "ядро" });
@@ -97,8 +105,8 @@ test("пачка изменений уходит наружу одной сбо�
   const { files, changed } = liveFiles(disk);
   const model = new MapModel(files, files, timers, clock);
   const seen: MapObject[] = [];
-  const subscription = model.watch(ref).subscribe((map) => seen.push(map));
-  await model.current(ref);
+  const subscription = root$(model, ref).subscribe((map) => seen.push(map as MapObject));
+  await root(model, ref);
   const before = seen.length;
 
   disk["/map/core/_index.json"] = JSON.stringify({ name: "ядро" });
@@ -119,26 +127,114 @@ test("вотчер говорит, путь с обратными слэшами
   const { files, changed } = liveFiles(disk);
   const model = new MapModel(files, files, timers, clock);
   const windows = { mapPath: "D:/map", basePath: "D:/repo", name: "Карта" };
-  await model.current(windows);
+  // Карту держат: иначе следующее чтение пошло бы на диск и без вотчера.
+  const subscription = root$(model, windows).subscribe();
+  await root(model, windows);
 
   disk["D:/map/core/_index.json"] = JSON.stringify({ name: "ядро" });
   changed("d:\\map\\core\\_index.json");
   await settle();
 
-  expect(names(await model.current(windows))).toEqual(["ядро"]);
+  expect(names(await root(model, windows))).toEqual(["ядро"]);
+  subscription.unsubscribe();
 });
 
 test("своя запись сервера видна сразу, не дожидаясь вотчера", async () => {
   const disk = tree();
   const { files } = liveFiles(disk);
   const model = new MapModel(files, files, timers, clock);
-  await model.current(ref);
+  await root(model, ref);
 
   // Новая директива — новый файл в папке, которой раньше не было, и его состояние следом.
   await model.writer(files).write("/map/core/_directives/новая.md", "\n## \n\n");
-  const core = (await model.current(ref)).children.find((child) => child.name === "core");
+  const core = (await root(model, ref)).children.find((child) => child.name === "core");
 
   expect(core?.directives.map((file) => [file.name, file.status])).toEqual([["новая.md", "new"]]);
+});
+
+test("запись директивы и сразу объект по адресу — она в нём, держит его кто-то или нет", async () => {
+  const disk = tree();
+  const { files } = liveFiles(disk);
+  const model = new MapModel(files, files, timers, clock);
+  const statuses = async () =>
+    (await model.object(ref, "mapward://core"))?.directives.map((file) => [file.name, file.status]);
+
+  // Никто не держит: следующее чтение и так идёт на диск.
+  await model.writer(files).write("/map/core/_directives/первая.md", "\n## \n\n");
+  expect(await statuses()).toEqual([["первая.md", "new"]]);
+
+  // Держат: запись перечитывает тронутое у подписанных, вотчера не ждёт.
+  const subscription = model.object$(ref, "mapward://core").subscribe();
+  await statuses();
+  await model.writer(files).write("/map/core/_directives/вторая.md", "\n## \n\n");
+  expect(await statuses()).toEqual([
+    ["первая.md", "new"],
+    ["вторая.md", "new"],
+  ]);
+  subscription.unsubscribe();
+});
+
+/** Таймеры, у которых срок «держать прочитанное» истекает по кнопке, а остальные — сами. */
+function keepTimers() {
+  const kept: (() => void)[] = [];
+  return {
+    timers: {
+      every: () => () => undefined,
+      after: (ms: number, run: () => void) => {
+        if (ms < 1000) return timers.after(ms, run);
+        let alive = true;
+        kept.push(() => alive && run());
+        return () => {
+          alive = false;
+        };
+      },
+    },
+    expire: () => {
+      for (const run of kept.splice(0)) run();
+    },
+  };
+}
+
+test("отписались все и срок вышел — вотчер и файлы отпущены, следующее чтение идёт на диск", async () => {
+  const disk = tree();
+  const { files, reads, watchers } = liveFiles(disk);
+  const { timers: keep, expire } = keepTimers();
+  const model = new MapModel(files, files, keep, clock);
+  expect(watchers()).toBe(0);
+
+  await model.object(ref, "mapward://core");
+  // Срок не вышел: прочитанное держится, и серия вопросов на диск не ходит.
+  expect(watchers()).toBe(1);
+  const before = reads.length;
+  await model.object(ref, "mapward://core");
+  expect(reads.length).toBe(before);
+
+  expire();
+  await settle();
+  expect(watchers()).toBe(0);
+  await model.object(ref, "mapward://core");
+  expect(reads.length).toBeGreaterThan(before);
+});
+
+test("правка ветки, на которую никто не смотрит, не будит ни диск, ни соседние ветки", async () => {
+  const disk = tree();
+  const { files, changed, reads } = liveFiles(disk);
+  const model = new MapModel(files, files, timers, clock);
+  const seen: (MapObject | undefined)[] = [];
+  const subscription = model
+    .object$(ref, "mapward://docs", "children")
+    .subscribe((object) => seen.push(object));
+  await model.object(ref, "mapward://docs");
+  await settle();
+  const before = { seen: seen.length, reads: reads.length };
+
+  disk["/map/core/_index.json"] = JSON.stringify({ name: "ядро" });
+  changed("/map/core/_index.json");
+  await settle();
+
+  expect(seen.length).toBe(before.seen);
+  expect(reads.length).toBe(before.reads);
+  subscription.unsubscribe();
 });
 
 test("запись кэша метрики карту не пересобирает: в модели её нет", async () => {
@@ -146,8 +242,8 @@ test("запись кэша метрики карту не пересобира�
   const { files, changed } = liveFiles(disk);
   const model = new MapModel(files, files, timers, clock);
   const seen: MapObject[] = [];
-  const subscription = model.watch(ref).subscribe((map) => seen.push(map));
-  await model.current(ref);
+  const subscription = root$(model, ref).subscribe((map) => seen.push(map as MapObject));
+  await root(model, ref);
   const before = seen.length;
 
   disk["/map/core/_metrics/files/collect.json"] = "{}";
@@ -162,13 +258,13 @@ test("перечитать — видно и то, о чём вотчер не �
   const disk = tree();
   const { files } = liveFiles(disk);
   const model = new MapModel(files, files, timers, clock);
-  await model.current(ref);
+  await root(model, ref);
 
   disk["/map/core/_index.json"] = JSON.stringify({ name: "ядро" });
   disk["/map/tools/_index.json"] = JSON.stringify({ name: "tools" });
   await model.reload(ref);
 
-  expect(names(await model.current(ref))).toEqual(["ядро", "docs", "tools"]);
+  expect(names(await root(model, ref))).toEqual(["ядро", "docs", "tools"]);
 });
 
 test("поменяли extends у метрики — модель переподписалась на другой слой", async () => {
@@ -180,7 +276,8 @@ test("поменяли extends у метрики — модель перепод
   };
   const { files, changed } = liveFiles(disk);
   const model = new MapModel(files, files, timers, clock);
-  const label = async () => (await model.current(ref)).metrics[0]?.config.label;
+  const subscription = root$(model, ref).subscribe();
+  const label = async () => (await root(model, ref)).metrics[0]?.config.label;
   expect(await label()).toBe("А");
 
   disk["/map/_metrics/m/config.json"] = JSON.stringify({ extends: "mapward://shared/b" });
@@ -193,4 +290,5 @@ test("поменяли extends у метрики — модель перепод
   changed("/map/shared/b/config.json");
   await settle();
   expect(await label()).toBe("Бэ");
+  subscription.unsubscribe();
 });

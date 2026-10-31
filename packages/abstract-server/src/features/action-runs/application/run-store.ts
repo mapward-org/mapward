@@ -1,42 +1,18 @@
-import { Observable, Subject } from "rxjs";
-import { childAddress, findActionOwner } from "@mapward/core";
-import type {
-  ActionPermissions,
-  MapAction,
-  MapObject,
-  Run,
-  RunSource,
-  RunStarted,
-  RunStatus,
-  RunStep,
+import { Observable, Subject, type Subscription } from "rxjs";
+import {
+  actionArgs,
+  actionForm,
+  checkInputs,
+  findActionOwner,
+  memberOwner,
+  runMessage,
 } from "@mapward/core";
-import type {
-  ClockPort,
-  EnvPort,
-  FileReader,
-  FileWriter,
-  TimersPort,
-} from "../../../ports/index.ts";
+import type { MapAction, Run, RunSource, RunStarted, RunStatus, RunStep } from "@mapward/core";
+import type { ClockPort, FileReader, FileWriter, TimersPort } from "../../../ports/index.ts";
 import type { MapRef } from "../../../kernel/map-ref.ts";
-import { objectEnv } from "../../../kernel/object-env.ts";
-import { createCancellation, type Cancellation } from "../../../lib/cancellation.ts";
 import { join } from "../../../lib/path.ts";
-import { checkInputs, fillInputs, inputEnv } from "../domain/inputs.ts";
 import { orphaned, RUNS_DIR, runsFile, trim } from "../domain/history.ts";
-import type { RunsActivity, RunsExecutor, RunsMapSource, RunsMetricRefresh } from "../ports.ts";
-
-/**
- * Запись прогона метрики: стор метрик сообщает, что стадия началась и кончилась, а хранит и
- * показывает прогон это хранилище. Так история метрик и экшонов — одна (решение 0038).
- */
-export type RunRecorder = {
-  step(name: string): void;
-  /** `output` — результат стадии; в шаг он ложится JSON-ом, обрезанный до предела. */
-  stepDone(status: RunStatus, log?: string, output?: unknown): void;
-  /** Вывод идущей стадии по ходу: `out` дописывается в вывод шага, `err` — в его лог. */
-  output(chunk: string, stream: "out" | "err"): void;
-  end(status: RunStatus, error?: string): void;
-};
+import type { RunsActivity, RunsMapSource, RunsPlugins } from "../ports.ts";
 
 type Control = { cancel: () => void; done: Promise<Run> };
 
@@ -48,8 +24,6 @@ type MapRuns = {
 };
 
 const dir = (mapPath: string) => join(mapPath, RUNS_DIR);
-
-const lastStep = (run: Run): RunStep | undefined => run.steps.at(-1);
 
 /** Предел вывода шага: история хранится целиком, а дерево файлов раздуло бы её (решение 0038). */
 const OUTPUT_LIMIT = 200_000;
@@ -65,9 +39,19 @@ export function capped(text: string | undefined): string | undefined {
   return `${text.slice(0, OUTPUT_LIMIT)}\n… отрезано ${text.length - OUTPUT_LIMIT} знаков`;
 }
 
+/** Итог метода — под тем же пределом: огромный итог остаётся в прогоне строкой о себе. */
+function cappedValue(value: unknown): unknown {
+  const text = JSON.stringify(value) ?? "";
+  return text.length <= OUTPUT_LIMIT ? value : `итог в ${text.length} знаков не сохранён`;
+}
+
 /**
- * Хранилище прогонов — решение 0038. Живут они у сервера и на диске карты, в `.mapward/runs/`:
- * это операционка, у каждого своя, и в git она не попадает — там `.gitignore` со звёздочкой.
+ * Хранилище прогонов — решение 0038. Прогон — вызов метода плагина через экшон: платформа его
+ * маршрутизирует и записывает вызов, сообщения о ходе и итог. Метрики подписаны на плагины сами
+ * и обновятся без просьбы.
+ *
+ * Живут прогоны у сервера и на диске карты, в `.mapward/runs/`: это операционка, у каждого своя,
+ * и в git она не попадает — там `.gitignore` со звёздочкой.
  *
  * Прогоны одного экшона идут параллельно: у экшона параметры, и запустить его на разные значения
  * разом — обычное дело. Поэтому у каждого запуска свой номер, свой лог и своя остановка.
@@ -81,11 +65,9 @@ export class RunStore {
 
   constructor(
     private readonly files: FileReader & FileWriter,
-    private readonly executor: RunsExecutor,
     private readonly map: RunsMapSource,
-    /** Экшон пишет, метрики читают: после успеха он просит пересобрать названные метрики. */
-    private readonly metrics: RunsMetricRefresh,
-    private readonly env: EnvPort,
+    /** Экшон — метод плагина: через них он и зовётся, и описывает свою форму. */
+    private readonly plugins: RunsPlugins,
     private readonly timers: TimersPort,
     private readonly clock: ClockPort,
     /** Лента в кружке: идущие и упавшие экшоны видно по всей карте, откуда бы их ни запустили. */
@@ -194,110 +176,85 @@ export class RunStore {
     await this.persist(mapPath, run.object);
   }
 
-  /** Один исполнитель экшона. Неизвестный вид — ошибка шага: вид мог появиться позже карты. */
-  private async runner(
-    ref: MapRef,
-    spec: Record<string, unknown>,
-    object: MapObject,
-    values: Record<string, unknown>,
-    cancel: Cancellation,
-    step: RunStep,
-  ): Promise<{ output: string; log: string }> {
-    const env = { ...objectEnv(object, ref.mapPath, this.env.vars()), ...inputEnv(values) };
-    const output = (chunk: string, stream: "out" | "err") =>
-      this.stepOutput(ref.mapPath, step, chunk, stream);
-
-    switch (spec.kind) {
-      case "script": {
-        // Данные формы — JSON во входе и переменными: скрипт берёт то, что ему удобнее.
-        const { stdout, stderr } = await this.executor.script({
-          command: fillInputs(String(spec.run), values),
-          cwd: ref.mapPath,
-          env,
-          input: JSON.stringify(values),
-          cancel,
-          output,
-        });
-        return { output: stdout, log: stderr };
-      }
-      case "prompt": {
-        const form =
-          Object.keys(values).length === 0
-            ? undefined
-            : `Данные формы, с которыми запустили экшон: ${JSON.stringify(values)}`;
-        const permissions = spec.permissions as ActionPermissions | undefined;
-        const { stdout, stderr } = await this.executor.prompt({
-          owner: object,
-          text: fillInputs(String(spec.prompt), values),
-          ...(form === undefined ? {} : { tail: form }),
-          // Агент экшона работает с проектом, а не с картой: директива или релиз трогают код.
-          cwd: ref.basePath,
-          env,
-          cancel,
-          output,
-          ...(permissions === undefined ? {} : { permissions }),
-        });
-        return { output: stdout, log: stderr };
-      }
-      default:
-        throw new Error(`Исполнитель ${String(spec.kind)} ещё не поддержан`);
-    }
+  /** Имя шага, пока метод своих шагов не назвал: плагин и метод. */
+  private static stepName(action: MapAction): string {
+    const plugin = (action.config.plugin ?? "").replace(/\/+$/, "").split("/").pop() ?? "";
+    return [plugin, action.config.method].filter(Boolean).join(".");
   }
 
-  private async execute(
+  /**
+   * Вызов метода через экшон: сообщения о ходе — в шаги прогона, остальное — итог. Платформа
+   * маршрутизирует вызов и пишет историю; сам плагин о ней не знает.
+   */
+  private execute(
     ref: MapRef,
     run: Run,
     action: MapAction,
-    object: MapObject,
-    values: Record<string, unknown>,
-    token: Cancellation,
-    expired: () => number | undefined,
-  ): Promise<Run> {
-    const specs = action.config.runners ?? [];
-    try {
-      if (specs.length === 0) throw new Error("у экшона нет ни одного исполнителя");
-      for (const [at, spec] of specs.entries()) {
-        const step = this.stepStart(ref.mapPath, run, String(spec.name ?? spec.kind ?? at + 1));
-        try {
-          // По порядку: следующий шаг идёт после того, как предыдущий сделал своё.
-          // oxlint-disable-next-line no-await-in-loop
-          const result = await this.runner(ref, spec, object, values, token, step);
-          this.stepEnd(ref.mapPath, step, "success", {
-            log: result.log,
-            output: capped(result.output),
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.stepEnd(ref.mapPath, step, token.cancelled ? "stopped" : "failure", {
-            log: message,
-          });
-          throw error;
+    args: Record<string, unknown>,
+  ): { done: Promise<Run>; cancel: () => void } {
+    const mapPath = ref.mapPath;
+    let step: RunStep | undefined;
+    let finished = false;
+    let resolve!: (run: Run) => void;
+    const done = new Promise<Run>((ready) => {
+      resolve = ready;
+    });
+
+    const current = () => (step ??= this.stepStart(mapPath, run, RunStore.stepName(action)));
+    const finish = (status: RunStatus, error?: string) => {
+      if (finished) return;
+      finished = true;
+      if (step?.status === "running") {
+        this.stepEnd(mapPath, step, status, step.log || !error ? {} : { log: error });
+      }
+      void this.end(mapPath, run, status, error).then(() => resolve(run));
+    };
+
+    const { plugin = "", method = "" } = action.config;
+    const subscription: Subscription = this.plugins.call(ref, plugin, method, args).subscribe({
+      next: (value) => {
+        if (finished) return;
+        const message = runMessage(value);
+        if (!message) {
+          run.result = cappedValue(value);
+          this.changes.next(mapPath);
+          return;
         }
-      }
-      await this.end(ref.mapPath, run, "success");
-      // Экшон пишет, метрики читают (решение 0038): что он сделал, видно в них, и старое
-      // значение рядом со свежим запуском висеть не должно.
-      for (const key of action.config.refreshes ?? []) {
-        void this.metrics
-          .run(ref, `${childAddress(object.address, "_metrics")}/${key}`)
-          .catch(() => {});
-      }
-    } catch (error) {
-      const limit = expired();
-      if (limit !== undefined) {
-        await this.end(ref.mapPath, run, "failure", `время вышло, предел ${limit} мс`);
-      } else if (token.cancelled) {
-        await this.end(ref.mapPath, run, "stopped", "остановлен");
-      } else {
-        await this.end(
-          ref.mapPath,
-          run,
-          "failure",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }
-    return run;
+        if (message.progress === "step") {
+          if (step?.status === "running") this.stepEnd(mapPath, step, "success");
+          step = this.stepStart(mapPath, run, message.name);
+          return;
+        }
+        const stream = message.progress === "out" ? "out" : "err";
+        this.stepOutput(mapPath, current(), `${message.text}\n`, stream);
+      },
+      error: (error: unknown) =>
+        finish("failure", error instanceof Error ? error.message : String(error)),
+      complete: () => finish("success"),
+    });
+
+    return {
+      done,
+      // Остановка — отписка от вызова: плагин видит отмену и гасит своё.
+      cancel: () => {
+        if (finished) return;
+        subscription.unsubscribe();
+        finish("stopped", "остановлен");
+      },
+    };
+  }
+
+  /**
+   * Форма экшона: `inputs`, если написаны, иначе параметры метода по схеме из самоописания
+   * плагина. Ради схемы процесс плагина поднимается — как на вызов.
+   */
+  private async form(ref: MapRef, action: MapAction) {
+    const { config } = action;
+    if (config.inputs !== undefined) return actionForm(config);
+    const described = await this.plugins.describe(ref, config.plugin ?? "");
+    const method = described.methods[config.method ?? ""];
+    if (!method) throw new Error(`у плагина ${config.plugin} нет метода ${config.method}`);
+    return actionForm(config, method.params);
   }
 
   /**
@@ -310,12 +267,17 @@ export class RunStore {
     given: Record<string, unknown> = {},
     source: RunSource = "ui",
   ): Promise<RunStarted> {
-    const map = await this.map.current(ref);
-    const found = findActionOwner(map, address);
+    // Экшон лежит у объекта, и адрес его называет: читается он, а не вся карта.
+    const owner = memberOwner(address);
+    const holder = owner === undefined ? undefined : await this.map.object(ref, owner);
+    const found = holder && findActionOwner(holder, address);
     if (!found) throw new Error(`Экшон ${address} не найден`);
     const { action, object } = found;
+    if (!action.config.plugin || !action.config.method) {
+      throw new Error(`У экшона ${address} нет plugin и method`);
+    }
 
-    const { values, errors } = checkInputs(action.config.inputs, given);
+    const { values, errors } = checkInputs(await this.form(ref, action), given);
     if (Object.keys(errors).length > 0) return { errors };
 
     await this.load(ref.mapPath, object.address);
@@ -329,17 +291,6 @@ export class RunStore {
       config: action.config,
     });
 
-    const { token, cancel } = createCancellation();
-    let limit: number | undefined;
-    const timeout = action.config.timeout;
-    const stopTimer =
-      timeout === undefined
-        ? () => {}
-        : this.timers.after(timeout, () => {
-            limit = timeout;
-            cancel();
-          });
-
     const place = {
       mapPath: ref.mapPath,
       address: object.address,
@@ -349,15 +300,17 @@ export class RunStore {
     };
     this.activity?.actionStarted({ ...place, at: run.startedAt });
 
-    const done = this.execute(ref, run, action, object, values, token, () => limit).finally(() => {
-      stopTimer();
-      this.stateOf(ref.mapPath).controls.delete(run.id);
-      this.activity?.actionEnded(
-        { ...place, at: run.finishedAt ?? this.clock.now() },
-        run.status === "failure",
-      );
+    const { done, cancel } = this.execute(ref, run, action, actionArgs(action.config, values));
+    this.stateOf(ref.mapPath).controls.set(run.id, {
+      cancel,
+      done: done.finally(() => {
+        this.stateOf(ref.mapPath).controls.delete(run.id);
+        this.activity?.actionEnded(
+          { ...place, at: run.finishedAt ?? this.clock.now() },
+          run.status === "failure",
+        );
+      }),
     });
-    this.stateOf(ref.mapPath).controls.set(run.id, { cancel, done });
     return { id: run.id };
   }
 
@@ -393,68 +346,5 @@ export class RunStore {
       void this.load(mapPath, object).then(push);
       return () => subscription.unsubscribe();
     });
-  }
-
-  /**
-   * Прогон метрики: стадии сообщает стор метрик, храним и показываем здесь. Отмену он отдаёт
-   * вместе с записью — иначе «остановить» у прогона метрики было бы нечем исполнить.
-   */
-  recordMetric(
-    mapPath: string,
-    {
-      feed,
-      ...info
-    }: {
-      target: string;
-      object: string;
-      label: string;
-      source: RunSource;
-      config: unknown;
-      /** Ручная метрика, запущенная человеком или агентом, видна в ленте, как экшон. */
-      feed?: { objectName: string };
-    },
-    cancel?: () => void,
-  ): RunRecorder {
-    void this.load(mapPath, info.object);
-    const run = this.begin(mapPath, { kind: "metric", ...info });
-    const place = feed && {
-      mapPath,
-      address: info.object,
-      object: feed.objectName,
-      run: run.id,
-      label: run.label,
-    };
-    if (place) this.activity?.actionStarted({ ...place, at: run.startedAt }, "metric");
-    let finish: ((value: Run) => void) | undefined;
-    const done = new Promise<Run>((resolve) => {
-      finish = resolve;
-    });
-    if (cancel) this.stateOf(mapPath).controls.set(run.id, { cancel, done });
-    return {
-      step: (name) => void this.stepStart(mapPath, run, name),
-      output: (chunk, stream) => {
-        const step = lastStep(run);
-        if (step) this.stepOutput(mapPath, step, chunk, stream);
-      },
-      stepDone: (status, log, output) => {
-        const step = lastStep(run);
-        if (step?.status !== "running") return;
-        this.stepEnd(mapPath, step, status, {
-          ...(log ? { log } : {}),
-          ...(output === undefined ? {} : { output: capped(JSON.stringify(output, null, 2)) }),
-        });
-      },
-      end: (status, error) => {
-        this.stateOf(mapPath).controls.delete(run.id);
-        void this.end(mapPath, run, status, error).then(() => finish?.(run));
-        if (place) {
-          this.activity?.actionEnded(
-            { ...place, at: run.finishedAt ?? this.clock.now() },
-            status === "failure",
-            "metric",
-          );
-        }
-      },
-    };
   }
 }

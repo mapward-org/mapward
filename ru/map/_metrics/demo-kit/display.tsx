@@ -1,16 +1,26 @@
-import type { DisplayProps, TreeItem } from "@mapward/display";
-import { ActionButton, FileTree, Link, List, Markdown, StatusDot } from "@mapward/display";
-import type { Data } from "./display.data";
+import type { MetricProps } from "@mapward/component";
+import { useNavigation } from "@mapward/component";
+import { ActionButton } from "../../_plugins/views/bricks/action-button.tsx";
+import { FileTree } from "../../_plugins/views/bricks/file-tree.tsx";
+import { Link } from "../../_plugins/views/bricks/link.tsx";
+import { List } from "../../_plugins/views/bricks/list.tsx";
+import { Markdown } from "../../_plugins/views/bricks/markdown.tsx";
+import { StatusDot } from "../../_plugins/views/bricks/status-dot.tsx";
+import type { LinkItem, TreeItem } from "../../_plugins/views/bricks/types.ts";
+
+type Params = { note: string; items: LinkItem[]; tree: TreeItem[] };
 
 /**
- * Тестовый дисплей-компонент (решение 0037): каждый кусочек набора по разу. Схема ссылается на
- * себя через `$ref` — такой тип генератор не выводит и честно пишет `unknown`, отсюда
- * приведение у дерева.
+ * Тестовая метрика-компонент (решение 0037): каждый кирпич плагина `views` по разу. Кирпичи —
+ * относительным импортом из `_plugins/views/bricks`; данные — статикой в `params`: плагин здесь
+ * не нужен.
  */
-export default function Display({ data, object, metric }: DisplayProps<Data>) {
+export default function Kit({ params: data, object, metric }: MetricProps<Params>) {
+  // Кирпичи чистые: ссылки открывает компонент, как любая ссылка карты.
+  const navigate = useNavigation();
   return (
     <div className="flex flex-col gap-3">
-      <Markdown text={data.note} />
+      <Markdown text={data.note} onOpen={navigate} />
 
       <section className="flex flex-col gap-1">
         <h4 className="m-0 text-[11px] uppercase opacity-60">StatusDot и Link</h4>
@@ -25,17 +35,20 @@ export default function Display({ data, object, metric }: DisplayProps<Data>) {
             </span>
           ))}
         </div>
-        <Link item={{ label: "объект, на котором висит метрика", link: object.address }} />
+        <Link
+          item={{ label: "объект, на котором висит метрика", link: object.address }}
+          onClick={navigate}
+        />
       </section>
 
       <section className="flex flex-col gap-1">
         <h4 className="m-0 text-[11px] uppercase opacity-60">List</h4>
-        <List items={data.items} />
+        <List items={data.items} onClick={navigate} />
       </section>
 
       <section className="flex flex-col gap-1">
         <h4 className="m-0 text-[11px] uppercase opacity-60">FileTree</h4>
-        <FileTree items={data.tree as TreeItem[]} />
+        <FileTree items={data.tree} onClick={navigate} />
       </section>
 
       <section className="flex flex-col gap-1">

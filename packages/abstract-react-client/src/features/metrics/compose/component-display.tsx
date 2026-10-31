@@ -1,9 +1,10 @@
 import * as React from "react";
+import * as ReactDom from "react-dom";
 import * as JsxRuntime from "react/jsx-runtime";
-import { observer } from "mobx-react-lite";
-import type { DisplayBuild } from "@mapward/core";
-import type { DisplayProps } from "@mapward/display";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import * as Rxjs from "rxjs";
+import * as RxjsOperators from "rxjs/operators";
+import type { ComponentBuild } from "@mapward/core";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
 import { ComponentModule } from "../model/component-module.ts";
 import { ProvideKit, type KitLinks } from "../ports.tsx";
 import { loadModule } from "../ui/component-module.ts";
@@ -13,30 +14,38 @@ import {
   ComponentFailure,
   ComponentStyle,
 } from "../ui/component-parts.tsx";
-import { DisplayKit } from "./display-kit.tsx";
+import { ComponentKit } from "./component-kit.tsx";
 
-/** Что модуль компонента получает на `require`: одна копия React на странице (решение 0037). */
+/**
+ * Что модуль компонента получает на `require`: одна копия React на странице (решение 0037) и
+ * одна rxjs — та, на которой стоят потоки плагинов: `pipe` и `instanceof` сходятся.
+ */
 const Provided: Record<string, unknown> = {
   react: React,
+  // Порталы библиотек компонента — той же копией, что у карты: второй рендерер ломает дерево.
+  "react-dom": ReactDom,
   "react/jsx-runtime": JsxRuntime,
   "react/jsx-dev-runtime": JsxRuntime,
-  "@mapward/display": DisplayKit,
+  "@mapward/component": ComponentKit,
+  rxjs: Rxjs,
+  "rxjs/operators": RxjsOperators,
 };
 
 /**
- * Дисплей-компонент метрики — решение 0037. Код и css приносит сервер; здесь модуль
- * выполняется, css ложится своим `<style>` и уходит вместе с ячейкой.
+ * Компонент метрики — решение 0037. Код и css приносит сервер; здесь модуль выполняется, css
+ * ложится своим `<style>` и уходит вместе с ячейкой.
  */
-export const ComponentDisplay = observer(function ComponentDisplay(props: {
-  build: DisplayBuild | undefined;
-  /** Что не прошло схему: компонент тогда не рисуется — ему пришло не то, что он объявил. */
-  invalid?: string[] | undefined;
-  display: DisplayProps;
+export function ComponentDisplay(props: {
+  build: ComponentBuild | undefined;
+  /** Пропсы модуля: у метрики — `MetricProps`, у раскладки — `LayoutProps`, у формы — свои. */
+  display: object;
   links: KitLinks;
 }) {
+  // Модуль — по коду и css, а не по сборке: пересборка тем же кодом (тронули файл, сверка входов
+  // не сошлась) не перемонтирует компонент и не сбрасывает его состояние.
   const module = useLocalStore(
-    () => new ComponentModule(props.build, props.invalid, (code) => loadModule(code, Provided)),
-    [props.build, props.invalid],
+    () => new ComponentModule(props.build, (code) => loadModule(code, Provided)),
+    [props.build === undefined, props.build?.code, props.build?.css, props.build?.errors?.join()],
   );
   const View = module.view;
 
@@ -57,4 +66,4 @@ export const ComponentDisplay = observer(function ComponentDisplay(props: {
       </ComponentBoundary>
     </ProvideKit>
   ) : null;
-});
+}

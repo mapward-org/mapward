@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { MAP_ROOT } from "@mapward/core";
 import type { MapObject } from "@mapward/core";
 import type { FilesPort } from "../../../../ports/index.ts";
 import { MapModel } from "./map-model.ts";
@@ -6,9 +7,16 @@ import { MapModel } from "./map-model.ts";
 const timers = { every: () => () => undefined, after: () => () => undefined };
 const clock = { now: () => new Date().toISOString() };
 
-/** Карта целиком, как её прочитает сервер: модель одна на вызов, без вотчера. */
-const readMap = (files: FilesPort, mapPath: string, basePath: string, name: string) =>
-  new MapModel(files, files, timers, clock).current({ mapPath, basePath, name });
+/**
+ * Карта целиком, как её прочитает сервер: модель одна на вызов, без вотчера. Тесту наследования
+ * нужна вся маленькая карта в памяти разом — отсюда `Infinity` от корня.
+ */
+const readMap = async (files: FilesPort, mapPath: string, basePath: string, name: string) => {
+  const model = new MapModel(files, files, timers, clock);
+  const root = await model.subtree({ mapPath, basePath, name }, MAP_ROOT, Infinity);
+  if (!root) throw new Error("карта не прочиталась");
+  return root;
+};
 
 /**
  * Карта в памяти вместо диска. Это и есть смысл портов: сервер читается тестом без редактора,
@@ -51,16 +59,18 @@ const tree = {
   "/map/prototypes/system/_actions/add-requirement/config.json": JSON.stringify({
     label: "Завести требование",
     inputs: { title: { required: true } },
-    runners: [
-      { kind: "prompt", prompt: "заведи требование ${{ inputs.title }} у ${{ mapward://~#name }}" },
-    ],
+    plugin: "/map/_plugins/agent",
+    method: "run",
+    params: { prompt: "заведи требование ${{ inputs.title }} у ${{ mapward://~#name }}" },
   }),
   "/map/prototypes/package/_index.json": JSON.stringify({
     name: "Пакет",
     extends: "mapward://prototypes/system",
   }),
   "/map/prototypes/package/_actions/publish-version/config.json": JSON.stringify({
-    runners: [{ kind: "script", run: "pnpm publish" }],
+    plugin: "/map/_plugins/shell",
+    method: "run",
+    params: { command: "pnpm publish" },
   }),
   "/map/packages/core/_index.json": JSON.stringify({
     name: "core",
@@ -103,7 +113,7 @@ test("an inherited action belongs to the heir and keeps its owner — decision 0
   expect(action?.address).toBe("mapward://packages/core/_actions/add-requirement");
   expect(action?.owner).toBe("mapward://prototypes/system");
   // Подстановка — по объекту, на котором экшон нажмут, а форма — позже, при запуске.
-  expect(action?.config.runners?.[0]?.prompt).toBe("заведи требование ${{ inputs.title }} у core");
+  expect(action?.config.params?.prompt).toBe("заведи требование ${{ inputs.title }} у core");
 });
 
 test("an action extends a shared one and merges its inputs by name", async () => {
@@ -112,7 +122,9 @@ test("an action extends a shared one and merges its inputs by name", async () =>
     "/map/shared-actions/release/config.json": JSON.stringify({
       label: "Выпуск",
       inputs: { level: { type: "choice", options: ["patch", "minor"] } },
-      runners: [{ kind: "script", run: "release" }],
+      plugin: "/map/_plugins/shell",
+      method: "run",
+      params: { command: "release" },
     }),
     "/map/packages/core/_actions/release/config.json": JSON.stringify({
       extends: "mapward://shared-actions/release",
@@ -313,8 +325,7 @@ test("an object without stages of its own gets the default workflow", async () =
 const layersTree = {
   "/map/_index.json": JSON.stringify({ name: "Карта" }),
   "/map/shared-metrics/dir/config.json": JSON.stringify({
-    refresh: "on-display",
-    collectors: [{ kind: "read-dir" }],
+    component: "../../_plugins/views/tree.tsx",
   }),
   "/map/shared-metrics/files/config.json": JSON.stringify({
     label: "Файлы",
@@ -376,7 +387,7 @@ test("the heir's own file becomes the first layer, the prototype's the next", as
   expect(files?.layers[0]?.path).toBe("/map/packages/cli/_metrics/files/config.json");
   // Своё выигрывает, дальнее доезжает: иначе по слоям не видно, зачем они.
   expect(files?.config.label).toBe("Исходники");
-  expect(files?.config.refresh).toBe("on-display");
+  expect(files?.config.component).toBe("/map/_plugins/views/tree.tsx");
 });
 
 /**
@@ -395,7 +406,7 @@ test("a second metric extending the same shared one gets the whole chain", async
     "/map/shared-metrics/dir/config.json",
   ]);
   expect(site?.config.label).toBe("Файлы");
-  expect(site?.config.refresh).toBe("on-display");
+  expect(site?.config.component).toBe("/map/_plugins/views/tree.tsx");
 });
 
 test("an object carries the `_index.json` of every prototype in its chain", async () => {
@@ -452,7 +463,7 @@ const groupsTree = {
     "metric-groups": {
       groups: [
         { key: "код", label: "Код", metrics: ["files"] },
-        { key: "тяжёлое", metrics: ["architecture"] },
+        { key: "тяжёлое", metrics: ["architecture"], layout: "./layout.tsx" },
       ],
     },
   }),
@@ -490,6 +501,14 @@ test("metric groups are inherited and overridden by key", async () => {
     label: "Код core",
     metrics: ["files", "architecture"],
   });
+});
+
+/** Раскладка прототипа лежит у прототипа: наследник получает её путь от папки прототипа. */
+test("a group layout is anchored to the _index.json that names it", async () => {
+  const map = await readMap(fakeFiles(groupsTree), MAP, "/repo", "Карта");
+  const heavy = packageOf(map, "core")?.metricGroups.find((group) => group.key === "тяжёлое");
+
+  expect(heavy?.layout).toBe("/map/prototypes/package/layout.tsx");
 });
 
 test("replace drops the inherited groups", async () => {

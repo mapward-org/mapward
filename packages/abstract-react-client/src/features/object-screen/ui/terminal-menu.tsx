@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
-import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { Anchor, Popup } from "../../../lib/store/popup.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { Floating } from "../../../lib/ui/floating.tsx";
 
 /** Тот же бокс, что у соседей по шапке: `x 3…13`, `y 3…13` — решение 0028. */
@@ -16,7 +16,7 @@ const TerminalIcon = (
  * Terminals live as long as the editor keeps them: the list is what is open right now. Пункты
  * кладут внутрь рендер-пропсом: им нужно закрыть меню, когда по ним кликнули.
  */
-export const TerminalMenu = observer(function TerminalMenu(props: {
+export function TerminalMenu(props: {
   empty: boolean;
   onOpen: () => void;
   children: (close: () => void) => ReactNode;
@@ -24,6 +24,7 @@ export const TerminalMenu = observer(function TerminalMenu(props: {
   // Меню порталом поверх всего: в шапке карточки его иначе обрезала бы её рамка.
   const popup = useLocalStore(() => new Popup(undefined, true));
   const anchor = useLocalStore(() => new Anchor());
+  useWatch(popup, anchor);
 
   return (
     // `flex`, а не просто `relative`: иначе кнопка лежит внутри обёртки и не тянется
@@ -52,7 +53,7 @@ export const TerminalMenu = observer(function TerminalMenu(props: {
       )}
     </div>
   );
-});
+}
 
 export function FreshTerminal(props: { close: () => void; onFresh: () => void }) {
   return (

@@ -35,20 +35,6 @@ export function SoloBody(props: { children: ReactNode }) {
   return <div className="min-h-0 flex-1">{props.children}</div>;
 }
 
-/**
- * Ключ, занятый и метрикой, и экшоном, — ошибка объекта (решение 0038): раскладка находит
- * клетку по ключу, и вид не угадывает, что из двух туда ставить.
- */
-export function ClashNote(props: { keys: string[] }) {
-  if (props.keys.length === 0) return null;
-  return (
-    <div className="shrink-0 px-2 pb-1 text-[11px] text-[var(--mw-errorForeground,#f85149)]">
-      {props.keys.length === 1 ? "ключ" : "ключи"} {props.keys.join(", ")} — и у метрики, и у
-      экшона: в клетке остаётся метрика, кнопкой экшон в сетку не встаёт. Переименуйте один из них.
-    </div>
-  );
-}
-
 /** Описание открытой вкладки — над сеткой, разметкой (решение 0025). */
 export function GroupDescription(props: { children: ReactNode }) {
   return <div className="shrink-0 px-2 pb-1 text-[11px] opacity-70">{props.children}</div>;
@@ -67,7 +53,14 @@ export function ScreenBody(props: { children: ReactNode }) {
   );
 }
 
-/** Пока карта не дочитана, на месте экрана — строка о том, что идёт. */
+/**
+ * Пока карта не дочитана, на месте экрана — строка о том, что идёт. `data-loading` — заглушка
+ * загрузки: скриншот ждёт, пока таких не останется.
+ */
 export function Reading() {
-  return <p className="p-3 text-[var(--mw-descriptionForeground)]">Читаем карту…</p>;
+  return (
+    <p data-loading="" className="p-3 text-[var(--mw-descriptionForeground)]">
+      Читаем карту…
+    </p>
+  );
 }

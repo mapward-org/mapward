@@ -1,13 +1,27 @@
 {
   "label": "Тесты",
-  "refresh": "manual",
-  "collectors": [
-    { "kind": "script", "run": "pnpm vitest run ${{ mapward://~#props.codePath }}" }
-  ],
-  "transforms": [
-    { "kind": "prompt" }
-  ],
-  "collectorsCache": true,
-  "transformsCache": true,
-  "display": { "kind": "status" }
+  "component": "${{ mapward:// }}/_plugins/views/status.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/agent",
+      "method": "ask",
+      "params": {
+        "prompt": "Запусти в корне проекта ${{ mapward://@ }} команду `pnpm vitest run ${{ mapward://~#props.codePath }}` и оформи её вывод: ok — прошли ли все тесты, summary — сколько прошло и упало и какие упали, одной-двумя строками.",
+        "shape": "status",
+        "cache": "${{ mapward://~ }}/_metrics/tests/answer.json",
+        "permissions": ["Bash(pnpm vitest:*)"]
+      }
+    },
+    "refresh": "refresh"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/agent",
+    "method": "ask",
+    "params": {
+      "prompt": "Запусти в корне проекта ${{ mapward://@ }} команду `pnpm vitest run ${{ mapward://~#props.codePath }}` и оформи её вывод: ok — прошли ли все тесты, summary — сколько прошло и упало и какие упали, одной-двумя строками.",
+      "shape": "status",
+      "cache": "${{ mapward://~ }}/_metrics/tests/answer.json",
+      "permissions": ["Bash(pnpm vitest:*)"]
+    }
+  }
 }

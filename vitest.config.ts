@@ -6,7 +6,13 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
-    include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts", "tests/**/*.test.ts"],
+    include: [
+      "packages/*/src/**/*.test.ts",
+      // Встроенные плагины держат тесты рядом с кодом: в карту они не копируются.
+      "packages/plugins/registry/**/*.test.ts",
+      "apps/*/src/**/*.test.ts",
+      "tests/**/*.test.ts",
+    ],
     passWithNoTests: true,
   },
 });

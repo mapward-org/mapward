@@ -1,11 +1,41 @@
 {
   "label": "Битые адреса требований",
-  "refresh": "on-display",
-  "collectors": [
-    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }
-  ],
-  "transforms": [
-    { "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/links.mjs\"" }
-  , { "kind": "git-status" }],
-  "display": { "kind": "list", "empty": "все адреса на месте" }
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/links.mjs\"",
+        "from": {
+          "plugin": "${{ mapward:// }}/_plugins/files",
+          "method": "tree",
+          "params": {
+            "path": "${{ mapward://@ }}/ru/requirements",
+            "include": ["**/*.md"],
+            "content": true,
+            "git": true
+          }
+        }
+      }
+    },
+    "empty": "все адреса на месте"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/links.mjs\"",
+      "from": {
+        "plugin": "${{ mapward:// }}/_plugins/files",
+        "method": "tree",
+        "params": {
+          "path": "${{ mapward://@ }}/ru/requirements",
+          "include": ["**/*.md"],
+          "content": true,
+          "git": true
+        }
+      }
+    }
+  }
 }

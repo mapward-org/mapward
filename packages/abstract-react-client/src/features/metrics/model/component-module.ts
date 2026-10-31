@@ -1,16 +1,14 @@
-import type { DisplayBuild } from "@mapward/core";
+import type { ComponentBuild } from "@mapward/core";
 
 type Loaded<V> = { view?: V; error?: string };
 
 /**
- * Дисплей-компонент метрики — решение 0037: что рисовать в ячейке. Код и css приносит сервер;
- * пока сборки нет — «собирается», не прошли схему, не собрался, не загрузился — ошибка.
+ * Компонент метрики — решение 0037: что рисовать в ячейке. Код и css приносит сервер; пока
+ * сборки нет — «собирается», не собрался, не загрузился — ошибка.
  */
 export class ComponentModule<V> {
   constructor(
-    private readonly build: DisplayBuild | undefined,
-    /** Что не прошло схему: компонент тогда не рисуется — ему пришло не то, что он объявил. */
-    private readonly invalid: string[] | undefined,
+    private readonly build: ComponentBuild | undefined,
     private readonly load: (code: string) => Loaded<V>,
   ) {}
 
@@ -26,9 +24,6 @@ export class ComponentModule<V> {
   get failure(): { title: string; lines: string[] } | undefined {
     const build = this.build;
     if (!build) return undefined;
-    if (this.invalid && this.invalid.length > 0) {
-      return { title: "данные не прошли схему", lines: this.invalid };
-    }
     if (build.errors && build.errors.length > 0) {
       return { title: "компонент не собрался", lines: build.errors };
     }

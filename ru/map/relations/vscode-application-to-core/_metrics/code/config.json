@@ -1,13 +1,25 @@
 {
   "label": "Импорты",
-  "refresh": "manual",
-  "collectors": [
-    {
-      "kind": "prompt",
-      "prompt": "Найди в коде объекта from импорты из объекта to. Верни список: файл, строка, что импортируется. Ссылки на файлы дай путями от корня репозитория."
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/agent",
+      "method": "ask",
+      "params": {
+        "prompt": "Связь карты: объект ${{ mapward://~#props.from }} использует объект ${{ mapward://~#props.to }}. Это адреса: папка объекта — тот же путь от корня карты ${{ mapward:// }}, а где его код, сказано в props его _index.json (codePath — от корня проекта ${{ mapward://@ }}). Найди в коде первого объекта импорты из второго. Верни список: label — что импортируется, description — файл и строка, link — путь к файлу от корня проекта.",
+        "shape": "list",
+        "cache": "${{ mapward://~ }}/_metrics/code/answer.json"
+      }
+    },
+    "refresh": "refresh"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/agent",
+    "method": "ask",
+    "params": {
+      "prompt": "Связь карты: объект ${{ mapward://~#props.from }} использует объект ${{ mapward://~#props.to }}. Это адреса: папка объекта — тот же путь от корня карты ${{ mapward:// }}, а где его код, сказано в props его _index.json (codePath — от корня проекта ${{ mapward://@ }}). Найди в коде первого объекта импорты из второго. Верни список: label — что импортируется, description — файл и строка, link — путь к файлу от корня проекта.",
+      "shape": "list",
+      "cache": "${{ mapward://~ }}/_metrics/code/answer.json"
     }
-  ],
-  "collectorsCache": true,
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "list" }
+  }
 }

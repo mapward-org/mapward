@@ -1,20 +1,20 @@
-import { Resource } from "@mapward/core";
 import type { AppBridge, BridgeClient, MapsState } from "@mapward/core";
+import { Feed } from "../../../lib/store/feed.ts";
+import { Reactive } from "../../../lib/store/reactive.ts";
 
 /** Карты, видимые хосту: подписка, а не запрос — конфиг меняют руками и агентами. */
-export class MapsList {
-  private readonly state: Resource<MapsState>;
+export class MapsList extends Reactive {
+  private readonly maps: Feed<MapsState>;
 
   constructor(private readonly bridge: BridgeClient<AppBridge>) {
-    this.state = new Resource<MapsState>((next) => {
-      const subscription = bridge.watchMaps(undefined).subscribe(next);
-      return () => subscription.unsubscribe();
-    });
+    super();
+    this.maps = new Feed(bridge.watchMaps(undefined));
+    this.depend(this.maps);
   }
 
   /** Что с картами; пока хост не ответил — `undefined`. */
   get current(): MapsState | undefined {
-    return this.state.value;
+    return this.maps.value;
   }
 
   createConfig(): void {

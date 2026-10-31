@@ -1,0 +1,39 @@
+{
+  "name": "@mapward/plugins",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Built-in plugins as source: mapward copies one into a map once, and from then on it is the project's own code.",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/bundle-plugins.mjs && tsdown",
+    "dev": "node scripts/bundle-plugins.mjs && tsdown --watch",
+    "typecheck": "node scripts/bundle-plugins.mjs && tsc"
+  },
+  "devDependencies": {
+    "@mapward/component": "workspace:*",
+    "@mapward/plugin": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@xyflow/react": "catalog:",
+    "react": "catalog:",
+    "rxjs": "catalog:",
+    "tsdown": "catalog:",
+    "typebox": "catalog:",
+    "typescript": "catalog:"
+  }
+}

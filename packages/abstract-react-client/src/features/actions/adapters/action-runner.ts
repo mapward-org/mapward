@@ -1,4 +1,12 @@
-import type { AppBridge, BridgeClient, RunSource, RunStarted } from "@mapward/core";
+import { actionForm } from "@mapward/core";
+import type {
+  ActionInput,
+  AppBridge,
+  BridgeClient,
+  MapAction,
+  RunSource,
+  RunStarted,
+} from "@mapward/core";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
@@ -15,6 +23,30 @@ export class ActionRunner {
     private readonly bridge: BridgeClient<AppBridge>,
     private readonly ref: Ref,
   ) {}
+
+  /**
+   * Поля формы: `inputs`, если написаны, иначе параметры метода по схеме из самоописания
+   * плагина — та же форма, что проверит сервер. Схема уходит и сама — своей форме экшона.
+   */
+  async form(
+    action: MapAction,
+  ): Promise<{ fields: Record<string, ActionInput>; schema?: unknown }> {
+    const { config } = action;
+    if (config.inputs !== undefined || config.plugin === undefined) {
+      return { fields: actionForm(config) };
+    }
+    const described = (await this.bridge.describePlugin({
+      ...this.ref,
+      plugin: config.plugin,
+    })) as {
+      methods?: Record<string, { params?: unknown } | undefined>;
+    };
+    const schema = described.methods?.[config.method ?? ""]?.params;
+    return {
+      fields: actionForm(config, schema),
+      ...(schema === undefined ? {} : { schema }),
+    };
+  }
 
   async run(action: string, inputs: Record<string, unknown>, source: RunSource): Promise<Started> {
     try {

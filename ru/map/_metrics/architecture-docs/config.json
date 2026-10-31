@@ -1,9 +1,23 @@
 {
   "label": "Доки архитектуры",
-  "refresh": "on-display",
-  "collectors": [
-    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs/architecture" }
-  ],
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "tree", "empty": "доков архитектуры нет" }
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/files",
+      "method": "tree",
+      "params": {
+        "path": "${{ mapward://@ }}/ru/docs/architecture",
+        "git": true
+      }
+    },
+    "empty": "доков архитектуры нет"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/files",
+    "method": "tree",
+    "params": {
+      "path": "${{ mapward://@ }}/ru/docs/architecture",
+      "git": true
+    }
+  }
 }

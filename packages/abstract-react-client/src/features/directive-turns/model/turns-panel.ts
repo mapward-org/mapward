@@ -1,18 +1,24 @@
-import { action, makeObservable, observable, reaction } from "mobx";
-import { Popup } from "../../../lib/mobx/popup.ts";
+import { distinctUntilChanged, map, type Subscription } from "rxjs";
+import { Popup } from "../../../lib/store/popup.ts";
+import { Reactive } from "../../../lib/store/reactive.ts";
 
 /**
  * Список «ждут ответа» открыт или нет, и сколько сейчас времени: «сколько ждёт» стареет само,
  * и пока список открыт, время перерисовывается раз в минуту.
  */
-export class TurnsPanel {
+export class TurnsPanel extends Reactive {
   readonly popup = new Popup();
-  now = Date.now();
-  private stop: (() => void) | undefined;
+  private readonly clock = this.state(Date.now());
+  private stop: Subscription | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
 
   constructor() {
-    makeObservable<TurnsPanel, "tick">(this, { now: observable, tick: action });
+    super();
+    this.depend(this.popup);
+  }
+
+  get now(): number {
+    return this.clock.value;
   }
 
   /** Пункт взят: список закрывается, директива открывается. */
@@ -22,26 +28,28 @@ export class TurnsPanel {
   }
 
   private tick(): void {
-    this.now = Date.now();
+    this.clock.set(Date.now());
   }
 
   mount(): void {
     this.popup.mount();
-    this.stop = reaction(
-      () => this.popup.open,
-      (open) => {
+    // `changed$` стора отвечает сразу при подписке: открытый список начинает тикать с порога.
+    this.stop = this.popup.changed$
+      .pipe(
+        map(() => this.popup.open),
+        distinctUntilChanged(),
+      )
+      .subscribe((open) => {
         this.halt();
         if (!open) return;
         this.tick();
         this.timer = setInterval(() => this.tick(), 60_000);
-      },
-      { fireImmediately: true },
-    );
+      });
   }
 
   unmount(): void {
     this.popup.unmount();
-    this.stop?.();
+    this.stop?.unsubscribe();
     this.halt();
   }
 

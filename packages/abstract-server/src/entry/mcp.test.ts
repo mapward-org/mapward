@@ -39,19 +39,23 @@ const tree = {
     label: "Опубликовать версию",
     confirm: true,
     inputs: { level: { type: "choice", options: ["patch", "minor"], required: true } },
-    runners: [{ kind: "script", run: "publish" }],
+    plugin: "/map/_plugins/shell",
+    method: "run",
+    params: { command: "publish" },
   }),
   "/map/prototypes/package/_metrics/lint/config.json": JSON.stringify({
     label: "Линтер",
-    collectors: [{ kind: "static", value: { ok: true } }],
-    display: { kind: "status" },
+    component: "/map/_plugins/views/status.tsx",
+    params: { data: { ok: true } },
   }),
   "/map/prototypes/package/_directives/create-package.md": "как заводить пакет",
   // Общая метрика лежит объектом: в её папке `config.json` и нет `_index.json`.
   "/map/prototypes/shared-files/config.json": JSON.stringify({
     label: "Файлы",
-    collectors: [{ kind: "read-dir", basePath: "/repo" }],
-    display: { kind: "tree" },
+    component: "/map/_plugins/views/tree.tsx",
+    params: {
+      source: { plugin: "/map/_plugins/files", method: "tree", params: { path: "/repo" } },
+    },
   }),
   // А у того, кто её подключил, в файле одна строка — ради неё слои и разделяют.
   "/map/prototypes/_metrics/files/config.json": JSON.stringify({
@@ -63,21 +67,24 @@ const tree = {
     extends: "mapward://prototypes/package",
   }),
   "/map/packages/core/_actions/own/config.json": JSON.stringify({
-    runners: [{ kind: "script", run: "own" }],
+    inputs: {},
+    plugin: "/map/_plugins/shell",
+    method: "run",
+    params: { command: "own" },
   }),
   "/map/packages/core/_metrics/version/config.json": JSON.stringify({
     label: "Версия",
-    refresh: "on-display",
-    collectors: [{ kind: "script", run: "echo hi" }],
-    display: { kind: "text" },
+    component: "/map/_plugins/views/text.tsx",
+    params: {
+      source: { plugin: "/map/_plugins/shell", method: "json", params: { command: "echo hi" } },
+    },
+    agent: { plugin: "/map/_plugins/shell", method: "json", params: { command: "echo hi" } },
   }),
   "/map/packages/core/_metrics/tests/config.json": JSON.stringify({
     label: "Тесты",
-    collectors: [{ kind: "static", value: { text: "не должно собраться" } }],
-    display: { kind: "text" },
+    component: "/map/_plugins/views/text.tsx",
+    params: { data: { text: "не должно собраться" } },
   }),
-  "/map/packages/core/_metrics/tests/collect.logs.json":
-    'No projects matched the filter "@mapward/core"',
   // Объект с вкладками — решение 0025: метрика вне групп не приходит агенту, как не приходит
   // и человеку на экран.
   "/map/prototypes/tabbed/_index.json": JSON.stringify({
@@ -97,17 +104,14 @@ const tree = {
     label: "Стереть",
     confirm: "Стереть ${{ inputs.path }}?",
     inputs: { path: { required: true } },
-    runners: [{ kind: "script", run: "wipe" }],
+    plugin: "/map/_plugins/shell",
+    method: "run",
+    params: { command: "wipe" },
   }),
 };
 
 const ports: ServerPorts = {
   files: fakeFiles(tree),
-  shell: {
-    run: () => Promise.resolve({ stdout: '{"text":"0.0.0"}', stderr: "" }),
-    pipe: () => Promise.resolve({ stdout: "{}", stderr: "" }),
-  },
-  agent: { run: () => Promise.resolve({ stdout: "{}", stderr: "" }) },
   clock: { now: () => new Date().toISOString() },
   timers: { every: () => () => undefined, after: () => () => undefined },
   env: { vars: () => ({}) },
@@ -116,9 +120,17 @@ const ports: ServerPorts = {
 
 const ref: MapRef = { mapPath: "/map", basePath: "/repo", name: "Карта" };
 
+/** Таймер среды: у пакета типов node нет, а правке карты в тесте мало одних микротасков. */
+const later = (globalThis as unknown as { setTimeout: (run: () => void, ms: number) => unknown })
+  .setTimeout;
+
 /** Зовёт инструмент и отдаёт разобранный ответ — протокол здесь не проверяется. */
-async function call(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const server = createMapServer(ports);
+async function call(
+  name: string,
+  args: Record<string, unknown>,
+  over: ServerPorts = ports,
+): Promise<Record<string, unknown>> {
+  const server = createMapServer(over);
   let handler: ((message: unknown) => void) | undefined;
   const replies: Record<string, unknown>[] = [];
 
@@ -134,7 +146,10 @@ async function call(name: string, args: Record<string, unknown>): Promise<Record
   handler?.({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } });
 
   // Ответ уходит из промиса, поэтому ждём микротасками: прогон здесь весь на моках.
-  for (let tick = 0; tick < 1000 && replies.length === 0; tick++) await Promise.resolve();
+  for (let tick = 0; tick < 1000 && replies.length === 0; tick++) {
+    // oxlint-disable-next-line no-await-in-loop
+    await (tick < 500 ? Promise.resolve() : new Promise<void>((resolve) => later(resolve, 1)));
+  }
 
   const reply = replies[0];
   if (!reply) throw new Error("ответа не было");
@@ -193,7 +208,9 @@ test("an inherited file says where it actually lives", async () => {
     address: "mapward://packages/core/_actions/publish-version",
     label: "Опубликовать версию",
     confirm: true,
-    runners: ["script"],
+    plugin: "/map/_plugins/shell",
+    method: "run",
+    params: { command: "publish" },
     inputs: { level: { type: "choice", options: ["patch", "minor"], required: true } },
   });
 });
@@ -207,11 +224,14 @@ test("run_action checks the form, then waits for the run and returns it", async 
     address: "mapward://packages/core/_actions/publish-version",
     inputs: { level: "minor" },
   });
+  // Процессов плагинов у этого хоста нет: прогон записан и упал с причиной. Успешный прогон
+  // через настоящий плагин `shell` — в сквозном тесте cli.
   expect(run).toMatchObject({
     kind: "action",
     object: "mapward://packages/core",
     source: "mcp",
-    status: "success",
+    status: "failure",
+    error: "этот хост не запускает плагины",
     inputs: { level: "minor" },
   });
 });
@@ -225,7 +245,7 @@ test("run_action with a question runs only after confirmed: true", async () => {
   expect(asked.id).toBeUndefined();
 
   const run = await call("run_action", { address, inputs: { path: "src/a.ts" }, confirmed: true });
-  expect(run).toMatchObject({ kind: "action", status: "success", inputs: { path: "src/a.ts" } });
+  expect(run).toMatchObject({ kind: "action", inputs: { path: "src/a.ts" } });
 });
 
 test("read_index reads an action by its address, like a metric", async () => {
@@ -327,33 +347,31 @@ test("the shipped text mentions no decisions at all", async () => {
 });
 
 test("metrics are picked by key, and the rest are not even collected", async () => {
-  const all = await call("read_object", {
-    address: "mapward://packages/core",
-    refresh: "on-display",
-  });
+  const all = await call("read_object", { address: "mapward://packages/core" });
   expect((all.metrics as { key: string }[]).map((m) => m.key)).toEqual([
     "lint",
     "version",
     "tests",
   ]);
 
-  const none = await call("read_object", {
-    address: "mapward://packages/core",
-    refresh: "on-display",
-    metrics: [],
-  });
+  const none = await call("read_object", { address: "mapward://packages/core", metrics: [] });
   // Обзорный вызов: ни одной метрики, а значит и ни одного запущенного процесса.
   expect(none.metrics).toEqual([]);
 
   const one = await call("read_object", {
     address: "mapward://packages/core",
-    refresh: "on-display",
     metrics: ["version"],
   });
-  expect((one.metrics as { key: string; value?: { data?: unknown } }[])[0]?.value?.data).toEqual({
-    text: "0.0.0",
-  });
+  const [version] = one.metrics as { agent?: unknown; value?: Record<string, unknown> }[];
   expect(one.metrics).toHaveLength(1);
+  // Значение метрики агенту — её запрос: метод плагина с параметрами из конфига.
+  expect(version?.agent).toMatchObject({
+    plugin: "/map/_plugins/shell",
+    method: "json",
+    params: { command: "echo hi" },
+  });
+  // Процессов плагинов у этого хоста нет: значение — честный отказ с причиной, а не пустота.
+  expect(version?.value).toMatchObject({ collected: false, ok: false });
 });
 
 test("asking for metric fields with metrics turned off is refused, not answered with nothing", async () => {
@@ -401,15 +419,15 @@ test("done directives stay out of the way until asked for", async () => {
 test("a heavy answer loses its heaviest value, not itself", async () => {
   const fat = await call("read_object", {
     address: "mapward://packages/core",
-    refresh: "on-display",
+    metrics: ["version", "tests"],
     budget: 200,
   });
 
-  const version = (fat.metrics as { key: string; value?: unknown }[]).find(
+  const version = (fat.metrics as { key: string; config?: unknown }[]).find(
     (m) => m.key === "version",
   );
-  // Значение ушло, но ответ пришёл — и видно, что именно отрезали.
-  expect(version?.value).toMatchObject({ truncated: true });
+  // Конфиг ушёл, но ответ пришёл — и видно, что именно отрезали.
+  expect(version?.config).toMatchObject({ truncated: true });
   expect(fat.address).toBe("mapward://packages/core");
 });
 
@@ -435,22 +453,6 @@ test("an inherited metric says whose it is", async () => {
   expect(proto.metrics).toEqual([{ key: "lint" }]);
 });
 
-test("logs come only when asked for", async () => {
-  const quiet = await call("read_object", { address: "mapward://packages/core" });
-  expect((quiet.metrics as Record<string, unknown>[])[0]?.logs).toBeUndefined();
-
-  const loud = await call("read_object", {
-    address: "mapward://packages/core",
-    fields: ["metrics.key", "metrics.logs"],
-  });
-
-  // Почему метрика красная, написано в логах, а не во флаге ok.
-  expect(loud.metrics).toContainEqual({
-    key: "tests",
-    logs: { collect: 'No projects matched the filter "@mapward/core"' },
-  });
-});
-
 test("a directive can be read as text, wherever it lives", async () => {
   const body = await call("read_index", {
     address: "mapward://packages/core",
@@ -474,8 +476,8 @@ test("a metric config is read raw, by the metric address", async () => {
   expect(layer.owner).toBe("mapward://prototypes/package");
   expect(JSON.parse(layer.config as string)).toEqual({
     label: "Линтер",
-    collectors: [{ kind: "static", value: { ok: true } }],
-    display: { kind: "status" },
+    component: "/map/_plugins/views/status.tsx",
+    params: { data: { ok: true } },
   });
 
   // Слоя над ним нет, и поля тоже нет: пустая ссылка была бы ответом на незаданный вопрос.
@@ -572,26 +574,6 @@ test("a map that is not there is named along with the ones that are", async () =
   await expect(call("read_object", { map: "mapward://" })).rejects.toThrow(
     /Сервер отдаёт: «Карта»/,
   );
-});
-
-const metrics = (list: unknown) =>
-  Object.fromEntries(
-    (list as { key: string; value?: { data?: unknown } }[]).map((m) => [m.key, m.value?.data]),
-  );
-
-test("read_object fills cheap metrics only when asked", async () => {
-  const quiet = await call("read_object", { address: "mapward://packages/core" });
-
-  expect(metrics(quiet.metrics).version).toBeUndefined();
-
-  const filled = await call("read_object", {
-    address: "mapward://packages/core",
-    refresh: "on-display",
-  });
-
-  expect(metrics(filled.metrics).version).toEqual({ text: "0.0.0" });
-  // Дорогое ручное так не запускается ни у человека, ни у агента.
-  expect(metrics(filled.metrics).tests).toBeUndefined();
 });
 
 /**
@@ -845,7 +827,7 @@ test("read_object shows the workflow acting on the object", async () => {
   ]);
 });
 
-test("the workflow and the layout come only with the top object", async () => {
+test("the workflow comes only with the top object", async () => {
   const { result } = await callWith(
     { ...workflowTree, "/map/packages/_index.json": JSON.stringify({ name: "Пакеты" }) },
     "read_object",
@@ -854,13 +836,11 @@ test("the workflow and the layout come only with the top object", async () => {
 
   // У верхнего объекта они есть...
   expect(result.workflow).toHaveLength(2);
-  expect(result.layout).toBeDefined();
 
   // ...а раскрытому ребёнку те же самые не повторяются: спросят его отдельно — придут.
   const child = (result.children as Record<string, unknown>[])[0];
   expect(child?.address).toBe("mapward://packages");
   expect(child?.workflow).toBeUndefined();
-  expect(child?.layout).toBeUndefined();
 });
 
 test("a stage can be read without being run", async () => {
@@ -938,24 +918,6 @@ test("the map counts how many rounds each stage has run", async () => {
   expect(files[0]?.runs).toEqual({ Обсудить: 2, Выполнить: 1 });
 });
 
-test("a metric that never ran says so, instead of looking empty", async () => {
-  const quiet = await call("read_object", { address: "mapward://packages/core" });
-  const value = (quiet.metrics as { key: string; value: { collected: boolean } }[]).find(
-    (metric) => metric.key === "tests",
-  )?.value;
-
-  // Дорогая метрика без прогона: `{ busy: false }` выглядело бы собранной пустотой.
-  expect(value?.collected).toBe(false);
-
-  const filled = await call("read_object", {
-    address: "mapward://packages/core",
-    metrics: ["version"],
-    refresh: "on-display",
-  });
-  const version = (filled.metrics as { value: { collected: boolean } }[])[0]?.value;
-  expect(version?.collected).toBe(true);
-});
-
 /**
  * Вкладки объекта — решение 0025. Агенту они и перечень наборов, и объяснение, почему метрик
  * в ответе меньше, чем лежит в `_metrics`.
@@ -1003,4 +965,65 @@ test("an object without groups says nothing about them", async () => {
   const object = await call("read_object", { address: "mapward://packages/core" });
 
   expect(object.groups).toBeUndefined();
+});
+
+/**
+ * Значение метрики бывает вызовом плагина, а вызов будит процесс. Поэтому без просьбы значений
+ * нет вовсе — перечень приходит, а ответ говорит, как попросить.
+ */
+test("read_object without named metrics lists them without values and says how to ask", async () => {
+  const listed = await call("read_object", { address: "mapward://packages/core" });
+  const shown = listed.metrics as { key: string; value?: unknown }[];
+
+  expect(shown.map((metric) => metric.key)).toContain("version");
+  expect(shown.every((metric) => !("value" in metric))).toBe(true);
+  expect(listed.metricsHint).toMatch(/назови их в metrics/);
+});
+
+test("edit_map moves an object and rewrites its address in the map; a malformed op is refused", async () => {
+  const files: Record<string, string> = {
+    "/map/_index.json": JSON.stringify({ name: "Карта" }),
+    "/map/a/_index.json": JSON.stringify({ name: "A" }),
+    "/map/b/_index.json": JSON.stringify({ name: "B", props: { see: ["mapward://a#name"] } }),
+  };
+  const writable: FilesPort = {
+    read: (path) => Promise.resolve(files[path]),
+    list: (dir) => {
+      const names = new Map<string, boolean>();
+      for (const path of Object.keys(files)) {
+        if (!path.startsWith(`${dir}/`)) continue;
+        const [head = "", ...rest] = path.slice(dir.length + 1).split("/");
+        names.set(head, rest.length > 0);
+      }
+      return Promise.resolve([...names].map(([name, isDirectory]) => ({ name, isDirectory })));
+    },
+    write: (path, text) => {
+      files[path] = text;
+      return Promise.resolve();
+    },
+    remove: (path) => {
+      delete files[path];
+      return Promise.resolve();
+    },
+    move: (from, to) => {
+      for (const path of Object.keys(files)) {
+        if (path !== from && !path.startsWith(`${from}/`)) continue;
+        files[to + path.slice(from.length)] = files[path] ?? "";
+        delete files[path];
+      }
+      return Promise.resolve();
+    },
+    watch: () => () => undefined,
+  };
+  const over = { ...ports, files: writable };
+  const moved = await call(
+    "edit_map",
+    { ops: [{ op: "move", object: "mapward://a", parent: "mapward://b" }] },
+    over,
+  );
+  expect(moved).toMatchObject({ ok: true, moves: [{ from: "mapward://a", to: "mapward://b/a" }] });
+  expect(files["/map/b/_index.json"]).toContain("mapward://b/a#name");
+  await expect(call("edit_map", { ops: [{ op: "explode" }] }, over)).rejects.toThrow(
+    /ops не той формы/,
+  );
 });

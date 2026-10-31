@@ -1,58 +1,64 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
-import type {
-  ActionRef,
-  MapAction,
-  MapMetric,
-  MapObject,
-  ObjectsMap,
-  ObjectRef,
-} from "@mapward/core";
-import type { DisplayAction } from "@mapward/display";
-import type { TreeOpen } from "./pure-model/tree-open.ts";
+import type { MapMetric, MapObject } from "@mapward/core";
+import type { ActionHandle, Navigate } from "@mapward/component";
+import type { ActionRef } from "../../kernel/action-ref.ts";
+import type { ObjectRef } from "../../kernel/object-ref.ts";
+import type { Watchable } from "../../lib/store/reactive.ts";
+import type { ComponentBuilds } from "./adapters/component-builds.ts";
+import type { CallMemory } from "./model/call-memory.ts";
+import type { PluginStream } from "./pure-model/plugin-stream.ts";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 
 /**
- * Что метрикам нужно от экшонов — решение 0038: сетка говорит, где кнопка стоит, а рисуют кнопки
- * и запускают экшоны сами экшоны. Метрики их не импортируют (решение 0042).
+ * Что метрикам нужно от экшонов — решение 0038: компонент называет экшон (`useAction`), а
+ * находят его, запускают и считают прогоны сами экшоны. Метрики их не импортируют (решение 0042).
  */
-export type MetricsActions = {
-  /** Экшоны объекта, которые раскладка может поставить в клетку. */
-  cells(object: MapObject): MapAction[];
-  /** Экшоны объекта для компонента-дисплея: пропсом, с числом идущих прогонов. */
-  list(object: MapObject): DisplayAction[];
-  /** Запуск из компонента-дисплея: ключом или адресом, с данными формы. */
-  run(object: MapObject, action: string, inputs?: Record<string, unknown>): void;
-  /** Кнопка экшона в клетке раскладки. */
-  Cell: ComponentType<{ action: MapAction }>;
-  /** Кнопка экшона на строке списка и узле дерева. */
-  Row: ComponentType<{ object: MapObject; action: ActionRef }>;
-  /** Меню строки — экшоны из `actions` строки; строку оно оборачивает, ловя правый клик. */
-  Menu: ComponentType<{ object: MapObject; actions: ActionRef[]; children: ReactNode }>;
-  /** `ActionButton` набора `@mapward/display`. */
-  Button: ComponentType<{ object: MapObject; action: ActionRef; label?: string | undefined }>;
+export type MetricsActions = Watchable & {
+  /** Ресурс объекта, где искать экшон, названный адресом: вид, читающий его, подписан и на него. */
+  source(run: string): Watchable | undefined;
+  /** Экшон по ключу объекта `object` или по адресу — подпись, идущие прогоны, запуск. */
+  handle(object: MapObject, ref: ActionRef): ActionHandle;
 };
 
 /** Что метрикам нужно от экрана, прогонов и карты детей. */
 export type MetricsPort = {
   ref: Ref;
-  /** Ссылка из метрики ведёт туда, куда обещает схема (решение 0005). */
-  open(link: string): void;
+  /**
+   * Сборки компонентов — одни на вид объекта, а не на сетку: переживают смену вкладки и переход
+   * между объектами, и вернувшаяся клетка рисуется сразу, а не «собирается».
+   */
+  builds: ComponentBuilds;
+  /** Последние ответы `useQuery` и `useStream` по ключу — тоже одни на вид объекта. */
+  calls: CallMemory;
+  /**
+   * `params` метрики, какими их получает компонент: из конфига, а на странице снимка — с
+   * перекрытием у снимаемой метрики (`metricParams`).
+   */
+  params(object: MapObject, metric: MapMetric): Record<string, unknown>;
+  /**
+   * Перейти к объекту карты. Куда ведёт ссылка, решает плагин `navigation`; объект — его ответ,
+   * а переход знает только экран.
+   */
+  goTo(address: string): void;
   /** Открыть метрику отдельным табом; хост без табов — поля нет, и иконок тоже (0026). */
   openTab?: (metric: MapMetric) => void;
   /** Открыть табом объект, на который ведёт ссылка внутри метрики. */
   openObjectTab?: (link: string) => void;
-  /** Красная точка метрики ведёт на её последний прогон (решение 0038). */
-  openRuns(metric: MapMetric): void;
   actions: MetricsActions;
-  /** Вьюху карты (`objects-map`) рисует её фича — решение 0044. */
-  ObjectsMap: ComponentType<{ map: ObjectsMap; address: string }>;
   /**
-   * Карточку объекта — пункт с `object` и дисплей `object` — рисует её фича. Внутри карточки
-   * снова сетка метрик: круг замыкается в точке входа, а не здесь.
+   * Карточку объекта — `ObjectCard` набора — рисует её фича. Внутри карточки снова сетка метрик:
+   * круг замыкается в точке входа, а не здесь.
    */
-  Card: ComponentType<{ item: ObjectRef }>;
+  Card: CardView;
 };
+
+/** Карточка объекта; холст плагина ставит её `ObjectCard` с кнопками и ручкой. */
+export type CardView = ComponentType<{
+  item: ObjectRef;
+  actions?: ReactNode;
+  draggable?: boolean;
+}>;
 
 const MetricsContext = createContext<MetricsPort | undefined>(undefined);
 
@@ -67,30 +73,12 @@ export function useMetricsPort(): MetricsPort {
 }
 
 /**
- * Кнопка экшона строки — решение 0038. Рисует её `compose`: она знает объект и запуск, а слою
- * `ui` мост не положен. Строка только говорит, какой экшон и с какими значениями.
+ * Что набор `@mapward/component` берёт у ячейки, где нарисован компонент: объект, у которого
+ * `useAction` ищет экшон по ключу. У своей формы экшона объекта нет — и `useAction` в ней нет.
  */
-export type RenderRowAction = (action: ActionRef) => ReactNode;
+export type KitLinks = { object?: MapObject | undefined };
 
-/** Меню строки: строка отдаёт себя и свои `actions`, меню оборачивает её. */
-export type RenderRowMenu = (actions: ActionRef[], row: ReactNode) => ReactNode;
-
-/**
- * Набор `@mapward/display` — решение 0037: ссылки открываются так же, как везде на карте, —
- * куда, говорит ячейка через контекст. Экшоны едут тем же контекстом (0038): кнопку строки и
- * кнопку экшона рисует та же сетка, что и у готовых дисплеев.
- */
-export type KitLinks = {
-  onOpen: (link: string) => void;
-  onOpenTab?: ((link: string) => void) | undefined;
-  renderRowAction?: RenderRowAction | undefined;
-  renderRowMenu?: RenderRowMenu | undefined;
-  renderActionButton?: ((action: ActionRef, label?: string) => ReactNode) | undefined;
-  /** Раскрытие дерева по его `id`: запоминает сетка, автору компонента передавать нечего. */
-  treeOpen?: ((id: string) => TreeOpen) | undefined;
-};
-
-const KitContext = createContext<KitLinks>({ onOpen: () => {} });
+const KitContext = createContext<KitLinks>({});
 
 export function ProvideKit(props: { links: KitLinks; children: ReactNode }) {
   return <KitContext value={props.links}>{props.children}</KitContext>;
@@ -98,4 +86,43 @@ export function ProvideKit(props: { links: KitLinks; children: ReactNode }) {
 
 export function useKit(): KitLinks {
   return useContext(KitContext);
+}
+
+/**
+ * Плагины для компонента метрики: вызов метода через платформу и путь плагина от файла
+ * компонента. Даёт его ячейка метрики-компонента, берут хуки набора.
+ */
+export type PluginKit = {
+  call(plugin: string, method: string, args: unknown): PluginStream;
+  resolve(path: string): string;
+};
+
+const PluginKitContext = createContext<PluginKit | undefined>(undefined);
+
+export function ProvidePluginKit(props: { kit: PluginKit; children: ReactNode }) {
+  return <PluginKitContext value={props.kit}>{props.children}</PluginKitContext>;
+}
+
+export function usePluginKit(): PluginKit {
+  const kit = useContext(PluginKitContext);
+  if (!kit)
+    throw new Error("usePlugin работает только в метрике-компоненте: у дисплея плагинов нет");
+  return kit;
+}
+
+/**
+ * Навигация набора — `useNavigation` из `@mapward/component`: ссылку разбирает плагин `navigation`,
+ * к объекту переходит экран. `tabs` — умеет ли хост табы: без них ctrl + клик — обычный переход.
+ */
+export type NavigationPort = { open: Navigate; tabs: boolean };
+
+const NavigationContext = createContext<NavigationPort | undefined>(undefined);
+
+export function ProvideNavigation(props: { navigation: NavigationPort; children: ReactNode }) {
+  return <NavigationContext value={props.navigation}>{props.children}</NavigationContext>;
+}
+
+/** Навигации нет — компонент нарисован вне сетки метрик (так бывает в тестах). */
+export function useNavigationPort(): NavigationPort | undefined {
+  return useContext(NavigationContext);
 }

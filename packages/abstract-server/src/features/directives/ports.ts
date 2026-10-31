@@ -5,9 +5,12 @@ import type { MapRef } from "../../kernel/map-ref.ts";
  * Порты директив к соседним фичам — решение 0041: объявляет потребитель, стыкует сборка сервера.
  */
 
-/** От карты: объект с директивами и этапами, и перечитать, если директивы в модели нет. */
+/**
+ * От карты: объект по адресу — без детей, директивам они не нужны, — и перечитать, если
+ * директивы в модели нет.
+ */
 export type DirectivesMapSource = {
-  current(ref: MapRef): Promise<MapObject>;
+  object(ref: MapRef, address: string): Promise<MapObject | undefined>;
   reload(ref: MapRef): Promise<void>;
 };
 

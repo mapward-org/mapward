@@ -1,5 +1,4 @@
-import { childAddress } from "./address.ts";
-import type { ActionConfig, Layout, MetricConfig, MetricGroup, ObjectIndex } from "./schema.ts";
+import type { ActionConfig, MetricConfig, MetricGroup, ObjectIndex } from "./configs.ts";
 
 /**
  * Файл, участвовавший в мердже. Мердж разрушителен: по результату не видно, из чего он
@@ -14,10 +13,6 @@ export type ConfigLayer = {
   /** Откуда слой достался: свой файл, файл прототипа, файл по `extends`. */
   from: "own" | "prototype" | "extends";
 };
-
-/** Слои, доставшиеся от прототипа: то, что у него было своим, для наследника — прототипово. */
-export const fromPrototype = (layers: ConfigLayer[]): ConfigLayer[] =>
-  layers.map((layer) => (layer.from === "own" ? { ...layer, from: "prototype" as const } : layer));
 
 /** A metric as the sidebar needs it: config plus where it came from. */
 export type MapMetric = {
@@ -40,25 +35,6 @@ export type MapMetric = {
 };
 
 /**
- * A metric inherited from a prototype belongs to the heir: the config is borrowed, the state is
- * not — decision 0002. Left with the prototype's address, every heir shares one entry: caches
- * land in the prototype's folder, and the object that runs the metric is whichever the search
- * finds first, so the whole map shows one object's numbers.
- */
-export function adoptMetric(
-  object: { address: string; path: string },
-  metric: MapMetric,
-): MapMetric {
-  return {
-    ...metric,
-    address: `${childAddress(object.address, "_metrics")}/${metric.key}`,
-    cachePath: `${object.path}/_metrics/${metric.key}`,
-    // Файлы слоёв остаются прототиповы: конфиг взят у него, там его и правят.
-    layers: fromPrototype(metric.layers),
-  };
-}
-
-/**
  * Экшон — решение 0038: папка в `_actions/` с `config.json`, по образцу метрики. Кэша у него
  * нет: прогоны живут локально, у сервера, а не рядом с конфигом.
  */
@@ -71,15 +47,6 @@ export type MapAction = {
   layers: ConfigLayer[];
   config: ActionConfig;
 };
-
-/** Унаследованный экшон принадлежит наследнику: адрес его, файлы слоёв — прототиповы. */
-export function adoptAction(object: { address: string }, action: MapAction): MapAction {
-  return {
-    ...action,
-    address: `${childAddress(object.address, "_actions")}/${action.key}`,
-    layers: fromPrototype(action.layers),
-  };
-}
 
 export type DirectiveStatus = "new" | "changed" | "done";
 
@@ -136,7 +103,6 @@ export type MapObject = {
   prototypeName?: string;
   isGroup: boolean;
   props: Record<string, unknown>;
-  detailsLayout?: Layout;
   /** `_index.json`, из которых собран объект, от своего к дальнему прототипу. У группы пусто. */
   layers: ConfigLayer[];
   metrics: MapMetric[];
@@ -205,12 +171,6 @@ export function previewGroup(
   return group ? { group } : {};
 }
 
-/** Раскладка вкладки: своя, если группа её задала, иначе раскладка объекта. */
-export const groupLayout = (
-  object: MapObject,
-  group: MetricGroup | undefined,
-): Layout | undefined => group?.["details-metrics-layout"] ?? object.detailsLayout;
-
 /**
  * Мердж объекта обратно в вид `_index.json` — тот, по которому объект и нарисован. Собирается,
  * а не хранится: готовый мердж означал бы `props` в двух местах сразу, а подстановка идёт
@@ -234,9 +194,6 @@ export function objectIndex(object: MapObject): ObjectIndex {
     name: object.name,
     ...(parent === undefined ? {} : { extends: parent }),
     ...(Object.keys(object.props).length === 0 ? {} : { props: object.props }),
-    ...(object.detailsLayout === undefined
-      ? {}
-      : { "details-metrics-layout": object.detailsLayout }),
     ...(object.prompt === undefined ? {} : { prompt: object.prompt }),
     ...(Object.keys(workflow).length === 0 ? {} : { "directives-workflow": workflow }),
     ...(object.metricGroups.length === 0 ? {} : { "metric-groups": groups }),
@@ -260,17 +217,6 @@ export function trail(root: MapObject, address: string): MapObject[] {
     if (inside.length > 0) return [root, ...inside];
   }
   return [];
-}
-
-/** Metrics live on objects, but the sidebar addresses them directly. */
-export function findMetric(root: MapObject, address: string): MapMetric | undefined {
-  const own = root.metrics.find((metric) => metric.address === address);
-  if (own) return own;
-  for (const child of root.children) {
-    const found = findMetric(child, address);
-    if (found) return found;
-  }
-  return undefined;
 }
 
 /** Which object a metric belongs to — `objects-map` reads the model, not the disk. */

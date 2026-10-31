@@ -23,10 +23,14 @@ export function resolveAction(
 
 /**
  * Нужна ли форма — решение 0038: всё обязательное заполнено умолчаниями или переданным, и
- * `confirm` не просили, — запуск сразу. Спрашивается та же проверка, что сделает сервер.
+ * `confirm` не просили, — запуск сразу. Спрашивается та же проверка, что сделает сервер. `form` —
+ * поля формы экшона: `inputs` или схема его метода (`actionForm` из core).
  */
-export const needsForm = (action: MapAction, given: Record<string, unknown>) =>
-  action.config.confirm === true || !complete(action.config.inputs, given);
+export const needsForm = (
+  action: MapAction,
+  given: Record<string, unknown>,
+  form: Record<string, ActionInput> | undefined = action.config.inputs,
+) => action.config.confirm === true || !complete(form, given);
 
 const kind = (input: ActionInput) => input.type ?? "string";
 

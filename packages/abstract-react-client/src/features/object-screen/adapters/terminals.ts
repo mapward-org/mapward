@@ -1,6 +1,6 @@
-import { action, makeObservable, observable } from "mobx";
-import { once, type Resource } from "@mapward/core";
 import type { AppBridge, BridgeClient } from "@mapward/core";
+import { once, type Feed } from "../../../lib/store/feed.ts";
+import { Reactive, type Watchable } from "../../../lib/store/reactive.ts";
 
 type Ref = { mapPath: string; basePath: string; name: string };
 export type Terminal = { id: string; name: string };
@@ -12,30 +12,43 @@ export type Terminal = { id: string; name: string };
  * Объект — параметр вызова, а не то, что зашито при сборке вида: у экрана он открытый, а у
  * карточки на чужом экране — свой. Список спрашивается, только когда его читают: двадцать
  * карточек на карте не должны означать двадцать запросов при открытии.
+ *
+ * Список объекта — ресурс: спрашивается, пока на него подписаны. Вид, читающий `list`, зовёт
+ * `useWatch(terminals, terminals.watch(address))`: сам стор меняется, когда список устарел, и
+ * `watch` после этого отдаёт новый ресурс.
  */
-export class Terminals {
-  private version = 0;
-  private readonly lists = new Map<string, Resource<Terminal[]>>();
+export class Terminals extends Reactive {
+  private readonly lists = new Map<string, Feed<Terminal[]>>();
 
   constructor(
     private readonly bridge: BridgeClient<AppBridge>,
     private readonly ref: Ref,
   ) {
-    makeObservable<Terminals, "version">(this, { version: observable, refresh: action });
+    super();
+  }
+
+  private feed(address: string): Feed<Terminal[]> {
+    let list = this.lists.get(address);
+    if (!list) {
+      list = once(() => this.bridge.listTerminals({ address }));
+      this.lists.set(address, list);
+    }
+    return list;
+  }
+
+  /** Ресурс списка объекта — на него подписывается тот, кто список читает. */
+  watch(address: string): Watchable {
+    return this.feed(address);
   }
 
   list(address: string): Terminal[] {
-    const key = `${address}#${this.version}`;
-    let list = this.lists.get(key);
-    if (!list) {
-      list = once(() => this.bridge.listTerminals({ address }));
-      this.lists.set(key, list);
-    }
-    return list.value ?? [];
+    return this.feed(address).value ?? [];
   }
 
+  /** Список устарел: следующий `watch` отдаст новый ресурс, и тот спросит заново. */
   refresh(): void {
-    this.version += 1;
+    this.lists.clear();
+    this.touch();
   }
 
   private after<T>(promise: Promise<T>): void {

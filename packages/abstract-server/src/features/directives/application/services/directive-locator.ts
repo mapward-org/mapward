@@ -1,4 +1,3 @@
-import { findObject } from "@mapward/core";
 import type { MapFile, MapObject, MapStage } from "@mapward/core";
 import type { MapRef } from "../../../../kernel/map-ref.ts";
 import type { DirectivesMapSource } from "../../ports.ts";
@@ -16,10 +15,10 @@ export class DirectiveLocator {
   constructor(private readonly map: DirectivesMapSource) {}
 
   async object(ref: MapRef, address: string): Promise<MapObject> {
-    const found = findObject(await this.map.current(ref), address);
+    const found = await this.map.object(ref, address);
     if (found) return found;
     await this.map.reload(ref);
-    const again = findObject(await this.map.current(ref), address);
+    const again = await this.map.object(ref, address);
     if (!again) throw new Error(`Объект ${address} не найден`);
     return again;
   }

@@ -1,16 +1,8 @@
-import { exec, spawn, type ChildProcess } from "node:child_process";
 import { readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as vscode from "vscode";
-import { CLAUDE_STREAM_ARGS, claudeArgs, claudeStream, shellArgs } from "@mapward/abstract-server";
-import type {
-  Cancellation,
-  FileEntry,
-  OutputListener,
-  ProcessEnv,
-  ProcessResult,
-  ServerPorts,
-} from "@mapward/abstract-server";
+import type { FileEntry, ServerPorts } from "@mapward/abstract-server";
+import { createTrust, editor, installPackages, startPlugin } from "./plugins.ts";
 
 /**
  * Реализации портов сервера для редактора — решение 0014. Всё, что знает про `vscode` и про
@@ -34,6 +26,24 @@ const files = {
   async read(path: string): Promise<string | undefined> {
     try {
       return decode(await vscode.workspace.fs.readFile(uri(path)));
+    } catch {
+      return undefined;
+    }
+  },
+
+  async bytes(path: string): Promise<Uint8Array | undefined> {
+    try {
+      return await vscode.workspace.fs.readFile(uri(path));
+    } catch {
+      return undefined;
+    }
+  },
+
+  /** У `workspace.fs` время изменения — `mtime` в миллисекундах. */
+  async stat(path: string): Promise<{ size: number; mtimeMs: number } | undefined> {
+    try {
+      const { size, mtime } = await vscode.workspace.fs.stat(uri(path));
+      return { size, mtimeMs: mtime };
     } catch {
       return undefined;
     }
@@ -110,121 +120,9 @@ const files = {
   },
 };
 
-/**
- * Снять процесс вместе с детьми. Через оболочку `kill` снимает саму оболочку, а `claude` или
- * скрипт под ней живут дальше — поэтому «остановить» не останавливало ничего (решение 0038).
- * На Windows дерево снимает `taskkill /T`; на остальных процесс заведён своей группой, и снимается
- * группа целиком.
- */
-function killTree(child: ChildProcess): void {
-  if (child.pid === undefined || child.exitCode !== null) return;
-  if (process.platform === "win32") {
-    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
-    return;
-  }
-  try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch {
-    child.kill();
-  }
-}
-
-/** Процесс, который можно убить: отмена приходит токеном от стора метрик. */
-function runProcess(
-  command: string,
-  options: {
-    cwd: string;
-    env: ProcessEnv;
-    input?: string;
-    cancel?: Cancellation;
-    shell: boolean;
-    args?: string[];
-    output?: OutputListener;
-  },
-): Promise<ProcessResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, shellArgs(options.args ?? [], options.shell), {
-      cwd: options.cwd,
-      env: options.env,
-      windowsHide: true,
-      shell: options.shell,
-      // Своя группа — чтобы отмена могла снять и детей; на Windows это делает `taskkill`.
-      detached: process.platform !== "win32",
-    });
-
-    options.cancel?.onCancel(() => killTree(child));
-
-    let stdout = "";
-    let stderr = "";
-    // Кодировка на потоке, а не `toString()` куска: русская буква на границе кусков иначе бьётся.
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-      options.output?.(chunk, "out");
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-      options.output?.(chunk, "err");
-    });
-
-    child.on("error", (error) => reject(error));
-    child.on("close", (code) =>
-      code === 0
-        ? resolve({ stdout, stderr })
-        : reject(new Error(stderr.trim() || `команда вернула ${String(code)}`)),
-    );
-
-    if (options.input !== undefined) child.stdin.end(options.input);
-  });
-}
-
-const shell: ServerPorts["shell"] = {
-  run(command, options) {
-    return new Promise<ProcessResult>((resolve, reject) => {
-      const child = exec(
-        command,
-        { cwd: options.cwd, env: options.env, windowsHide: true },
-        (error, stdout, stderr) =>
-          error ? reject(error) : resolve({ stdout: String(stdout), stderr: String(stderr) }),
-      );
-      // Итог по-прежнему отдаёт `exec` целиком, а по ходу вывод уходит слушателю.
-      child.stdout?.on("data", (chunk: Buffer | string) => options.output?.(String(chunk), "out"));
-      child.stderr?.on("data", (chunk: Buffer | string) => options.output?.(String(chunk), "err"));
-      options.cancel?.onCancel(() => killTree(child));
-    });
-  },
-
-  pipe(command, options) {
-    return runProcess(command, { ...options, shell: true });
-  },
-};
-
-/**
- * Агент в headless-режиме — решение 0004. Промпт уходит в stdin, поэтому правила экранирования
- * трёх оболочек перестают быть нашей заботой. События он печатает потоком, и их переводит в
- * строки `claudeStream`; итогом остаётся последний ответ.
- */
-const agent: ServerPorts["agent"] = {
-  run(params) {
-    const stream = claudeStream(params.output);
-    return runProcess("claude", {
-      cwd: params.cwd,
-      env: params.env,
-      input: params.prompt,
-      cancel: params.cancel,
-      shell: process.platform === "win32",
-      args: [...CLAUDE_STREAM_ARGS, ...claudeArgs(params.permissions)],
-      output: stream.listener,
-    }).then(stream.finish);
-  },
-};
-
 export function createPorts(): ServerPorts {
   return {
     files,
-    shell,
-    agent,
     clock: { now: () => new Date().toISOString() },
     timers: {
       every(ms, run) {
@@ -242,5 +140,11 @@ export function createPorts(): ServerPorts {
     // Редактор умеет всё: терминалы, открыть файл, спросить строку, показать текст без файла
     // на диске и открыть объект табом — решения 0014, 0019 и 0026.
     capabilities: { terminals: true, openFile: true, ask: true, virtualDocs: true, tabs: true },
+    // Плагины: процесс на node редактора, вопрос «доверять?» и редактор для `ctx.vscode`.
+    plugins: { start: startPlugin },
+    // Зависимости встроенного плагина (холст `objects-map`) — npm в папке плагина.
+    packages: { install: installPackages },
+    trust: createTrust(),
+    editor,
   };
 }

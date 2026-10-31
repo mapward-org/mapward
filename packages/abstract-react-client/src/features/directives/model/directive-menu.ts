@@ -1,4 +1,3 @@
-import { action, makeObservable, observable } from "mobx";
 import type { MapFile, MapObject } from "@mapward/core";
 import {
   activeDirectives,
@@ -8,7 +7,8 @@ import {
   isRunning,
 } from "../../../kernel/directives.ts";
 import { matches } from "../../../kernel/search.ts";
-import { Anchor, Popup } from "../../../lib/mobx/popup.ts";
+import { Anchor, Popup } from "../../../lib/store/popup.ts";
+import { Reactive } from "../../../lib/store/reactive.ts";
 
 /**
  * Пункт меню — одна незакрытая директива. Этапов в меню нет: их запускают из файла директивы,
@@ -33,8 +33,8 @@ export type DirectiveMenuHost = { ask: boolean; open?: ((file: MapFile) => void)
  * Только незакрытые: закрытых у старых объектов десятки, их смотрят на экране «об объекте».
  * Запрос никуда не сохраняется — закрыли меню, и он пуст, как у меню экшонов.
  */
-export class DirectiveMenuStore {
-  query = "";
+export class DirectiveMenuStore extends Reactive {
+  private readonly typed = this.state("");
   // Меню лежит порталом поверх всего — в шапке карточки его иначе обрезала бы её рамка.
   readonly popup = new Popup(() => this.clear(), true);
   readonly anchor = new Anchor();
@@ -44,11 +44,13 @@ export class DirectiveMenuStore {
     private readonly host: () => DirectiveMenuHost,
     private readonly createNew: () => void,
   ) {
-    makeObservable<DirectiveMenuStore, "clear">(this, {
-      query: observable,
-      setQuery: action,
-      clear: action,
-    });
+    super();
+    // Открыто ли меню и где оно стоит — тоже его состояние: вид смотрит на один стор.
+    this.depend(this.popup, this.anchor);
+  }
+
+  get query(): string {
+    return this.typed.value;
   }
 
   /** Число на кнопке: незакрытые не лежат на виду, и счёт не даёт о них забыть. */
@@ -91,11 +93,11 @@ export class DirectiveMenuStore {
   }
 
   setQuery(query: string): void {
-    this.query = query;
+    this.typed.set(query);
   }
 
   private clear(): void {
-    this.query = "";
+    this.typed.set("");
   }
 
   open(item: DirectiveItem): void {

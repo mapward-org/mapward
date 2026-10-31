@@ -1,13 +1,13 @@
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
+import { NEVER } from "rxjs";
 import { expect, test } from "vitest";
-import type { MapMetric, MapObject } from "@mapward/core";
+import type { MapMetric, MapObject, MetricGroup } from "@mapward/core";
 import { ObjectCard } from "../../../../../packages/abstract-react-client/src/features/object-card/compose/object-card.tsx";
 import {
   ProvideObjectCard,
   type ObjectCardPort,
 } from "../../../../../packages/abstract-react-client/src/features/object-card/ports.tsx";
-import { Display } from "../../../../../packages/abstract-react-client/src/features/metrics/compose/displays.tsx";
 
 /**
  * Карточка объекта — превью на чужом экране. У клиента нет `react-dom`, поэтому первый кадр
@@ -28,14 +28,16 @@ const core = {
   ],
 } as unknown as MapObject;
 
+/** Объекты приходят с сервера; в первом кадре ответ уже есть: `core` — есть, прочие — нет. */
 const port: ObjectCardPort = {
-  find: (address: string) => (address === core.address ? core : undefined),
+  object: (address: string) => (address === core.address ? core : undefined),
+  feed: () => ({ changed$: NEVER, ready: true }),
   open: () => {},
-  Grid: (props: { metrics: MapMetric[]; group?: string | undefined; compact?: boolean }) =>
+  Grid: (props: { metrics: MapMetric[]; group?: MetricGroup | undefined; compact?: boolean }) =>
     createElement(
       "i",
       null,
-      `сетка ${props.group}: ${props.metrics.map((m) => m.key).join(",")}${props.compact ? " компактно" : ""}`,
+      `сетка ${props.group?.key}: ${props.metrics.map((m) => m.key).join(",")}${props.compact ? " компактно" : ""}`,
     ),
   Actions: () => createElement("i", null, "экшоны"),
   Directives: () => createElement("i", null, "директивы"),
@@ -76,26 +78,4 @@ test("чего нет, карточка так и говорит", () => {
   expect(noGroup).toContain("нет вкладки тяжёлое");
   expect(noGroup).not.toContain("сетка");
   expect(card({ object: "mapward://nowhere" })).toContain("нет объекта nowhere");
-});
-
-test("пункт списка с object рисуется карточкой, остальные — строками", () => {
-  const html = renderToString(
-    createElement(Display, {
-      data: {
-        kind: "list",
-        items: [
-          { label: "строка", link: "a.md" },
-          { object: core.address, label: "не видно" },
-        ],
-      },
-      collected: true,
-      onOpen: () => {},
-      renderMap: () => null,
-      renderComponent: () => null,
-      renderObject: (item) => createElement("b", null, `карточка ${item.object}`),
-    }),
-  );
-  expect(html).toContain("строка");
-  expect(html).toContain("карточка mapward://packages/core");
-  expect(html).not.toContain("не видно");
 });

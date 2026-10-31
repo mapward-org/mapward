@@ -1,5 +1,6 @@
-import { Resource } from "@mapward/core";
 import type { AppBridge, BridgeClient, Turn } from "@mapward/core";
+import { Feed } from "../../../lib/store/feed.ts";
+import { Reactive } from "../../../lib/store/reactive.ts";
 import { arrange, buttonState } from "../pure-model/turns.ts";
 
 const NONE: Turn[] = [];
@@ -10,8 +11,8 @@ export type RunFocus = {
 };
 
 /** Ленту держит сервер, в памяти (решение 0046): клиент только подписывается. */
-export class Turns {
-  private readonly turns: Resource<Turn[]>;
+export class Turns extends Reactive {
+  private readonly turns: Feed<Turn[]>;
 
   constructor(
     private readonly bridge: BridgeClient<AppBridge>,
@@ -19,10 +20,9 @@ export class Turns {
     /** Хост с терминалами: только он знает, какой терминал завела кнопка этапа. */
     private readonly terminals: () => boolean,
   ) {
-    this.turns = new Resource<Turn[]>((next) => {
-      const subscription = bridge.watchTurns(undefined).subscribe(next);
-      return () => subscription.unsubscribe();
-    });
+    super();
+    this.turns = new Feed(bridge.watchTurns(undefined));
+    this.depend(this.turns);
   }
 
   get list(): Turn[] {

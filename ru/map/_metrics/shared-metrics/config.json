@@ -1,12 +1,22 @@
 {
   "label": "Общие метрики",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "read-dir",
-      "basePath": "${{ mapward:// }}/shared-metrics"
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/files",
+      "method": "tree",
+      "params": {
+        "path": "${{ mapward:// }}/shared-metrics",
+        "git": true
+      }
     }
-  ],
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "tree" }
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/files",
+    "method": "tree",
+    "params": {
+      "path": "${{ mapward:// }}/shared-metrics",
+      "git": true
+    }
+  }
 }

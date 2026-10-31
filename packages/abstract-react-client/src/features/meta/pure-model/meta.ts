@@ -23,6 +23,20 @@ export function originHint(layers: ConfigLayer[]): string | undefined {
 export const layerOwner = (address: string) => address.replace(/\/_metrics\/[^/]+$/, "");
 
 /**
+ * Объекты-прототипы, чьи имена нужны подписям слоёв объекта и его метрик: их и ждёт мета-экран.
+ */
+export function prototypeOwners(object: MapObject): string[] {
+  const layers = [object.layers, ...object.metrics.map((metric) => metric.layers)].flat();
+  return [
+    ...new Set(
+      layers
+        .filter((layer) => layer.from === "prototype")
+        .map((layer) => layerOwner(layer.address)),
+    ),
+  ];
+}
+
+/**
  * Подпись кнопки слоя: чей это файл. Своё так и зовётся, чужое — именем объекта или адресом.
  * Объект ищется по адресу, а не обходом карты: подписи нужен один объект, а не все.
  */
@@ -36,19 +50,17 @@ export function layerLabel(
   return where.replace("mapward://", "");
 }
 
-/** Вид коллектора схемой не сужен — он просто строка (решение 0004), поэтому берём её осторожно. */
-const kinds = (list?: Record<string, unknown>[]) =>
-  [...new Set((list ?? []).map((one) => one["kind"]))].filter(
-    (kind): kind is string => typeof kind === "string",
-  );
+const fileName = (path: string) => path.replaceAll("\\", "/").split("/").at(-1) ?? path;
 
-/** Чем метрика собирается — одной строкой: за этим конфиг и открывают. */
+/**
+ * Чем метрика показывается — одной строкой: компонент и метод плагина, который отвечает агенту.
+ * Что внутри плагина — его дело: платформа знает о метрике только это.
+ */
 export function howCollected(metric: MapMetric): string {
+  const { component, agent } = metric.config;
   return [
-    metric.config.refresh ?? "manual",
-    ...kinds(metric.config.collectors),
-    ...kinds(metric.config.transforms),
-    metric.config.display?.kind ?? "без дисплея",
+    component === undefined ? "без компонента" : fileName(component),
+    agent === undefined ? "без запроса для агента" : `${fileName(agent.plugin)}.${agent.method}`,
   ].join(" · ");
 }
 

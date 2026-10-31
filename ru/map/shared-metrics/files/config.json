@@ -1,17 +1,38 @@
 {
   "label": "Файлы",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "read-dir",
-      "basePath": "${{ mapward://~#props.fullPath }}",
-      "exclude": ["**/node_modules/**", "**/dist/**"],
-      "watch": true
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward:// }}/shared-metrics/files/file-actions.mjs\"",
+        "from": {
+          "plugin": "${{ mapward:// }}/_plugins/files",
+          "method": "tree",
+          "params": {
+            "path": "${{ mapward://~#props.fullPath }}",
+            "exclude": ["**/node_modules/**", "**/dist/**"],
+            "git": true
+          }
+        }
+      }
     }
-  ],
-  "transforms": [
-    { "kind": "script", "run": "node \"${{ mapward:// }}/shared-metrics/files/file-actions.mjs\"" },
-    { "kind": "git-status" }
-  ],
-  "display": { "kind": "tree" }
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward:// }}/shared-metrics/files/file-actions.mjs\"",
+      "from": {
+        "plugin": "${{ mapward:// }}/_plugins/files",
+        "method": "tree",
+        "params": {
+          "path": "${{ mapward://~#props.fullPath }}",
+          "exclude": ["**/node_modules/**", "**/dist/**"],
+          "git": true
+        }
+      }
+    }
+  }
 }

@@ -1,10 +1,42 @@
 {
   "label": "Реестр требований",
-  "refresh": "on-display",
-  "collapsed": true,
-  "collectors": [
-    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }
-  ],
-  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\"" }, { "kind": "git-status" }],
-  "display": { "kind": "tree", "empty": "требований нет" }
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\"",
+        "from": {
+          "plugin": "${{ mapward:// }}/_plugins/files",
+          "method": "tree",
+          "params": {
+            "path": "${{ mapward://@ }}/ru/requirements",
+            "include": ["**/*.md"],
+            "content": true,
+            "git": true
+          }
+        }
+      }
+    },
+    "empty": "требований нет",
+    "collapsed": true
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\"",
+      "from": {
+        "plugin": "${{ mapward:// }}/_plugins/files",
+        "method": "tree",
+        "params": {
+          "path": "${{ mapward://@ }}/ru/requirements",
+          "include": ["**/*.md"],
+          "content": true,
+          "git": true
+        }
+      }
+    }
+  }
 }

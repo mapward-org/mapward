@@ -1,7 +1,12 @@
 import { Component, type ReactNode } from "react";
 
+/** Сборка в пути. `data-loading` — заглушка загрузки: скриншот ждёт, пока таких не останется. */
 export function ComponentBuilding() {
-  return <span className="opacity-60">собирается…</span>;
+  return (
+    <span data-loading="" className="opacity-60">
+      собирается…
+    </span>
+  );
 }
 
 export function ComponentFailure(props: { title: string; lines: string[] }) {

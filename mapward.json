@@ -1,6 +1,4 @@
 {
   "maps": [{ "mapUrl": "ru/map" }],
-  "collectorsStaleTime": 60000,
-  "transformsStaleTime": 60000,
   "mcpPort": 47318
 }

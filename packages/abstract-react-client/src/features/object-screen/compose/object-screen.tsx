@@ -1,5 +1,6 @@
-import { observer } from "mobx-react-lite";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import type { Watchable } from "../../../lib/store/reactive.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { TabIcon } from "../../../lib/ui/icons.tsx";
 import type { Terminals } from "../adapters/terminals.ts";
 import type { ScreenStore } from "../model/screen.ts";
@@ -17,7 +18,6 @@ import {
 import { GroupTab, GroupTabs } from "../ui/group-tabs.tsx";
 import { HeaderTabButton, ObjectHeader } from "../ui/object-header.tsx";
 import {
-  ClashNote,
   GroupDescription,
   Reading,
   ScreenBody,
@@ -29,14 +29,14 @@ import { ViewTabs } from "../ui/view-tabs.tsx";
 import { ObjectTerminalMenu } from "./terminal-menu.tsx";
 
 /** Что экрану нужно от карты, кроме объектов: готова ли она и как её перечитать. */
-type ScreenMapState = { ready: boolean; reloading: boolean; reload: () => void };
+type ScreenMapState = Watchable & { ready: boolean; reloading: boolean; reload: () => void };
 
 /**
  * Экран объекта — решения 0036 и 0042: шапка, вкладки видов, крошки, стрелки истории, меню
  * терминалов, а по местам — части, которые подкладывает точка входа. Где ты и что открыто,
  * держит стор экрана; здесь только то, что где стоит.
  */
-export const ObjectScreen = observer(function ObjectScreen(props: {
+export function ObjectScreen(props: {
   screen: ScreenStore;
   map: ScreenMapState;
   terminals: Terminals;
@@ -44,8 +44,9 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
   const { screen, terminals } = props;
   const slots = useScreenSlots();
   // Под ctrl подсвечивается то, что откроется табом: иконок у ссылок нет — решение 0035.
-  useLocalStore(() => new TabModifier(() => screen.tabs), [screen]);
-  const tabsRow = useLocalStore(() => new TabsRow(() => screen.groupKey), [screen]);
+  useLocalStore(() => new TabModifier(screen, () => screen.tabs), [screen]);
+  const tabsRow = useLocalStore(() => new TabsRow(screen, () => screen.groupKey), [screen]);
+  useWatch(screen, props.map, tabsRow);
 
   return !props.map.ready ? (
     <Reading />
@@ -122,8 +123,6 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
         }
       />
 
-      <ClashNote keys={screen.clashes} />
-
       {/* Вкладки объекта и описание открытой — решение 0025. */}
       {screen.hasGroups && (
         <GroupTabs hold={tabsRow.hold} moreLeft={tabsRow.moreLeft} moreRight={tabsRow.moreRight}>
@@ -151,14 +150,9 @@ export const ObjectScreen = observer(function ObjectScreen(props: {
           // Другой объект — другой экран: запрос поиска с прошлого сюда не переезжает.
           <slots.Meta key={screen.object.address} object={screen.object} />
         ) : (
-          <slots.Metrics
-            object={screen.object}
-            metrics={screen.shown}
-            layout={screen.layout}
-            group={screen.groupKey}
-          />
+          <slots.Metrics object={screen.object} metrics={screen.shown} group={screen.openGroup} />
         )}
       </ScreenBody>
     </ScreenFrame>
   );
-});
+}

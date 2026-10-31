@@ -1,14 +1,18 @@
-import { action, makeObservable, observable } from "mobx";
 import { objectIndex } from "@mapward/core";
 import type { ConfigLayer, MapAction, MapMetric, MapObject, MapStage } from "@mapward/core";
-import { layerLabel, searchMeta, type MetaFound } from "../pure-model/meta.ts";
+import { Reactive, type Watchable } from "../../../lib/store/reactive.ts";
+import { layerLabel, prototypeOwners, searchMeta, type MetaFound } from "../pure-model/meta.ts";
 
-/** Что мета-экрану нужно от хоста и карты. */
+/**
+ * Что мета-экрану нужно от хоста и карты. Объект по адресу приходит с сервера: пока не пришёл —
+ * `undefined`, а ждут его подпиской на `feed`.
+ */
 export type MetaHost = {
   can: { openFile: boolean; virtualDocs: boolean };
   open(path: string): void;
   openVirtual(title: string, text: string, language: string): void;
-  find(address: string): MapObject | undefined;
+  object(address: string): MapObject | undefined;
+  feed(address: string): Watchable;
 };
 
 /** Меню строки — кнопка «слои» и пункты под ней (решение 0028). */
@@ -21,19 +25,27 @@ export type LayersMenu = {
  * Мета-экран объекта — решение 0024: всё, что объект о себе знает. Что хост умеет, решается
  * здесь — клиент не рисует того, чего ему не обещали (решение 0014). Запрос поиска никуда не
  * сохраняется, а на другом объекте экран пересоздаётся, и поле начинается пустым.
+ *
+ * Подписи слоёв называют прототипы по имени — их объекты стор ждёт: пока не пришли, на кнопке
+ * адрес.
  */
-export class MetaStore {
-  query = "";
+export class MetaStore extends Reactive {
+  private readonly typed = this.state("");
 
   constructor(
     private readonly object: () => MapObject,
     private readonly host: MetaHost,
   ) {
-    makeObservable(this, { query: observable, setQuery: action });
+    super();
+    this.depend(...prototypeOwners(object()).map((address) => host.feed(address)));
+  }
+
+  get query(): string {
+    return this.typed.value;
   }
 
   setQuery(query: string): void {
-    this.query = query;
+    this.typed.set(query);
   }
 
   get found(): MetaFound {
@@ -90,7 +102,7 @@ export class MetaStore {
   }
 
   layerName(layer: ConfigLayer): string {
-    return layerLabel((address) => this.host.find(address), layer);
+    return layerLabel((address) => this.host.object(address), layer);
   }
 
   get canOpenFile(): boolean {

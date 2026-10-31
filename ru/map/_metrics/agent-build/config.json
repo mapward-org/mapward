@@ -1,11 +1,21 @@
 {
   "label": "Сборка свежее исходников",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "script",
-      "run": "node \"${{ mapward:// }}/_metrics/agent-build/build.mjs\" \"${{ mapward://@ }}\""
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward:// }}/_metrics/agent-build/build.mjs\" \"${{ mapward://@ }}\""
+      }
+    },
+    "empty": "собранного нет"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward:// }}/_metrics/agent-build/build.mjs\" \"${{ mapward://@ }}\""
     }
-  ],
-  "display": { "kind": "list", "empty": "собранного нет" }
+  }
 }

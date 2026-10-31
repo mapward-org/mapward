@@ -1,9 +1,41 @@
 {
   "label": "Очередь работ",
-  "refresh": "on-display",
-  "collectors": [
-    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/requirements", "include": ["**/*.md"], "content": true }
-  ],
-  "transforms": [{ "kind": "script", "run": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --todo" }, { "kind": "git-status" }],
-  "display": { "kind": "tree", "empty": "всё сделано" }
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --todo",
+        "from": {
+          "plugin": "${{ mapward:// }}/_plugins/files",
+          "method": "tree",
+          "params": {
+            "path": "${{ mapward://@ }}/ru/requirements",
+            "include": ["**/*.md"],
+            "content": true,
+            "git": true
+          }
+        }
+      }
+    },
+    "empty": "всё сделано"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward://prototypes/system }}/_metrics/requirements/status.mjs\" --todo",
+      "from": {
+        "plugin": "${{ mapward:// }}/_plugins/files",
+        "method": "tree",
+        "params": {
+          "path": "${{ mapward://@ }}/ru/requirements",
+          "include": ["**/*.md"],
+          "content": true,
+          "git": true
+        }
+      }
+    }
+  }
 }

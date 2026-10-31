@@ -32,7 +32,6 @@
     "@mapward/abstract-react-client": "workspace:*",
     "@mapward/abstract-server": "workspace:*",
     "@mapward/core": "workspace:*",
-    "@xyflow/react": "catalog:",
     "esbuild-wasm": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

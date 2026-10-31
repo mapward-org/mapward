@@ -1,6 +1,6 @@
-import { Observable, ReplaySubject } from "rxjs";
-import { LiveFiles, LiveMap } from "@mapward/core";
-import type { FolderEntry, MapObject } from "@mapward/core";
+import { map as mapStream, Observable } from "rxjs";
+import type { MapObject } from "@mapward/core";
+import { LiveMap } from "./live-map.ts";
 import type {
   ClockPort,
   FileReader,
@@ -9,40 +9,78 @@ import type {
   TimersPort,
 } from "../../../../ports/index.ts";
 import type { MapRef } from "../../../../kernel/map-ref.ts";
-import { DiskFiles, pathKey } from "./disk-files.ts";
+import { DiskFiles, keepFor, LiveFiles, pathKey } from "@mapward/vfs";
 
-type Entry = { live: LiveMap; map$: ReplaySubject<MapObject>; disk: DiskFiles };
+type Entry = { live: LiveMap; disk: DiskFiles };
+
+/** Объект без детей — `own` — или с детьми без внуков — `children`. */
+export type ObjectShape = "own" | "children";
 
 const keyOf = (ref: MapRef) => `${pathKey(ref.mapPath)}|${pathKey(ref.basePath)}|${ref.name}`;
+
+/**
+ * Сколько прочитанный файл держится после того, как его перестали читать. Агент читает карту
+ * сериями: `read_object`, следом `read_index` и `run_action` по тому же объекту — с паузами на
+ * обдумывание в секунды, редко дольше полуминуты. Полминуты покрывают серию, и она не ходит на
+ * диск за каждым ответом; пауза длиннее — уже темп человека, и одно чтение диска на неё
+ * незаметно. Держать дольше — значит дольше держать вотчер на карту, в которую никто не смотрит.
+ */
+const KEEP_MS = 30_000;
 
 /**
  * Карта на сервере — та же живая модель из `core`, что и у клиента (решение 0041), с диском в
  * роли источника файлов. Её берут все: подписки на метрики, экшоны, директивы и агент через
  * MCP.
  *
- * Карта заводится при первом обращении и живёт, пока жив сервер: сервер держит подписку на неё
- * всю, поэтому файлы прочитаны и под вотчером всё это время, а не пока открыт экран, — иначе
- * агент без открытого окна читал бы протухшее.
+ * Читается то, что спросили, и столько, сколько спрашивают: объект по адресу — это путь к нему и
+ * он сам, а не вся карта. Постоянной подписки на карту у сервера нет: неподписанный поток
+ * забывает значение, и следующий вопрос читает диск заново, так что протухшего агент не увидит.
+ * Чтобы серия вопросов не читала диск каждый раз, файл держится прочитанным и под вотчером ещё
+ * `KEEP_MS` после последнего читателя.
  */
 export class MapModel {
   private readonly maps = new Map<string, Entry>();
   private readonly disks = new Map<string, DiskFiles>();
+  private readonly keep: () => Observable<unknown>;
 
   constructor(
     private readonly reader: FileReader,
     private readonly watcher: FileWatcher,
     private readonly timers: TimersPort,
     private readonly clock: ClockPort,
-  ) {}
-
-  /** Текущая карта. Пока она читается впервые, одновременные вызовы ждут одно чтение. */
-  current(ref: MapRef): Promise<MapObject> {
-    return this.entryOf(ref).live.current();
+  ) {
+    this.keep = keepFor(timers, KEEP_MS);
   }
 
-  /** Карта и дальше каждое её изменение: подписчик сразу получает то, что есть. */
-  watch(ref: MapRef): Observable<MapObject> {
-    return this.entryOf(ref).map$.asObservable();
+  /**
+   * Объект по адресу, когда дочитан; нет такого — `undefined`. Читается путь к нему и он сам, а
+   * с `children` — ещё его дети без внуков.
+   */
+  object(ref: MapRef, address: string, shape: ObjectShape = "own"): Promise<MapObject | undefined> {
+    return this.subtree(ref, address, shape === "own" ? 0 : 1);
+  }
+
+  /** Объект по адресу и дальше каждое его изменение — как `object`, потоком. */
+  object$(
+    ref: MapRef,
+    address: string,
+    shape: ObjectShape = "own",
+  ): Observable<MapObject | undefined> {
+    return this.subtree$(ref, address, shape === "own" ? 0 : 1);
+  }
+
+  /**
+   * Поддерево от адреса — для тех, кому оно нужно по смыслу: `depth` уровней детей, `Infinity` —
+   * всё под объектом. Карты целиком у модели нет: всё под корнем — это явный `Infinity` от
+   * корня, и вне `core` он записан исключением с причиной (`tests/subtree-depth.test.ts`).
+   */
+  subtree(ref: MapRef, address: string, depth: number): Promise<MapObject | undefined> {
+    return this.entryOf(ref).live.subtree(address, depth);
+  }
+
+  /** Поддерево от адреса и дальше каждое его изменение. */
+  subtree$(ref: MapRef, address: string, depth: number): Observable<MapObject | undefined> {
+    return this.entryOf(ref).live.subtree$(address, depth);
   }
 
   /**
@@ -54,18 +92,18 @@ export class MapModel {
   }
 
   /**
-   * Файл карты для моста — решение 0041: клиент держит ту же модель и читает файлы сам, по
-   * подписке. Отдаётся из того же чтения, что у сервера, и только внутри папки карты.
+   * Объект для моста: свои поля и ближайшие дети без внуков, одно значение на пачку. Клиент
+   * модели не собирает — он смотрит на эту; `null` — объекта по адресу нет.
    */
-  watchFile(ref: MapRef, path: string): Observable<string | null> {
-    const disk = this.diskInside(ref, path);
-    return new Observable((subscriber) => disk.file(path, (text) => subscriber.next(text ?? null)));
+  view(ref: MapRef, address: string): Observable<MapObject | null> {
+    return this.entryOf(ref)
+      .live.view$(address)
+      .pipe(mapStream((object) => object ?? null));
   }
 
-  /** Папка карты для моста: содержимое и дальше каждое его изменение. */
-  watchFolder(ref: MapRef, path: string): Observable<FolderEntry[]> {
-    const disk = this.diskInside(ref, path);
-    return new Observable((subscriber) => disk.list(path, (entries) => subscriber.next(entries)));
+  /** Предки объекта для крошек. */
+  ancestors(ref: MapRef, address: string): Observable<{ address: string; name: string }[]> {
+    return this.entryOf(ref).live.ancestors$(address);
   }
 
   /**
@@ -100,12 +138,6 @@ export class MapModel {
     await Promise.all(hits.map((disk) => disk.touch([path])));
   }
 
-  private diskInside(ref: MapRef, path: string): DiskFiles {
-    const disk = this.diskOf(ref.mapPath);
-    if (!disk.holds(path)) throw new Error(`Файл ${path} лежит вне карты ${ref.mapPath}`);
-    return disk;
-  }
-
   private diskOf(mapPath: string): DiskFiles {
     const key = pathKey(mapPath);
     const existing = this.disks.get(key);
@@ -121,12 +153,8 @@ export class MapModel {
     if (existing) return existing;
 
     const disk = this.diskOf(ref.mapPath);
-    const live = new LiveMap(new LiveFiles(disk), ref);
-    const map$ = new ReplaySubject<MapObject>(1);
-    // Подписка на всю карту держит её прочитанной и под вотчером; наружу карта уходит, когда
-    // пачка изменений разложена, — промежуточной сборки модель не отдаёт.
-    live.watch((map) => map$.next(map));
-    const entry: Entry = { live, map$, disk };
+    const live = new LiveMap(new LiveFiles(disk, this.keep), ref);
+    const entry: Entry = { live, disk };
     this.maps.set(key, entry);
     return entry;
   }

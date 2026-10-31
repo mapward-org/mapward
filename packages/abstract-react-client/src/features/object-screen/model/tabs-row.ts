@@ -1,4 +1,5 @@
-import { action, makeObservable, observable, reaction } from "mobx";
+import { distinctUntilChanged, map } from "rxjs";
+import { Reactive, type Watchable } from "../../../lib/store/reactive.ts";
 
 /**
  * Ряд вкладок объекта — один и прокручивается вбок (решение 0045): вкладки-папки на двух
@@ -11,21 +12,29 @@ import { action, makeObservable, observable, reaction } from "mobx";
  *
  * Открытую вкладку ряд находит по `data-active` — ставит её вид.
  */
-export class TabsRow {
+export class TabsRow extends Reactive {
   /** Вкладки уходят за левый и правый край — там затенение. */
-  moreLeft = false;
-  moreRight = false;
+  private readonly left = this.state(false);
+  private readonly right = this.state(false);
   private element: HTMLElement | null = null;
   private stop: (() => void) | undefined;
   private readonly resize =
     typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => this.measure());
 
-  constructor(private readonly active: () => string | undefined) {
-    makeObservable<TabsRow, "measure">(this, {
-      moreLeft: observable,
-      moreRight: observable,
-      measure: action,
-    });
+  /** `active` читается из `source`: его изменение — повод проверить, не сменилась ли вкладка. */
+  constructor(
+    private readonly source: Watchable,
+    private readonly active: () => string | undefined,
+  ) {
+    super();
+  }
+
+  get moreLeft(): boolean {
+    return this.left.value;
+  }
+
+  get moreRight(): boolean {
+    return this.right.value;
   }
 
   /** Ряд приходит и уходит вместе с видом метрик — `ref={row.hold}`. */
@@ -46,8 +55,8 @@ export class TabsRow {
   private measure(): void {
     const row = this.element;
     // Пиксель запаса: дробная ширина при масштабе окна не должна давать вечное затенение.
-    this.moreLeft = row !== null && row.scrollLeft > 1;
-    this.moreRight = row !== null && row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+    this.left.set(row !== null && row.scrollLeft > 1);
+    this.right.set(row !== null && row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
   }
 
   private readonly wheel = (event: WheelEvent) => {
@@ -66,9 +75,13 @@ export class TabsRow {
   mount(): void {
     // Вкладка сменилась в сторе, а `data-active` вид переставит только на своей перерисовке —
     // поэтому ищем её кадром позже.
-    this.stop = reaction(this.active, () => requestAnimationFrame(() => this.reveal()), {
-      fireImmediately: true,
-    });
+    const subscription = this.source.changed$
+      .pipe(
+        map(() => this.active()),
+        distinctUntilChanged(),
+      )
+      .subscribe(() => requestAnimationFrame(() => this.reveal()));
+    this.stop = () => subscription.unsubscribe();
     // Снятие отключило слежку за размером, а ряд остался тем же — ref второй раз не придёт.
     if (this.element) this.resize?.observe(this.element);
   }

@@ -1,29 +1,20 @@
-import { exec, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { readdir, readFile, mkdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { watch } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import {
-  CLAUDE_STREAM_ARGS,
-  claudeArgs,
-  claudeStream,
-  matchesGlob,
-  shellArgs,
-} from "@mapward/abstract-server";
-import type {
-  Cancellation,
-  FileEntry,
-  OutputListener,
-  ProcessEnv,
-  ProcessResult,
-  ServerPorts,
-} from "@mapward/abstract-server";
+import { PLUGIN_INSTALL } from "@mapward/abstract-server";
+import type { FileEntry, PluginProcess, ProcessEnv, ServerPorts } from "@mapward/abstract-server";
 
 /**
  * Порты сервера со стороны терминала — решение 0014. Та же модель, что в редакторе, только
  * файлы читает `node`, а терминалов и диалогов у неё нет.
  */
+
+/** Номер временного файла записи: сквозной на процесс. */
+let temp = 0;
 
 const files = {
   async realpath(path: string): Promise<string | undefined> {
@@ -37,6 +28,23 @@ const files = {
   async read(path: string): Promise<string | undefined> {
     try {
       return await readFile(path, "utf8");
+    } catch {
+      return undefined;
+    }
+  },
+
+  async bytes(path: string): Promise<Uint8Array | undefined> {
+    try {
+      return await readFile(path);
+    } catch {
+      return undefined;
+    }
+  },
+
+  async stat(path: string): Promise<{ size: number; mtimeMs: number } | undefined> {
+    try {
+      const { size, mtimeMs } = await stat(path);
+      return { size, mtimeMs };
     } catch {
       return undefined;
     }
@@ -62,9 +70,21 @@ const files = {
     }
   },
 
+  /**
+   * Через временный файл и переименование: вотчер и читатель не увидят файл наполовину — правка
+   * карты пишет `_index.json`, который модель следом перечитывает.
+   */
   async write(path: string, text: string): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, text, "utf8");
+    temp += 1;
+    const draft = `${path}.${process.pid}-${temp}.tmp`;
+    await writeFile(draft, text, "utf8");
+    try {
+      await rename(draft, path);
+    } catch (error) {
+      await rm(draft, { force: true });
+      throw error;
+    }
   },
 
   async remove(path: string): Promise<void> {
@@ -83,8 +103,8 @@ const files = {
   },
 
   /**
-   * За чем следить, вправе сказать зовущий — решение 0023: имена сверяются с `include`. Глоб там
-   * тоже бывает — это вотчер шага метрики (решение 0043), и он сверяется от `root`.
+   * За чем следить, вправе сказать зовущий — решение 0023: имена сверяются с `include` целиком.
+   * Глобы сверяют у себя плагины (`files`, `shell`): их вотчеры живут в их процессе.
    */
   watch(
     root: string,
@@ -95,9 +115,7 @@ const files = {
     const watcher = watch(root, { recursive: true }, (_event, name) => {
       if (!name) return;
       const path = String(name).replaceAll("\\", "/");
-      // Имена вроде `index` и `HEAD` сверяются целиком, глобы — глобом.
-      const hit = (wanted: string) =>
-        path === wanted || path.endsWith(`/${wanted}`) || matchesGlob(path, wanted);
+      const hit = (wanted: string) => path === wanted || path.endsWith(`/${wanted}`);
       if (include && !include.some(hit)) {
         return;
       }
@@ -108,10 +126,9 @@ const files = {
 };
 
 /**
- * Снять процесс вместе с детьми. Через оболочку `kill` снимает саму оболочку, а `claude` или
- * скрипт под ней живут дальше — поэтому «остановить» не останавливало ничего (решение 0038).
- * На Windows дерево снимает `taskkill /T`; на остальных процесс заведён своей группой, и снимается
- * группа целиком.
+ * Снять процесс плагина вместе с детьми: команды и агента экшонов запускают плагины `shell` и
+ * `agent`, и процесс плагина уходит не один. На Windows дерево снимает `taskkill /T`; на
+ * остальных — сам процесс.
  */
 function killTree(child: ChildProcess): void {
   if (child.pid === undefined || child.exitCode !== null) return;
@@ -126,98 +143,125 @@ function killTree(child: ChildProcess): void {
   }
 }
 
-function runProcess(
-  command: string,
-  options: {
-    cwd: string;
-    env: ProcessEnv;
-    input?: string;
-    cancel?: Cancellation;
-    shell: boolean;
-    args?: string[];
-    output?: OutputListener;
-  },
-): Promise<ProcessResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, shellArgs(options.args ?? [], options.shell), {
-      cwd: options.cwd,
-      env: options.env,
-      windowsHide: true,
-      shell: options.shell,
-      // Своя группа — чтобы отмена могла снять и детей; на Windows это делает `taskkill`.
-      detached: process.platform !== "win32",
-    });
-
-    options.cancel?.onCancel(() => killTree(child));
-
-    let stdout = "";
-    let stderr = "";
-    // Кодировка на потоке, а не `toString()` куска: русская буква на границе кусков иначе бьётся.
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-      options.output?.(chunk, "out");
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-      options.output?.(chunk, "err");
-    });
-
-    child.on("error", (error) => reject(error));
-    child.on("close", (code) =>
-      code === 0
-        ? resolve({ stdout, stderr })
-        : reject(new Error(stderr.trim() || `команда вернула ${String(code)}`)),
-    );
-
-    if (options.input !== undefined) child.stdin.end(options.input);
+/**
+ * Процесс плагина — node, который запустил cli: ставить свой проекту не нужно. stdout — строки
+ * протокола, stderr — лог плагина.
+ */
+function startPlugin(params: { script: string; cwd: string; env: ProcessEnv }): PluginProcess {
+  const child = spawn(process.execPath, [params.script], {
+    cwd: params.cwd,
+    env: params.env,
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
   });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  const lines: ((line: string) => void)[] = [];
+  let buffer = "";
+  child.stdout.on("data", (chunk: string) => {
+    buffer += chunk;
+    let at = buffer.indexOf("\n");
+    while (at !== -1) {
+      const line = buffer.slice(0, at).trim();
+      buffer = buffer.slice(at + 1);
+      if (line) for (const listener of lines) listener(line);
+      at = buffer.indexOf("\n");
+    }
+  });
+  // Процесс, который не запустился, тоже «вышел»: ждущие должны узнать, а не висеть.
+  const exits: ((code: number | null) => void)[] = [];
+  let exited = false;
+  const exit = (code: number | null) => {
+    if (exited) return;
+    exited = true;
+    for (const listener of exits) listener(code);
+  };
+  child.on("exit", (code) => exit(code));
+  child.on("error", () => exit(null));
+  child.stdin.on("error", () => {});
+  return {
+    send: (line) => {
+      if (!exited) child.stdin.write(line);
+    },
+    onLine: (listener) => lines.push(listener),
+    onLog: (listener) => child.stderr.on("data", (chunk: string) => listener(chunk)),
+    onExit: (listener) => exits.push(listener),
+    kill: () => killTree(child),
+  };
+}
+
+/**
+ * Зависимости плагина — `npm` в его папке, командой платформы (`PLUGIN_INSTALL`). На Windows npm —
+ * это `npm.cmd`, а `.cmd` node запускает только через оболочку; аргументы — постоянные строки.
+ * Отказ — с хвостом вывода npm: по нему платформа узнаёт, что сети нет.
+ */
+export function installPackages(dir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(PLUGIN_INSTALL.command, [...PLUGIN_INSTALL.args], {
+      cwd: dir,
+      env: process.env,
+      shell: process.platform === "win32",
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    const keep = (chunk: Buffer) => {
+      output = (output + chunk.toString("utf8")).slice(-4000);
+    };
+    child.stdout.on("data", keep);
+    child.stderr.on("data", keep);
+    child.on("error", (error) =>
+      reject(new Error(`npm не запустился: ${error.message} — стоит ли node с npm?`)),
+    );
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`npm install вышел с кодом ${code}: ${output.trim()}`));
+    });
+  });
+}
+
+/**
+ * Доверенные плагины — у пользователя, а не в репозитории: `~/.mapward/trust.json`, карта и путь
+ * плагина. Спросить в терминале некого, поэтому чужой плагин cli не запускает — подтверждают его
+ * в редакторе; записывает cli только встроенный, который скопировал сам.
+ */
+export const TRUST_FILE = join(homedir(), ".mapward", "trust.json");
+
+/**
+ * Путь в файле доверия: прямые слэши и строчная буква диска. Редактор отдаёт `d:/…`, терминал —
+ * `D:/…`, а на Windows это один путь: без этого «да» из редактора cli не находил.
+ */
+const slash = (path: string) =>
+  path.replaceAll("\\", "/").replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
+
+/** Записи, сделанные до нормализации, сводятся к ней же при чтении. */
+export async function trustedPlugins(): Promise<Record<string, string[]>> {
+  let raw: Record<string, string[]>;
+  try {
+    raw = JSON.parse(await readFile(TRUST_FILE, "utf8")) as Record<string, string[]>;
+  } catch {
+    return {};
+  }
+  const trust: Record<string, string[]> = {};
+  for (const [map, plugins] of Object.entries(raw)) {
+    const key = slash(map);
+    trust[key] = [...new Set([...(trust[key] ?? []), ...plugins.map(slash)])];
+  }
+  return trust;
+}
+
+/** Записать «да» тем же файлом, что читает редактор: доверенное в cli доверено и там. */
+export async function grantPlugin(mapPath: string, plugin: string): Promise<void> {
+  const trust = await trustedPlugins();
+  const map = slash(mapPath);
+  trust[map] = [...new Set([...(trust[map] ?? []), slash(plugin)])];
+  await mkdir(dirname(TRUST_FILE), { recursive: true });
+  await writeFile(TRUST_FILE, `${JSON.stringify(trust, null, 2)}\n`, "utf8");
 }
 
 export function createPorts(): ServerPorts {
   return {
     files,
-
-    shell: {
-      run(command, options) {
-        return new Promise<ProcessResult>((resolve, reject) => {
-          const child = exec(
-            command,
-            { cwd: options.cwd, env: options.env, windowsHide: true },
-            (error, stdout, stderr) =>
-              error ? reject(error) : resolve({ stdout: String(stdout), stderr: String(stderr) }),
-          );
-          // Итог по-прежнему отдаёт `exec` целиком, а по ходу вывод уходит слушателю.
-          child.stdout?.on("data", (chunk: Buffer | string) =>
-            options.output?.(String(chunk), "out"),
-          );
-          child.stderr?.on("data", (chunk: Buffer | string) =>
-            options.output?.(String(chunk), "err"),
-          );
-          options.cancel?.onCancel(() => killTree(child));
-        });
-      },
-      pipe(command, options) {
-        return runProcess(command, { ...options, shell: true });
-      },
-    },
-
-    agent: {
-      // События агента — строками слушателю, итогом последний ответ: так же, как в редакторе.
-      run(params) {
-        const stream = claudeStream(params.output);
-        return runProcess("claude", {
-          cwd: params.cwd,
-          env: params.env,
-          input: params.prompt,
-          cancel: params.cancel,
-          shell: process.platform === "win32",
-          args: [...CLAUDE_STREAM_ARGS, ...claudeArgs(params.permissions)],
-          output: stream.listener,
-        }).then(stream.finish);
-      },
-    },
 
     clock: { now: () => new Date().toISOString() },
 
@@ -244,6 +288,16 @@ export function createPorts(): ServerPorts {
         const dir = dirname(require.resolve("esbuild-wasm/package.json"));
         return readFile(join(dir, "esbuild.wasm"));
       },
+    },
+
+    plugins: { start: startPlugin },
+
+    packages: { install: installPackages },
+
+    trust: {
+      allow: async ({ mapPath, plugin }) =>
+        (await trustedPlugins())[slash(mapPath)]?.includes(slash(plugin)) ?? false,
+      grant: ({ mapPath, plugin }) => grantPlugin(mapPath, plugin),
     },
 
     /**

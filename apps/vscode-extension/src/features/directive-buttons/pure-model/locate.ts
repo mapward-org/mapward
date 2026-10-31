@@ -1,3 +1,4 @@
+import { mapAddress } from "@mapward/core";
 import type { MapObject, MapStage } from "@mapward/core";
 
 /**
@@ -12,6 +13,19 @@ export type LocatedDirective = { object: MapObject; directive: string; stages: M
 
 const normalize = (path: string) =>
   path.replaceAll("\\", "/").replace(/^([a-z]):/i, (drive) => drive.toLowerCase());
+
+/**
+ * Адрес объекта, в чьей папке `_directives` лежит файл, — только у него директива своя. Его и
+ * читают, а не карту целиком; файл не в `_directives` карты — `undefined`.
+ */
+export function directiveHolder(mapPath: string, filePath: string): string | undefined {
+  const root = normalize(mapPath).replace(/\/+$/, "");
+  const file = normalize(filePath);
+  if (!file.startsWith(`${root}/`)) return undefined;
+  const segments = file.slice(root.length + 1).split("/");
+  if (segments.length < 2 || segments.at(-2) !== "_directives") return undefined;
+  return mapAddress(segments.slice(0, -2));
+}
 
 export function locateDirective(root: MapObject, filePath: string): LocatedDirective | undefined {
   const wanted = normalize(filePath);

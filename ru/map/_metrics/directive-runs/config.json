@@ -1,11 +1,27 @@
 {
   "label": "Прогоны по этапам",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "script",
-      "run": "node \"${{ mapward:// }}/_metrics/directive-runs/runs.mjs\""
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward:// }}/_metrics/directive-runs/runs.mjs\"",
+        "env": {
+          "MAPWARD_MAP_PATH": "${{ mapward:// }}"
+        }
+      }
+    },
+    "empty": "прогонов не было"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward:// }}/_metrics/directive-runs/runs.mjs\"",
+      "env": {
+        "MAPWARD_MAP_PATH": "${{ mapward:// }}"
+      }
     }
-  ],
-  "display": { "kind": "list", "empty": "прогонов не было" }
+  }
 }

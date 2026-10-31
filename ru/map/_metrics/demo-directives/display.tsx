@@ -1,16 +1,36 @@
 import { useState } from "react";
-import type { DisplayProps } from "@mapward/display";
-import { List } from "@mapward/display";
-import type { Data } from "./display.data";
+import type { MetricProps } from "@mapward/component";
+import { useNavigation, usePlugin, useStream } from "@mapward/component";
+import type shell from "../../_plugins/shell/index.ts";
+import { List } from "../../_plugins/views/bricks/list.tsx";
+
+type Directive = {
+  name: string;
+  object: string;
+  file: string;
+  status: "open" | "done";
+  stage: string | null;
+  runs: number;
+};
+
+type Params = { command: string; env?: Record<string, string> };
 
 /**
- * Тестовый дисплей-компонент (решение 0037): плитки с числами, полосы по этапам и список
- * открытых директив под переключателем. Проверяет хук на React карты и произвольные классы
- * tailwind.
+ * Тестовая метрика-компонент (решение 0037): плитки с числами, полосы по этапам и список
+ * открытых директив под переключателем. Данные — вывод скрипта через `shell.json`. Проверяет хук
+ * на React карты и произвольные классы tailwind.
  */
-export default function Display({ data, open }: DisplayProps<Data>) {
+export default function Directives({ params }: MetricProps<Params>) {
+  const plugin = usePlugin<typeof shell>("../../_plugins/shell");
+  const answer = useStream(["shell.json", params], () => plugin.json(params));
   const [showDone, setShowDone] = useState(false);
-  const all = data.directives;
+  const navigate = useNavigation();
+
+  if (answer.status === "error") {
+    return <div className="text-[var(--mw-errorForeground)]">{answer.error}</div>;
+  }
+  const all = (answer.last as { directives?: Directive[] } | undefined)?.directives;
+  if (!all) return <div className="text-[var(--mw-descriptionForeground)]">загружается…</div>;
   const openOnes = all.filter((directive) => directive.status === "open");
   const done = all.length - openOnes.length;
 
@@ -66,11 +86,12 @@ export default function Display({ data, open }: DisplayProps<Data>) {
           action: { run: "reveal", inputs: { path: directive.file } },
         }))}
         empty="нет директив в работе"
+        onClick={navigate}
       />
 
       <button
         type="button"
-        onClick={() => open("mapward://")}
+        onClick={() => navigate("mapward://")}
         className="self-start text-[11px] text-[var(--mw-textLink-foreground)] hover:underline"
       >
         на корень карты

@@ -1,4 +1,5 @@
-import { reaction } from "mobx";
+import { distinctUntilChanged, map } from "rxjs";
+import type { Watchable } from "../../../lib/store/reactive.ts";
 
 /**
  * Пока зажат ctrl (cmd на маке), на `html` стоит `data-tab-mod`, и подсвечивается то, что
@@ -13,12 +14,20 @@ export class TabModifier {
   private stop: (() => void) | undefined;
   private listening: (() => void) | undefined;
 
-  constructor(private readonly enabled: () => boolean) {}
+  /** `enabled` читается из `source`: хост мог ответить, что умеет табы, позже. */
+  constructor(
+    private readonly source: Watchable,
+    private readonly enabled: () => boolean,
+  ) {}
 
   mount(): void {
-    this.stop = reaction(this.enabled, (on) => (on ? this.listen() : this.unlisten()), {
-      fireImmediately: true,
-    });
+    const subscription = this.source.changed$
+      .pipe(
+        map(() => this.enabled()),
+        distinctUntilChanged(),
+      )
+      .subscribe((on) => (on ? this.listen() : this.unlisten()));
+    this.stop = () => subscription.unsubscribe();
   }
 
   unmount(): void {

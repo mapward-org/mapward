@@ -1,10 +1,24 @@
 {
   "label": "Решения",
-  "refresh": "on-display",
-  "collapsed": true,
-  "collectors": [
-    { "kind": "read-dir", "basePath": "${{ mapward://@ }}/ru/docs/decisions" }
-  ],
-  "transforms": [{ "kind": "git-status" }],
-  "display": { "kind": "tree", "empty": "решений нет" }
+  "component": "${{ mapward:// }}/_plugins/views/tree.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/files",
+      "method": "tree",
+      "params": {
+        "path": "${{ mapward://@ }}/ru/docs/decisions",
+        "git": true
+      }
+    },
+    "empty": "решений нет",
+    "collapsed": true
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/files",
+    "method": "tree",
+    "params": {
+      "path": "${{ mapward://@ }}/ru/docs/decisions",
+      "git": true
+    }
+  }
 }

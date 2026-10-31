@@ -1,13 +1,11 @@
-import { observer } from "mobx-react-lite";
-import type { ReactNode } from "react";
-import type { ActionRef, MapAction, MapObject } from "@mapward/core";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import type { MapObject } from "@mapward/core";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { Floating } from "../../../lib/ui/floating.tsx";
 import { MenuStore } from "../model/menu-store.ts";
-import { RowMenuStore } from "../model/row-menu-store.ts";
-import { useActions } from "../ports.tsx";
-import { ActionButton, ActionRunning, RowActionButton } from "../ui/action-button.tsx";
+import { useActionFormView, useActions } from "../ports.tsx";
 import {
+  ActionComponentFrame,
   ActionFormFrame,
   CheckboxControl,
   ChoiceControl,
@@ -26,13 +24,10 @@ import {
   ActionMenuButton,
   ActionMenuPanel,
   ActionSearch,
-  MissingActionItem,
-  RowMenuButton,
-  RowMenuFrame,
 } from "../ui/action-menu.tsx";
 
 /** Меню всех экшонов объекта в шапке, с поиском — решение 0038. */
-export const ObjectActionMenu = observer(function ObjectActionMenu(props: { object: MapObject }) {
+export function ObjectActionMenu(props: { object: MapObject }) {
   const actions = useActions();
   const menu = useLocalStore(
     () =>
@@ -42,6 +37,7 @@ export const ObjectActionMenu = observer(function ObjectActionMenu(props: { obje
       ),
     [props.object],
   );
+  useWatch(actions, menu);
 
   return (
     <ActionMenuBox hold={menu.popup.hold}>
@@ -70,14 +66,16 @@ export const ObjectActionMenu = observer(function ObjectActionMenu(props: { obje
       )}
     </ActionMenuBox>
   );
-});
+}
 
 /**
  * Форма запуска поверх экрана — решение 0038: лежит поверх вида, а не окном редактора, и одна
  * на все кнопки. Пока ничего не запускают — её нет.
  */
-export const ActionFormHost = observer(function ActionFormHost() {
+export function ActionFormHost() {
   const { launcher } = useActions();
+  const View = useActionFormView();
+  useWatch(launcher);
 
   return launcher.question !== undefined ? (
     <ActionFormFrame onSubmit={() => launcher.confirm()} onCancel={() => launcher.cancel()}>
@@ -92,6 +90,15 @@ export const ActionFormHost = observer(function ActionFormHost() {
         onCancel={() => launcher.cancel()}
       />
     </ActionFormFrame>
+  ) : launcher.opened && launcher.componentProps && launcher.component !== undefined && View ? (
+    // Своя форма экшона: рамку, заголовок и ошибки рисует карта, поля и кнопки — компонент.
+    <ActionComponentFrame onCancel={() => launcher.cancel()}>
+      <FormHead title={launcher.title} description={launcher.description} />
+      {launcher.notes.map((note) => (
+        <FormNote key={note} text={note} />
+      ))}
+      <View action={launcher.opened.action.address} props={launcher.componentProps} />
+    </ActionComponentFrame>
   ) : launcher.opened ? (
     <ActionFormFrame onSubmit={() => launcher.submit()} onCancel={() => launcher.cancel()}>
       <FormHead title={launcher.title} description={launcher.description} />
@@ -126,99 +133,4 @@ export const ActionFormHost = observer(function ActionFormHost() {
       />
     </ActionFormFrame>
   ) : null;
-});
-
-/**
- * Кнопка экшона в клетке раскладки — решение 0038: ключ экшона в `areas` ставит её так же, как
- * ключ метрики ставит метрику.
- */
-export const CellActionButton = observer(function CellActionButton(props: { action: MapAction }) {
-  const actions = useActions();
-  return (
-    <ActionButton
-      {...actions.button(props.action)}
-      counter={<ActionRunning count={actions.running(props.action.address)} />}
-      onRun={() => actions.launch(props.action)}
-    />
-  );
-});
-
-/** Кнопка экшона на строке списка или узле дерева: строка называет экшон ключом или адресом. */
-export const RowActionButtonFor = observer(function RowActionButtonFor(props: {
-  object: MapObject;
-  action: ActionRef;
-}) {
-  const actions = useActions();
-  return (
-    <RowActionButton
-      {...actions.buttonFor(props.object, props.action)}
-      counter={<ActionRunning count={actions.runningFor(props.object, props.action)} />}
-      onRun={() => actions.launchRef(props.object, props.action)}
-    />
-  );
-});
-
-/**
- * Меню строки списка или узла дерева — экшоны из `actions` строки: кнопкой «⋯» и правым кликом.
- * Запуск тем же путём, что у кнопки строки; экшона нет — ошибка своего пункта, а не строки.
- */
-export const RowActionMenuFor = observer(function RowActionMenuFor(props: {
-  object: MapObject;
-  actions: ActionRef[];
-  children: ReactNode;
-}) {
-  const actions = useActions();
-  const menu = useLocalStore(
-    () => new RowMenuStore((ref) => actions.launchRef(props.object, ref)),
-    [props.object],
-  );
-
-  return (
-    <RowMenuFrame
-      hold={menu.popup.hold}
-      onContextMenu={(x, y) => menu.openAt(x, y)}
-      button={<RowMenuButton open={menu.popup.open} onToggle={(button) => menu.toggle(button)} />}
-    >
-      {props.children}
-      {menu.popup.open && (
-        <Floating at={menu.anchor.at} hold={menu.popup.holdLayer}>
-          <ActionMenuPanel>
-            <ActionList empty={false}>
-              {actions
-                .menuFor(props.object, props.actions)
-                .map((entry) =>
-                  entry.action ? (
-                    <ActionItem
-                      key={entry.key}
-                      action={entry.action}
-                      running={actions.running(entry.action.address)}
-                      owner={false}
-                      onSelect={() => menu.select(entry.ref)}
-                    />
-                  ) : (
-                    <MissingActionItem key={entry.key} run={entry.ref.run} />
-                  ),
-                )}
-            </ActionList>
-          </ActionMenuPanel>
-        </Floating>
-      )}
-    </RowMenuFrame>
-  );
-});
-
-/** `ActionButton` набора `@mapward/display` для компонента-дисплея. */
-export const KitActionButton = observer(function KitActionButton(props: {
-  object: MapObject;
-  action: ActionRef;
-  label?: string | undefined;
-}) {
-  const actions = useActions();
-  return (
-    <ActionButton
-      {...actions.buttonFor(props.object, props.action, props.label)}
-      counter={<ActionRunning count={actions.runningFor(props.object, props.action)} />}
-      onRun={() => actions.launchRef(props.object, props.action)}
-    />
-  );
-});
+}

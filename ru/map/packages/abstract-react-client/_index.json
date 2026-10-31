@@ -7,59 +7,34 @@
     "packageName": "@mapward/abstract-react-client",
     "architectureDoc": "ru/docs/architecture/abstract-react-client.md"
   },
-  "details-metrics-layout": {
-    "min-width: 0px": {
-      "areas": [
-        ["code"],
-        ["docs"],
-        ["version"],
-        ["tests"],
-        ["lint"],
-        ["public-api"],
-        ["architecture"],
-        ["requirements-todo"],
-        ["architecture-drift"],
-        ["code-drift"],
-        ["decisions"],
-        ["requirements"],
-        ["files"]
-      ],
-      "style": {
-        "gap": "8px"
-      }
-    },
-    "min-width: 600px": {
-      "areas": [
-        ["code", "docs"],
-        ["version", "tests"],
-        ["lint", "public-api"],
-        ["architecture", "architecture"],
-        ["requirements-todo", "requirements-todo"],
-        ["architecture-drift", "architecture-drift"],
-        ["code-drift", "code-drift"],
-        ["decisions", "decisions"],
-        ["requirements", "requirements"],
-        ["files", "files"]
-      ],
-      "style": {
-        "gap": "8px"
-      }
-    }
-  },
   "metric-groups": {
     "groups": [
+      {
+        "key": "всё",
+        "label": "Всё",
+        "metrics": [
+          "code",
+          "docs",
+          "version",
+          "tests",
+          "lint",
+          "public-api",
+          "architecture",
+          "requirements-todo",
+          "architecture-drift",
+          "code-drift",
+          "decisions",
+          "requirements",
+          "files"
+        ],
+        "layout": "./layout.tsx"
+      },
       {
         "key": "превью",
         "label": "Карточка",
         "description": "Что видно на карточке объекта там, где он встречается на чужом экране.",
         "metrics": ["code"],
-        "defaultPreview": true,
-        "details-metrics-layout": {
-          "areas": [["code"]],
-          "style": {
-            "gap": "8px"
-          }
-        }
+        "defaultPreview": true
       }
     ]
   }

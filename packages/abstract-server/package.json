@@ -26,6 +26,9 @@
   "dependencies": {
     "@mapward/core": "workspace:*",
     "@mapward/docs": "workspace:*",
+    "@mapward/plugin": "workspace:*",
+    "@mapward/plugins": "workspace:*",
+    "@mapward/vfs": "workspace:*",
     "esbuild-wasm": "catalog:",
     "rxjs": "catalog:",
     "tailwindcss": "catalog:",

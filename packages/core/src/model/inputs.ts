@@ -1,4 +1,4 @@
-import type { ActionConfig, ActionInput } from "./schema.ts";
+import type { ActionConfig, ActionInput } from "./configs.ts";
 
 /**
  * Проверка полей формы экшона — решение 0038. Лежит в `core`, а не у сервера: сервер по ней
@@ -92,12 +92,94 @@ export function fillInputs(text: string, values: Record<string, unknown>): strin
 
 /**
  * Вопрос перед запуском: `confirm` текстом, с данными формы. `true` вопроса не задаёт — он лишь
- * открывает форму, и кнопка формы сама служит подтверждением.
+ * открывает форму, и кнопка формы сама служит подтверждением. `form` — поля формы экшона
+ * ({@link actionForm}); без них берутся `inputs`.
  */
 export function confirmQuestion(
   config: ActionConfig,
   given: Record<string, unknown>,
+  form: ActionConfig["inputs"] = config.inputs,
 ): string | undefined {
   if (typeof config.confirm !== "string") return undefined;
-  return fillInputs(config.confirm, checkInputs(config.inputs, given).values);
+  return fillInputs(config.confirm, checkInputs(form, given).values);
 }
+
+type SchemaProperty = {
+  type?: unknown;
+  enum?: unknown;
+  description?: unknown;
+  default?: unknown;
+  format?: unknown;
+};
+
+const isPrimitive = (value: unknown): value is string | number | boolean =>
+  typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+
+/**
+ * Свойство схемы — полем формы. Объект, массив и свойство без типа (`anyOf` и прочее) в простую
+ * форму не ложатся — `undefined`.
+ */
+function inputOf(property: SchemaProperty, required: boolean): ActionInput | undefined {
+  const type = Array.isArray(property.type) ? property.type[0] : property.type;
+  const common = {
+    ...(typeof property.description === "string" ? { description: property.description } : {}),
+    ...(isPrimitive(property.default) ? { default: property.default } : {}),
+    ...(required ? { required: true } : {}),
+  };
+  if (Array.isArray(property.enum)) {
+    return { type: "choice", options: property.enum.map(String), ...common };
+  }
+  if (type === "boolean") return { type: "boolean", ...common };
+  if (type === "number" || type === "integer") return { type: "number", ...common };
+  if (type === "string") {
+    // Абзац, а не слово: `format: "multiline"` — так схема просит многострочное поле.
+    return {
+      type: "string",
+      ...(property.format === "multiline" ? { multiline: true } : {}),
+      ...common,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Поля формы по JSON-схеме параметров метода: всё, чего нет в `given` — заданных параметрах
+ * экшона. Объекты и массивы в форму не попадают: их задают в `params`.
+ */
+export function schemaInputs(
+  schema: unknown,
+  given: Record<string, unknown> = {},
+): Record<string, ActionInput> {
+  if (typeof schema !== "object" || schema === null) return {};
+  const { properties, required } = schema as { properties?: unknown; required?: unknown };
+  if (typeof properties !== "object" || properties === null) return {};
+  const needed = new Set(Array.isArray(required) ? required.map(String) : []);
+  return Object.fromEntries(
+    Object.entries(properties as Record<string, SchemaProperty>).flatMap(([name, property]) => {
+      if (name in given) return [];
+      const input = inputOf(property ?? {}, needed.has(name));
+      return input ? [[name, input] as const] : [];
+    }),
+  );
+}
+
+/**
+ * Форма экшона: `inputs`, если они написаны (пустые `{}` — формы нет вовсе), иначе схема
+ * параметров метода без заданных в `params`. Один ответ на сервере и в
+ * клиенте: форма, которую видит человек, — та, что проверит сервер.
+ */
+export const actionForm = (config: ActionConfig, schema?: unknown): Record<string, ActionInput> =>
+  config.inputs ?? schemaInputs(schema, config.params);
+
+/**
+ * Аргументы метода: заданные параметры и данные формы. Форма по схеме — это недостающие
+ * параметры, и они ложатся рядом; форма по `inputs` — данные, о которых метод знает одним полем
+ * `inputs`: так их получают `shell` и `agent`.
+ */
+export const actionArgs = (
+  config: ActionConfig,
+  values: Record<string, unknown>,
+): Record<string, unknown> =>
+  config.inputs === undefined
+    ? { ...config.params, ...values }
+    : { ...config.params, inputs: values };

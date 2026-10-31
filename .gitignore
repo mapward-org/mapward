@@ -22,3 +22,6 @@ packages/*/src/**/*.d.ts
 # Доки инструмента собираются в модуль перед сборкой: markdown рядом — источник,
 # а две копии одного текста в гите разъезжаются
 packages/docs/src/content.generated.ts
+
+# Встроенные плагины едут в сервер строками: исходник — registry/, модуль собирается перед сборкой
+packages/plugins/src/sources.generated.ts

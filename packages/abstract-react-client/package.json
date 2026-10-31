@@ -24,11 +24,8 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@mapward/component": "workspace:*",
     "@mapward/core": "workspace:*",
-    "@mapward/display": "workspace:*",
-    "@xyflow/react": "catalog:",
-    "mobx": "catalog:",
-    "mobx-react-lite": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "rxjs": "catalog:"

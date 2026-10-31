@@ -1,6 +1,6 @@
-import { observer } from "mobx-react-lite";
 import type { MapObject } from "@mapward/core";
-import { useLocalStore } from "../../../lib/mobx/use-local-store.ts";
+import { useLocalStore } from "../../../lib/store/use-local-store.ts";
+import { useWatch } from "../../../lib/store/use-watch.ts";
 import { ActionsIcon, IndexIcon, MetricsIcon, WorkflowIcon } from "../../../lib/ui/icons.tsx";
 import { Section } from "../../../lib/ui/section.tsx";
 import { MetaStore } from "../model/meta-store.ts";
@@ -21,9 +21,10 @@ import {
  * Раздел без совпадений не рисуется, чтобы найденное не терялось между пустыми заголовками.
  * Раздел директив рисует их фича по уже отобранному списку.
  */
-export const MetaScreen = observer(function MetaScreen(props: { object: MapObject }) {
+export function MetaScreen(props: { object: MapObject }) {
   const port = useMetaPort();
   const meta = useLocalStore(() => new MetaStore(() => props.object, port), [props.object]);
+  useWatch(meta);
   const found = meta.found;
 
   return (
@@ -69,4 +70,4 @@ export const MetaScreen = observer(function MetaScreen(props: { object: MapObjec
       {meta.showDirectives && <port.Directives object={props.object} files={found.directives} />}
     </MetaFrame>
   );
-});
+}

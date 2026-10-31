@@ -8,13 +8,15 @@
       "default": "${{ mapward://~#props.fullPath }}",
       "description": "в какой папке"
     },
-    "name": { "type": "string", "required": true, "description": "имя папки, можно lib/parts" }
-  },
-  "runners": [
-    {
-      "kind": "script",
-      "name": "создать папку",
-      "run": "node \"${{ mapward:// }}/shared-metrics/files/file-ops.mjs\" new-folder \"${{ mapward://~#props.fullPath }}\""
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "имя папки, можно lib/parts"
     }
-  ]
+  },
+  "plugin": "${{ mapward:// }}/_plugins/shell",
+  "method": "run",
+  "params": {
+    "command": "node \"${{ mapward:// }}/shared-metrics/files/file-ops.mjs\" new-folder \"${{ mapward://~#props.fullPath }}\""
+  }
 }

@@ -1,7 +1,7 @@
-import { observer } from "mobx-react-lite";
 import type { ReactNode } from "react";
-import { Toggle } from "../mobx/popup.ts";
-import { useLocalStore } from "../mobx/use-local-store.ts";
+import { Toggle } from "../store/popup.ts";
+import { useLocalStore } from "../store/use-local-store.ts";
+import { useWatch } from "../store/use-watch.ts";
 
 const Chevron = (props: { open: boolean }) => (
   <svg
@@ -24,7 +24,7 @@ const Chevron = (props: { open: boolean }) => (
  * Кнопки заголовка (`actions`) лежат рядом с названием, а не внутри кнопки сворачивания:
  * вложить кнопку в кнопку нельзя, и клик по плюсику не должен закрывать раздел.
  */
-export const Section = observer(function Section(props: {
+export function Section(props: {
   icon?: ReactNode;
   title: string;
   actions?: ReactNode;
@@ -32,6 +32,7 @@ export const Section = observer(function Section(props: {
   children: ReactNode;
 }) {
   const toggle = useLocalStore(() => new Toggle(props.defaultOpen ?? true));
+  useWatch(toggle);
   const open = toggle.open;
 
   return (
@@ -51,7 +52,7 @@ export const Section = observer(function Section(props: {
       {open && props.children}
     </section>
   );
-});
+}
 
 /** Кнопка в заголовке раздела: тот же размер, что у кнопок шапки объекта. */
 export function SectionButton(props: { title: string; onClick: () => void; children: ReactNode }) {

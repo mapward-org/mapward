@@ -8,16 +8,19 @@ import { expect, test } from "vitest";
  * `div` в `compose` в диффе выглядит безобидно, и через месяц слои снова держатся на честном
  * слове.
  *
- * - компонент `compose` — `observer`;
+ * - компонент `compose` — объявление функции; сторы, которые он читает, он подписывает сам —
+ *   `useWatch`;
  * - `compose` только составляет: без тегов разметки, `className` и `style`, без логики, из хуков —
- *   `useLocalStore` и хуки портов (`ports.tsx`). Можно выбрать, что показать (`? :`, `&&`),
+ *   `useLocalStore`, подписка на сторы `useWatch`/`useValue` и хуки портов (`ports.tsx`). Можно
+ *   выбрать, что показать (`? :`, `&&`),
  *   разложить список (`.map`) и передать обработчику один вызов;
  * - `ui` получает всё пропсами: не знает `model`, `adapters`, `compose` и портов фич;
  * - `ui` фичи — много маленьких вью: вью рисует теги, набор `lib/ui`, саму себя (дерево) и то, что
  *   пришло пропсами. Другие вью фичи — ни из соседнего файла, ни из своего: их собирает
  *   `compose` через `children` и рендер-пропсы. Компонент — не длиннее
  *   50 строк. Набор `lib/ui` общий, внутри себя собирается сам;
- * - `model` и `pure-model` не знают React, `pure-model` — и MobX;
+ * - `model` и `pure-model` не знают React, `pure-model` — и сторов: это чистые функции;
+ * - MobX в клиенте нет: состояние — сторы на потоках (`lib/store`);
  * - `model`, `adapters` и `ui` друг друга не импортируют, `pure-model` не импортирует никого из них;
  * - фичи друг друга не импортируют;
  * - состояние React не заводится нигде: ни `useState`, ни эффектов, ни мемоизации.
@@ -25,11 +28,15 @@ import { expect, test } from "vitest";
 
 const ROOT = "packages/abstract-react-client/src";
 
-/**
- * Где хукам React место. Хук локального стора сам держит стор в React — иначе его негде держать,
- * а холст вьюхи карты живёт в `@xyflow/react`, у которого своё состояние в React.
- */
-const EXEMPT = new Set(["lib/mobx/use-local-store.ts", "features/objects-map/ui/flow.tsx"]);
+/** Где хукам React место. Хук локального стора сам держит стор в React — иначе его негде держать. */
+const EXEMPT = new Set([
+  "lib/store/use-local-store.ts",
+  // Связь потоков с React — единственная: подписка вида на сторы.
+  "lib/store/use-watch.ts",
+]);
+
+/** Хуки, которые compose зовёт сам: стор и подписка на него. */
+const STORE_HOOKS = new Set(["useLocalStore", "useWatch", "useValue"]);
 
 const REACT_STATE = new Set([
   "useState",
@@ -143,12 +150,11 @@ function checkCompose(file: string, program: Node, imports: Map<string, string>,
     ) {
       continue;
     }
-    // Компонент — `observer`: рендер-пропсы он зовёт у себя, и без `observer` то, что они
-    // читают из стора, никто не наблюдает — ленивая подписка так и не открывается.
-    const bare =
-      "компонент compose — observer(…), иначе прочитанное в рендер-пропсах не наблюдается";
+    // Компонент — объявление функции: так он один на файл видом и не прячет за собой обёртку.
+    // На сторы он подписывается сам, `useWatch`, — проверить, что подписан на всё прочитанное,
+    // тест не может, это остаётся ревью.
+    const bare = "компонент compose — function X(…), а не стрелка в переменной";
     if (kind === "FunctionDeclaration" && isComponentName((inner.id as Node | null)?.name)) {
-      fail(file, statement, bare);
       continue;
     }
     if (kind === "VariableDeclaration") {
@@ -203,10 +209,10 @@ function checkCompose(file: string, program: Node, imports: Map<string, string>,
       }
       case "CallExpression": {
         const name = calleeName(node);
-        if (name && /^use[A-Z]/.test(name) && name !== "useLocalStore") {
+        if (name && /^use[A-Z]/.test(name) && !STORE_HOOKS.has(name)) {
           const source = imports.get(name) ?? "";
           if (!/(^|\/)ports(\.tsx?)?$/.test(source) && !/\/ports\//.test(source)) {
-            fail(file, node, `${name} — в compose только useLocalStore и хуки портов`);
+            fail(file, node, `${name} — в compose только сторы, подписка на них и хуки портов`);
           }
         }
         break;
@@ -219,8 +225,7 @@ function checkCompose(file: string, program: Node, imports: Map<string, string>,
             one.type === "Program" ||
             one.type === "ExportNamedDeclaration" ||
             one.type === "VariableDeclaration" ||
-            one.type === "VariableDeclarator" ||
-            (one.type === "CallExpression" && calleeName(one) === "observer"),
+            one.type === "VariableDeclarator",
         );
         if (component) break;
         // Скобки вокруг выражения парсер сохраняет — смотрим на то, что внутри них.
@@ -357,11 +362,8 @@ test("слои клиента держатся правил — решение 0
       if ((layer === "model" || layer === "pure-model") && /^react(-dom)?(\/|$)/.test(source)) {
         fail(relative, statement, `${layer} не знает React`);
       }
-      if ((layer === "model" || layer === "pure-model") && source === "mobx-react-lite") {
-        fail(relative, statement, `${layer} не знает React`);
-      }
-      if (layer === "pure-model" && source === "mobx") {
-        fail(relative, statement, "pure-model — чистые функции, без MobX");
+      if (source === "mobx" || source === "mobx-react-lite") {
+        fail(relative, statement, "MobX в клиенте нет: сторы на потоках, lib/store");
       }
     }
 
@@ -370,7 +372,7 @@ test("слои клиента держатся правил — решение 0
         if (node.type !== "CallExpression") return;
         const name = calleeName(node);
         if (name && REACT_STATE.has(name)) {
-          fail(relative, node, `${name} — состояние и эффекты живут в сторах MobX`);
+          fail(relative, node, `${name} — состояние и эффекты живут в сторах (lib/store)`);
         }
       });
     }
@@ -383,4 +385,23 @@ test("слои клиента держатся правил — решение 0
   }
 
   expect(offenders).toEqual([]);
+});
+
+/**
+ * Холст карты — компоненты встроенного плагина `objects-map` (решение 0044): клиент рисует только
+ * кирпич `ObjectCard`, а про узлы, операции правки и библиотеку холста не знает ничего.
+ */
+test("клиент не знает холста карты", async () => {
+  const offenders: string[] = [];
+  for (const file of await sources(ROOT)) {
+    const text = await readFile(file, "utf8");
+    const found = /ObjectsMap|MapOp|pinnedEnds|xyflow/.exec(text);
+    if (found) offenders.push(`${slash(path.relative(ROOT, file))}: ${found[0]}`);
+  }
+  expect(offenders).toEqual([]);
+
+  const manifest = JSON.parse(
+    await readFile("packages/abstract-react-client/package.json", "utf8"),
+  ) as { dependencies?: Record<string, string> };
+  expect(Object.keys(manifest.dependencies ?? {})).not.toContain("@xyflow/react");
 });

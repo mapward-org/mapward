@@ -1,11 +1,21 @@
 {
   "label": "Рабочее дерево",
-  "refresh": "on-display",
-  "collectors": [
-    {
-      "kind": "script",
-      "run": "node \"${{ mapward:// }}/_metrics/agent-worktree/worktree.mjs\" \"${{ mapward://@ }}\""
+  "component": "${{ mapward:// }}/_plugins/views/list.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/shell",
+      "method": "json",
+      "params": {
+        "command": "node \"${{ mapward:// }}/_metrics/agent-worktree/worktree.mjs\" \"${{ mapward://@ }}\""
+      }
+    },
+    "empty": "дерево чистое"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/shell",
+    "method": "json",
+    "params": {
+      "command": "node \"${{ mapward:// }}/_metrics/agent-worktree/worktree.mjs\" \"${{ mapward://@ }}\""
     }
-  ],
-  "display": { "kind": "list", "empty": "дерево чистое" }
+  }
 }

@@ -1,26 +1,39 @@
-import { action, makeObservable, observable, reaction } from "mobx";
+import { distinctUntilChanged, map, startWith, type Subscription } from "rxjs";
 import type { Run } from "@mapward/core";
+import { Reactive, type Watchable } from "../../../lib/store/reactive.ts";
 import { inTab, pretty, type RunsTab } from "../pure-model/runs.ts";
 
 /** Вкладка экрана — состояние вида: помнится у человека, в историю не идёт. */
-export type TabSlot = { value: RunsTab; set(value: RunsTab): void };
+export type TabSlot = Watchable & { readonly value: RunsTab; set(value: RunsTab): void };
+
+/** Прогоны объекта: список и поток его изменений. */
+export type RunsSource = Watchable & { readonly list: Run[] };
 
 /**
  * Экран прогонов — решение 0038. Прогоны приходят сверху, выбор живёт в истории экрана
  * (решение 0036): «назад» возвращает к тому прогону, который читали. Время идущего прогона
  * тикает само: подписка приносит только смену шагов, а не секунды.
  */
-export class RunsScreenStore {
-  now = Date.now();
-  private stop: (() => void) | undefined;
+export class RunsScreenStore extends Reactive {
+  private readonly clock = this.state(Date.now());
+  private stop: Subscription | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
-    private readonly runs: () => Run[],
+    private readonly source: RunsSource,
     private readonly selected: () => string | undefined,
     private readonly tabSlot: TabSlot,
   ) {
-    makeObservable<RunsScreenStore, "tick">(this, { now: observable, tick: action });
+    super();
+    this.depend(source, tabSlot);
+  }
+
+  get now(): number {
+    return this.clock.value;
+  }
+
+  private runs(): Run[] {
+    return this.source.list;
   }
 
   get tab(): RunsTab {
@@ -58,6 +71,12 @@ export class RunsScreenStore {
   }
 
   /** Конфиг — после подстановок: тот, по которому прогон действительно шёл. */
+  /** Итог метода экшона — то, что он отдал, кроме сообщений о ходе. */
+  get result(): string | undefined {
+    const result = this.open?.result;
+    return result === undefined ? undefined : pretty(result);
+  }
+
   get config(): string | undefined {
     const config = this.open?.config;
     return config === undefined ? undefined : pretty(config);
@@ -68,23 +87,25 @@ export class RunsScreenStore {
   }
 
   private tick(): void {
-    this.now = Date.now();
+    this.clock.set(Date.now());
   }
 
   mount(): void {
-    this.stop = reaction(
-      () => this.running,
-      (running) => {
+    this.stop = this.source.changed$
+      .pipe(
+        startWith(undefined),
+        map(() => this.running),
+        distinctUntilChanged(),
+      )
+      .subscribe((running) => {
         this.tick();
         this.halt();
         if (running) this.timer = setInterval(() => this.tick(), 1000);
-      },
-      { fireImmediately: true },
-    );
+      });
   }
 
   unmount(): void {
-    this.stop?.();
+    this.stop?.unsubscribe();
     this.halt();
   }
 

@@ -1,11 +1,27 @@
 {
   "label": "Линтер",
-  "refresh": "manual",
-  "collectors": [
-    { "kind": "script", "run": "pnpm oxlint ${{ mapward://~#props.fullPath }}" }
-  ],
-  "transforms": [ { "kind": "prompt" } ],
-  "collectorsCache": true,
-  "transformsCache": true,
-  "display": { "kind": "status" }
+  "component": "${{ mapward:// }}/_plugins/views/status.tsx",
+  "params": {
+    "source": {
+      "plugin": "${{ mapward:// }}/_plugins/agent",
+      "method": "ask",
+      "params": {
+        "prompt": "Запусти в корне проекта ${{ mapward://@ }} команду `pnpm oxlint ${{ mapward://~#props.fullPath }}` и оформи её вывод: ok — прошёл ли линтер без ошибок, summary — сколько ошибок и предупреждений и самые важные из них одной-двумя строками.",
+        "shape": "status",
+        "cache": "${{ mapward://~ }}/_metrics/lint/answer.json",
+        "permissions": ["Bash(pnpm oxlint:*)"]
+      }
+    },
+    "refresh": "refresh"
+  },
+  "agent": {
+    "plugin": "${{ mapward:// }}/_plugins/agent",
+    "method": "ask",
+    "params": {
+      "prompt": "Запусти в корне проекта ${{ mapward://@ }} команду `pnpm oxlint ${{ mapward://~#props.fullPath }}` и оформи её вывод: ok — прошёл ли линтер без ошибок, summary — сколько ошибок и предупреждений и самые важные из них одной-двумя строками.",
+      "shape": "status",
+      "cache": "${{ mapward://~ }}/_metrics/lint/answer.json",
+      "permissions": ["Bash(pnpm oxlint:*)"]
+    }
+  }
 }

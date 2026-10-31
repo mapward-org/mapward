@@ -1,15 +1,14 @@
 ---
-description: в compose и entry клиента нет useEffect и логики — тест client-layers; подписки и реакции заводит mount стора в useLocalStore; Resource глотает одинаковые значения
+description: в compose и entry клиента нет useEffect и логики — тест client-layers; подписки заводит mount стора в useLocalStore, вид подписывается useWatch
 ---
 
 `tests/client-layers.test.ts` (правила слоёв `abstract-react-client`) валит любой `useEffect`, `if`
-и вычисление в `compose/` и `entry/` — даже в `object-view.tsx` и `app.tsx`. Подписку на мост или
-`reaction` кладут в стор с методами `mount`/`unmount`: `useLocalStore` зовёт их сам, и строгий
-режим React это переживает. Образцы — `directive-turns/model/turns-panel.ts`,
-`focus/model/screen-focus.ts`.
+и вычисление в `compose/` и `entry/` — даже в `object-view.tsx` и `app.tsx`. Подписку на мост
+кладут в стор с методами `mount`/`unmount`: `useLocalStore` зовёт их сам, и строгий режим React
+это переживает. Образцы — `directive-turns/model/turns-panel.ts`, `focus/adapters/focus-inbox.ts`.
 
-`Resource` из `core` для потока событий не годится: равное по JSON значение он дальше не пускает,
-и повторная одинаковая просьба (например, «перейди к объекту» второй раз) пропадёт. Для событий —
-свой стор с `observableRef` и подпиской в `mount`, как `focus/adapters/focus-inbox.ts`.
+С ухода с MobX (ветка `plugin-architecture`, 2026-10-31) сторы — `Reactive` из `lib/store`, ресурсы
+моста — `Feed`. Компонент читает стор только после `useWatch(стор…)`: забытый `useWatch` тест не
+ловит — компонент просто не перерисуется.
 
-2026-09-27.
+2026-09-27, поправлено 2026-10-31.
