@@ -118,16 +118,25 @@ export function View(
           type="button"
           onClick={() => setFolded(!folded)}
           title={folded ? "Показать" : "Скрыть"}
-          className="absolute -left-4 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
+          // Стрелка висит в узком левом поле сетки: кнопка шириной с поле, уголок по её центру.
+          className="absolute -left-2 flex w-2 justify-center opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
         >
           <svg
             viewBox="0 0 16 16"
-            className={`size-4 transition-transform ${folded ? "" : "rotate-90"}`}
+            className={`size-4 shrink-0 transition-transform ${folded ? "" : "rotate-90"}`}
           >
             <path d="M6 4.5 10 8l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
           </svg>
         </button>
-        <span className="truncate">{metric.label}</span>
+        {/* По стрелке шириной в поле попасть трудно — название сворачивает так же. */}
+        <button
+          type="button"
+          onClick={() => setFolded(!folded)}
+          title={folded ? "Показать" : "Скрыть"}
+          className="min-w-0 truncate text-left"
+        >
+          {metric.label}
+        </button>
         {marks}
         {button}
         {freshness && (
