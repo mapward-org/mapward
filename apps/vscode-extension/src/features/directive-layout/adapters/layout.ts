@@ -18,6 +18,10 @@ import {
 export type Pairs = {
   terminalOf(directivePath: string): vscode.Terminal | undefined;
   directiveOf(terminal: vscode.Terminal): string | undefined;
+  /** Завести терминал директивы, у которой его нет: открыл директиву — рядом её агент. */
+  open(directivePath: string): Promise<void>;
+  /** Вкладок директивы не осталось — закрыть её терминал; разговор при этом сохраняется. */
+  close(directivePath: string): Promise<void>;
 };
 
 /** Запомненные колонки зон: группы двигают и закрывают, поэтому это подсказка, а не истина. */
@@ -25,7 +29,20 @@ let directivesColumn: number | undefined;
 let terminalsColumn: number | undefined;
 
 const isDirectiveTab = (tab: vscode.Tab): boolean =>
-  tab.input instanceof vscode.TabInputText && isDirectivePath(tab.input.uri.fsPath);
+  tab.input instanceof vscode.TabInputText &&
+  tab.input.uri.scheme === "file" &&
+  isDirectivePath(tab.input.uri.fsPath);
+
+const samePath = (a: string, b: string) =>
+  a.replaceAll("\\", "/").toLowerCase() === b.replaceAll("\\", "/").toLowerCase();
+
+/** Открыта ли директива ещё хоть где-нибудь — в любой группе. */
+const stillOpen = (path: string): boolean =>
+  vscode.window.tabGroups.all.some((group) =>
+    group.tabs.some(
+      (tab) => tab.input instanceof vscode.TabInputText && samePath(tab.input.uri.fsPath, path),
+    ),
+  );
 
 function groups(): GroupView[] {
   return vscode.window.tabGroups.all.map((group) => ({
@@ -101,6 +118,8 @@ export function registerDirectiveLayout(pairs: Pairs): vscode.Disposable {
 
   const onEditor = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
     if (moving || !editor) return;
+    // Директива в диффе или из истории git — не та директива, которую открыли работать.
+    if (editor.document.uri.scheme !== "file") return;
     const path = editor.document.uri.fsPath;
     if (!isDirectivePath(path)) return;
 
@@ -119,8 +138,22 @@ export function registerDirectiveLayout(pairs: Pairs): vscode.Disposable {
         moving = false;
       }
     }
-    // Терминал выходит под директиву, курсор остаётся в ней.
-    pairs.terminalOf(path)?.show(true);
+    // Терминал выходит под директиву, курсор остаётся в ней. Терминала нет — заводится: при
+    // любом открытии директивы рядом её агент, с прежним разговором, если он был.
+    const terminal = pairs.terminalOf(path);
+    if (terminal) terminal.show(true);
+    else await pairs.open(path);
+  });
+
+  // Закрыли директиву — закрылся и её терминал. Перенос в свою зону закрывает копию, а не
+  // директиву: она открыта в зоне, и терминал остаётся.
+  const onTabs = vscode.window.tabGroups.onDidChangeTabs(async (event) => {
+    for (const tab of event.closed) {
+      if (!isDirectiveTab(tab) || !(tab.input instanceof vscode.TabInputText)) continue;
+      const path = tab.input.uri.fsPath;
+      // oxlint-disable-next-line no-await-in-loop
+      if (!stillOpen(path)) await pairs.close(path);
+    }
   });
 
   const onTerminal = vscode.window.onDidChangeActiveTerminal(async (terminal) => {
@@ -133,5 +166,5 @@ export function registerDirectiveLayout(pairs: Pairs): vscode.Disposable {
     await openDirective(path, { preserveFocus: true });
   });
 
-  return vscode.Disposable.from(onEditor, onTerminal);
+  return vscode.Disposable.from(onEditor, onTerminal, onTabs);
 }

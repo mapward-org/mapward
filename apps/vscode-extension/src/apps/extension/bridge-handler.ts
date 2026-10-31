@@ -8,6 +8,7 @@ import { mapsHandlers } from "@/features/maps/index.extension.ts";
 import { createBridgeServer } from "@mapward/core";
 import { webviewTransport, type WebviewLike } from "@/shared/bridge/transport.ts";
 import {
+  closeDirectiveTerminals,
   closeTerminal,
   listTerminals,
   openTerminal,
@@ -15,6 +16,8 @@ import {
   showTerminal,
 } from "@/features/terminals/index.extension.ts";
 import { runStage } from "./run-stage.ts";
+import { openPath } from "@/features/maps/index.extension.ts";
+import { isDirectivePath, openDirective } from "@/features/directive-layout/index.extension.ts";
 
 /**
  * Где фичи встречаются с мостом. Ниже apps никто не решает, что отвечает хост.
@@ -47,6 +50,10 @@ export function serveBridge(
 ): () => void {
   const handlers: BridgeHandlers<AppBridge> = {
     ...mapsHandlers(),
+
+    /** Директива открывается в своей зоне — справа сверху, остальные файлы — в центре. */
+    openPath: (params) =>
+      isDirectivePath(params.path) ? openDirective(params.path) : openPath(params),
 
     getCapabilities: () => server.capabilities(),
     reloadMap: (ref) => server.reloadMap(ref),
@@ -95,7 +102,7 @@ export function serveBridge(
       if (!title) return { path: "" };
 
       const created = await server.createDirective({ objectPath: params.objectPath, title });
-      await vscode.window.showTextDocument(vscode.Uri.file(created.path));
+      await openDirective(created.path);
       return created;
     },
 
@@ -107,11 +114,17 @@ export function serveBridge(
       const yes = "Удалить";
       const answer = await vscode.window.showWarningMessage(
         `Удалить директиву ${params.directive}?`,
-        { modal: true, detail: "Вместе с ней уйдёт состояние её прогонов." },
+        { modal: true, detail: "Файл уйдёт в корзину, терминал директивы закроется." },
         yes,
       );
       if (answer !== yes) return { deleted: false };
-      return server.deleteDirective(params);
+      const result = await server.deleteDirective(params);
+      if (result.deleted) {
+        await closeDirectiveTerminals(`${params.objectPath}/_directives/${params.directive}`, {
+          forget: true,
+        });
+      }
+      return result;
     },
 
     openObjectTerminal: async (params) => {
