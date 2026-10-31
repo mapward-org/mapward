@@ -16,8 +16,11 @@ import {
   showTerminal,
 } from "@/features/terminals/index.extension.ts";
 import { runStage } from "./run-stage.ts";
-import { openPath } from "@/features/maps/index.extension.ts";
-import { isDirectivePath, openDirective } from "@/features/directive-layout/index.extension.ts";
+import {
+  isDirectivePath,
+  openDirective,
+  openFile,
+} from "@/features/directive-layout/index.extension.ts";
 
 /**
  * Где фичи встречаются с мостом. Ниже apps никто не решает, что отвечает хост.
@@ -53,7 +56,7 @@ export function serveBridge(
 
     /** Директива открывается в своей зоне — справа сверху, остальные файлы — в центре. */
     openPath: (params) =>
-      isDirectivePath(params.path) ? openDirective(params.path) : openPath(params),
+      isDirectivePath(params.path) ? openDirective(params.path) : openFile(params.path),
 
     getCapabilities: () => server.capabilities(),
     reloadMap: (ref) => server.reloadMap(ref),

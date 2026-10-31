@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  centerZone,
   directiveZone,
   isDirectivePath,
   terminalZone,
@@ -24,7 +25,10 @@ export type Pairs = {
   close(directivePath: string): Promise<void>;
 };
 
-/** Запомненные колонки зон: группы двигают и закрывают, поэтому это подсказка, а не истина. */
+/**
+ * Запомненные колонки зон. Номер колонки VS Code пересчитывает при любой перестройке групп, поэтому
+ * зона узнаётся по содержимому, а номер — подсказка, какую из подходящих взять.
+ */
 let directivesColumn: number | undefined;
 let terminalsColumn: number | undefined;
 
@@ -44,11 +48,14 @@ const stillOpen = (path: string): boolean =>
     ),
   );
 
+const isTerminalTab = (tab: vscode.Tab): boolean => tab.input instanceof vscode.TabInputTerminal;
+
 function groups(): GroupView[] {
   return vscode.window.tabGroups.all.map((group) => ({
     column: group.viewColumn,
     directives: group.tabs.some(isDirectiveTab),
-    terminals: group.tabs.some((tab) => tab.input instanceof vscode.TabInputTerminal),
+    terminals: group.tabs.some(isTerminalTab),
+    others: group.tabs.some((tab) => !isDirectiveTab(tab) && !isTerminalTab(tab)),
   }));
 }
 
@@ -81,6 +88,17 @@ export async function openDirective(
     preview: false,
   });
   directivesColumn = editor.viewColumn ?? column;
+}
+
+/**
+ * Открыть обычный файл в центре, а не в активной группе: активной часто бывает группа директив,
+ * а закреплённую VS Code обходит и уводит файл к соседям — к терминалам. Центра нет, все группы
+ * заняты зонами — файл заводит себе группу справа.
+ */
+export async function openFile(path: string): Promise<void> {
+  const directives = directivesZone();
+  const column = centerZone(groups(), directives, terminalsZone()) ?? nextColumn();
+  await vscode.window.showTextDocument(vscode.Uri.file(path), { viewColumn: column });
 }
 
 /**
