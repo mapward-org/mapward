@@ -284,7 +284,10 @@ function watchGlobs(spec: Watch, cwd: string, onChange: () => void): () => void 
   const exclude = lower((spec.exclude ?? []).map((glob) => full(cwd, glob)));
   let timer: ReturnType<typeof setTimeout> | undefined;
   const watchers: FSWatcher[] = [];
-  for (const base of new Set(include.map((glob) => globBase(glob) || slash(cwd)))) {
+  // Папка под вотчером — в регистре конфига: на Linux пути регистрозависимы, и папка в нижнем
+  // регистре — другая папка, которой нет. В нижний регистр — только для сверки с глобами.
+  const bases = spec.include.map((glob) => globBase(full(cwd, glob)) || slash(cwd));
+  for (const base of new Set(bases)) {
     try {
       const watcher = watchFs(base, { recursive: true }, (_event, name) => {
         if (name === null) return;

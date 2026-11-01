@@ -296,9 +296,19 @@ test("agent.ask: the saved answer without asking; refresh asks, saves and tells 
     });
 
     // Тот, кто смотрит, видит «спрашиваю» и новый ответ — кнопку нажимал не он.
-    const watching = until(stream, "ask", args, (seen) =>
-      seen.some((value) => (value as { asked?: boolean }).asked === true),
+    // Нажимаем, когда смотрящий уже увидел прежний ответ: иначе первым он увидит сразу `busy`.
+    let looking: (() => void) | undefined;
+    const looked = new Promise<void>((resolve) => (looking = resolve));
+    const watching = until(
+      stream,
+      "ask",
+      args,
+      (seen) => seen.some((value) => (value as { asked?: boolean }).asked === true),
+      (seen) => {
+        if (seen.length === 1) looking?.();
+      },
     );
+    await looked;
     const refreshed = await call("refresh", args);
     expect(refreshed.error).toBeUndefined();
     const answer = refreshed.values.at(-1) as { asked: true; updatedAt: string; data: unknown };

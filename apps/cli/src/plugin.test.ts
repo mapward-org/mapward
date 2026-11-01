@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { createMapServer, serveMcp } from "@mapward/abstract-server";
 import { findMetricOwner } from "@mapward/core";
 import { createPorts } from "./ports.ts";
@@ -162,7 +162,10 @@ test("метод плагина: сборка, процесс, ответ; ра�
     // `console.log` плагина ушёл в лог, а не сломал разговор.
     expect(await first(map.callPlugin({ ...ref(), plugin, method: "same" }))).toEqual([true, true]);
     expect(await collect(map.callPlugin({ ...ref(), plugin, method: "count" }))).toEqual([1, 2]);
-    expect(map.pluginLog({ ...ref(), plugin })).toContain("это в stderr, а не в протокол");
+    // stderr — свой канал, рядом с ответом в stdout он не обязан успеть: ждём, а не читаем сразу.
+    await vi.waitFor(() =>
+      expect(map.pluginLog({ ...ref(), plugin })).toContain("это в stderr, а не в протокол"),
+    );
 
     expect(await map.describePlugin({ ...ref(), plugin })).toEqual({
       description: "приветствия",
