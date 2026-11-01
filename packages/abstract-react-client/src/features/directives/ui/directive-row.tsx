@@ -51,7 +51,7 @@ export function DirectiveRow(props: {
                 // Лоадер значит «идёт сейчас», поэтому смотрим не на последний прогон,
                 // а на незакрытый: закончившийся этап помечать нечем.
                 label: stage.name,
-                busy: isRunning(file) && file.run?.stage === stage.name,
+                busy: isRunning(file) && file.stage === stage.name,
                 onSelect: () => runStage(file, stage.name),
               })),
             },

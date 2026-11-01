@@ -2,7 +2,6 @@ export { objectPrompt, stagePrompt, stageRequest } from "./domain/prompts.ts";
 export { directiveName } from "./domain/directive-name.ts";
 export { DirectiveLocator } from "./application/services/directive-locator.ts";
 export { DirectiveState } from "./application/services/directive-state.ts";
-export { DirectiveThread } from "./application/services/directive-thread.ts";
 export { CreateDirective } from "./application/use-cases/create-directive.ts";
 export { DeleteDirective } from "./application/use-cases/delete-directive.ts";
 export { FinishDirective } from "./application/use-cases/finish-directive.ts";

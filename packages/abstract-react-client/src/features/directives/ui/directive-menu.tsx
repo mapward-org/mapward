@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { DirectivesIcon, NewDirectiveIcon } from "../../../lib/ui/icons.tsx";
-import { Spinner } from "../../../lib/ui/spinner.tsx";
 
 /**
  * Директивы объекта кнопкой с поиском — в шапке экрана и карточки. Выглядит как меню экшонов
@@ -85,50 +84,9 @@ export function NewDirectiveItem(props: { onSelect: () => void }) {
 
 export function DirectiveItems(props: { empty: string | undefined; children: ReactNode }) {
   return (
-    <ul className="min-h-0 overflow-y-auto">
-      {props.empty && <li className="px-3 py-0.5 opacity-60">{props.empty}</li>}
+    <div className="min-h-0 overflow-y-auto">
+      {props.empty && <div className="px-3 py-0.5 opacity-60">{props.empty}</div>}
       {props.children}
-    </ul>
-  );
-}
-
-/**
- * Пункт — директива: имя открывает её файл, этапы запускают уже оттуда (решение 0045). Хост не
- * умеет открыть — имя просто подпись.
- */
-export function DirectiveItem(props: {
-  label: string;
-  title: string;
-  hint: string;
-  hintClass: string;
-  /** Этап идёт сейчас: лоадер перед подсказкой. */
-  busy: boolean;
-  onOpen?: (() => void) | undefined;
-}) {
-  return (
-    <li className="px-3 py-0.5">
-      <div className="flex items-baseline gap-2">
-        {props.onOpen ? (
-          <button
-            type="button"
-            title={props.title}
-            onClick={props.onOpen}
-            className="min-w-0 truncate text-left hover:underline"
-          >
-            {props.label}
-          </button>
-        ) : (
-          <span title={props.title} className="min-w-0 truncate">
-            {props.label}
-          </span>
-        )}
-        <span
-          className={`ml-auto flex shrink-0 items-center gap-1 self-center text-[10px] ${props.hintClass}`}
-        >
-          {props.busy && <Spinner />}
-          {props.hint}
-        </span>
-      </div>
-    </li>
+    </div>
   );
 }

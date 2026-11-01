@@ -31,12 +31,7 @@ export class RunDirective {
       ? ((await this.reader.read(stage.path)) ?? "")
       : defaultStageText(stage.name);
 
-    await this.state.started({
-      objectPath: found.object.path,
-      directive: found.file.name,
-      stage: stage.name,
-      now: new Date(),
-    });
+    await this.state.started({ directivePath: found.file.path, stage: stage.name });
     // Этап начался — человек взял ход: директива больше не ждёт ответа, она идёт (решение 0034).
     this.turns.started({
       mapPath: params.mapPath,

@@ -11,7 +11,6 @@ import { DirectivesView } from "../model/directives-view.ts";
 import { useDirectivesPort } from "../ports.tsx";
 import { DirectiveList } from "../ui/directive-list.tsx";
 import {
-  DirectiveItem,
   DirectiveItems,
   DirectiveMenuBox,
   DirectiveMenuButton,
@@ -58,8 +57,8 @@ export function DirectiveArchive(props: { object: MapObject; files: MapFile[] })
 
 /**
  * Директивы объекта кнопкой с поиском — одна на экран и карточку (решение 0045): сверху
- * «новая», пункт на незакрытую директиву, клик открывает её файл — этапы запускают оттуда.
- * Кнопка есть всегда; чего хост не умеет, того в меню нет.
+ * «новая», дальше все директивы строкой мета-экрана — клик открывает файл, этапы запускают
+ * оттуда, крестик удаляет. Кнопка есть всегда; чего хост не умеет, того в меню нет.
  */
 export function DirectiveMenu(props: { object: MapObject }) {
   const port = useDirectivesPort();
@@ -93,15 +92,13 @@ export function DirectiveMenu(props: { object: MapObject }) {
               onFirst={() => menu.openFirst()}
             />
             <DirectiveItems empty={menu.empty}>
-              {menu.found.map((item) => (
-                <DirectiveItem
-                  key={item.file.path}
-                  label={item.label}
-                  title={item.file.name}
-                  hint={item.hint}
-                  hintClass={item.hintClass}
-                  busy={item.busy}
-                  onOpen={menu.canOpen ? () => menu.open(item) : undefined}
+              {menu.found.map((file) => (
+                <DirectiveRow
+                  key={file.path}
+                  file={file}
+                  stages={[]}
+                  onOpen={menu.canOpen ? (one) => menu.open(one) : undefined}
+                  onRemove={port.ask ? (one: MapFile) => view.remove(one) : undefined}
                 />
               ))}
             </DirectiveItems>

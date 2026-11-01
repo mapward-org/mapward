@@ -5,6 +5,7 @@ export {
   directiveOfTerminal,
   directiveTerminal,
   listTerminals,
+  onceForDirective,
   openTerminal,
   pickSession,
   pickStageSession,
@@ -14,4 +15,4 @@ export {
   showDirectiveTerminal,
   showTerminal,
 } from "./adapters/terminals.ts";
-export { stageName } from "./pure-model/names.ts";
+export { directiveTabName, stageName } from "./pure-model/names.ts";

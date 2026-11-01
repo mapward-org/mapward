@@ -13,13 +13,14 @@ import { serveBridge } from "./bridge-handler.ts";
 import { announcePlatform } from "./platform-record.ts";
 import {
   adoptTerminals,
+  closeDirectiveTerminals,
   directiveOfTerminal,
   directiveTerminal,
   setMcpUrl,
 } from "@/features/terminals/index.extension.ts";
 import { registerDirectiveLayout } from "@/features/directive-layout/index.extension.ts";
 import { withStageTabs } from "./stage-tabs.ts";
-import { runStage } from "./run-stage.ts";
+import { openDirectiveTerminal, runStage } from "./run-stage.ts";
 import {
   directiveHolder,
   locateDirective,
@@ -118,11 +119,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
   await adoptTerminals(context.workspaceState);
 
-  // Директива справа сверху, её терминал под ней: пару держит раскладка, кто чей — терминалы.
-  context.subscriptions.push(
-    registerDirectiveLayout({ terminalOf: directiveTerminal, directiveOf: directiveOfTerminal }),
-  );
-
   // Кнопки этапов в файле директивы — решение 0032. Объект читается на каждый вопрос заново:
   // директивы и этапы меняются, пока файл открыт. Читается только тот, в чьей папке файл.
   const maps = state.kind === "maps" ? state.maps : [];
@@ -141,6 +137,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return undefined;
   };
+  // Директива справа сверху, её терминал под ней: пару держит раскладка, кто чей — терминалы.
+  // Открыли директиву без терминала — заводится её агент; закрыли — терминал закрывается.
+  context.subscriptions.push(
+    registerDirectiveLayout({
+      terminalOf: directiveTerminal,
+      directiveOf: directiveOfTerminal,
+      open: async (path) => {
+        const found = await find(vscode.Uri.file(path));
+        if (!found) return;
+        await openDirectiveTerminal(server, {
+          mapPath: found.map.mapPath,
+          basePath: found.map.basePath,
+          name: found.map.name,
+          address: found.located.object.address,
+          directive: found.located.directive,
+          directivePath: path,
+        });
+      },
+      close: (path) => closeDirectiveTerminals(path),
+    }),
+  );
+
   context.subscriptions.push(
     registerDirectiveButtons({
       locate: async (uri) => (await find(uri))?.located,

@@ -1,6 +1,10 @@
+import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import * as vscode from "vscode";
-import type { Shell } from "../pure-model/shell.ts";
-import { quoteArg, quotePrompt, shellOf, singleLine } from "../pure-model/shell.ts";
+import { shellOf, singleLine } from "../pure-model/shell.ts";
+import { agentCommand, type AgentSession } from "../pure-model/agent-command.ts";
 import { freeName, stageName } from "../pure-model/names.ts";
 import { chooseRecipient } from "../pure-model/recipient.ts";
 import { adopt, type Owners } from "../pure-model/adopt.ts";
@@ -49,11 +53,73 @@ export function setMcpUrl(url: string | undefined, fixed = false): void {
   persistent = url !== undefined && fixed;
 }
 
-const mcpFlag = (shell: Shell): string => {
-  if (!mcpUrl) return "";
-  const config = JSON.stringify({ mcpServers: { mapward: { type: "http", url: mcpUrl } } });
-  return ` --mcp-config ${quoteArg(config, shell)}`;
-};
+const mcpConfig = (): string | undefined =>
+  mcpUrl === undefined
+    ? undefined
+    : JSON.stringify({ mcpServers: { mapward: { type: "http", url: mcpUrl } } });
+
+/**
+ * Сессии агента директив: файл директивы → идентификатор разговора. Живёт в хранилище воркспейса,
+ * а не в директиве: разговоры лежат на этой машине, и в git им делать нечего. Терминал закрыли —
+ * идентификатор остаётся, и следующее открытие директивы продолжит тот же разговор.
+ */
+const SESSIONS_KEY = "mapward.directiveSessions";
+
+const keyOf = (path: string) => path.replaceAll("\\", "/").toLowerCase();
+
+/** Разговоры агента лежат файлами `<id>.jsonl` в папке проекта внутри его настроек. */
+function onDisk(id: string): boolean {
+  const projects = join(process.env["CLAUDE_CONFIG_DIR"] ?? join(homedir(), ".claude"), "projects");
+  try {
+    return readdirSync(projects).some((folder) =>
+      existsSync(join(projects, folder, `${id}.jsonl`)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function sessionOf(directivePath: string): Promise<AgentSession> {
+  const record = owners?.get<Record<string, string>>(SESSIONS_KEY) ?? {};
+  const key = keyOf(directivePath);
+  const known = record[key];
+  if (known !== undefined) return { id: known, resume: onDisk(known) };
+  const id = randomUUID();
+  await owners?.update(SESSIONS_KEY, { ...record, [key]: id });
+  return { id, resume: false };
+}
+
+async function forgetSession(directivePath: string): Promise<void> {
+  const record = { ...owners?.get<Record<string, string>>(SESSIONS_KEY) };
+  delete record[keyOf(directivePath)];
+  await owners?.update(SESSIONS_KEY, record);
+}
+
+/**
+ * Терминал директивы заводят двое — раскладка, когда директиву открыли, и кнопка этапа, — и
+ * кнопка сама открывает директиву. Пока один заводит, второй ждёт его и ничего не заводит:
+ * вместо одного терминала выходило два.
+ */
+const opening = new Map<string, Promise<unknown>>();
+
+export async function onceForDirective<T>(
+  directivePath: string,
+  run: () => Promise<T>,
+): Promise<T | undefined> {
+  const key = keyOf(directivePath);
+  const busy = opening.get(key);
+  if (busy) {
+    await busy.catch(() => undefined);
+    return undefined;
+  }
+  const work = run();
+  opening.set(key, work);
+  try {
+    return await work;
+  } finally {
+    opening.delete(key);
+  }
+}
 
 function alive(id: string): Session | undefined {
   const session = sessions.get(id);
@@ -129,6 +195,11 @@ export async function openTerminal(params: {
   address: string;
   cwd: string;
   prompt: string;
+  /**
+   * Что сказать продолженному разговору директивы: промпт объекта он уже слышал. Без него
+   * продолженный разговор поднимается молча.
+   */
+  resumePrompt?: string;
   fresh?: boolean;
   /** Директива, которой терминал принадлежит; без неё он общий терминал объекта. */
   directive?: string;
@@ -177,8 +248,22 @@ export async function openTerminal(params: {
   // reading the prompt as written, line breaks and all.
   // Флаг идёт после промпта: `--mcp-config` принимает несколько значений подряд и съедает
   // следующий позиционный аргумент — промпт уезжал бы в него вместо агента.
-  const shell = shellOf(vscode.env.shell);
-  terminal.sendText(`claude ${quotePrompt(params.prompt, shell)}${mcpFlag(shell)}`);
+  // Терминал директивы несёт её разговор: был — продолжается, не было — заводится под её именем.
+  const agent =
+    params.directivePath === undefined ? undefined : await sessionOf(params.directivePath);
+  const config = mcpConfig();
+  terminal.sendText(
+    agentCommand({
+      shell: shellOf(vscode.env.shell),
+      ...(agent ? { session: agent } : {}),
+      ...(agent?.resume
+        ? params.resumePrompt === undefined
+          ? {}
+          : { prompt: params.resumePrompt }
+        : { prompt: params.prompt }),
+      ...(config === undefined ? {} : { mcpConfig: config }),
+    }),
+  );
   return { id: session.id, name };
 }
 
@@ -208,8 +293,15 @@ export function directiveOfTerminal(terminal: vscode.Terminal): string | undefin
   return living().find((session) => session.terminal === terminal)?.directivePath;
 }
 
-/** Директиву удалили — её терминал уходит вместе с ней: говорить в нём больше не о чем. */
-export async function closeDirectiveTerminals(path: string): Promise<void> {
+/**
+ * Закрыть терминал директивы. Файл директивы закрыли — разговор остаётся и продолжится при
+ * следующем открытии; директиву удалили (`forget`) — говорить в нём больше не о чем.
+ */
+export async function closeDirectiveTerminals(
+  path: string,
+  options: { forget?: boolean } = {},
+): Promise<void> {
+  if (options.forget) await forgetSession(path);
   for (const session of living()) {
     if (session.directivePath !== undefined && samePath(session.directivePath, path)) {
       session.terminal.dispose();

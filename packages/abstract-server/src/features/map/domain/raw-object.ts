@@ -61,41 +61,6 @@ export function filesOf(dir: string, entries: FileEntry[]): MapFile[] {
     }));
 }
 
-/** Git may store either ending; a directive that only changed line endings has not changed. */
-const norm = (value: string | undefined) => value?.replaceAll("\r\n", "\n");
-
-/**
- * A directive knows three states, and all three come from comparing its text with the copy
- * the run left behind: no copy means new, a different copy means changed — decision 0002.
- * Текст самой директивы нужен, только когда состояние есть: `text` тогда и читается.
- */
-export function directiveStatus(
-  file: MapFile,
-  state: string | undefined,
-  text: string | undefined,
-): MapFile {
-  if (!state) return { ...file, status: "new" };
-  try {
-    const saved = JSON.parse(state) as {
-      directive?: string;
-      run?: { stage: string; startedAt: string; finishedAt?: string };
-      runs?: Record<string, number>;
-    };
-    const run = saved.run;
-    // Сколько кругов директива прошла. Состояние старого формата счётчика не несёт —
-    // тогда его и нет: приписывать единицу значило бы выдумать историю.
-    const runs = saved.runs;
-    const seen = { ...file, run, ...(runs === undefined ? {} : { runs }) };
-    // Этап, который не помечает выполнение, копии не снимает: прогон был, а директива
-    // по-прежнему не сделана — решение 0017. Без копии сравнивать не с чем.
-    if (saved.directive === undefined) return { ...seen, status: "new" };
-    const same = norm(saved.directive) === norm(text);
-    return { ...seen, status: same ? "done" : "changed" };
-  } catch {
-    return { ...file, status: "new" };
-  }
-}
-
 /**
  * Этап воркфлоу: файл на этап, frontmatter задаёт имя, порядок и то, ставит ли этап отметку
  * о выполнении — решение 0017. Порядок читается здесь, а не из имени файла: имя смысловое,

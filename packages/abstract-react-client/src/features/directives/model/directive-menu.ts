@@ -1,26 +1,8 @@
 import type { MapFile, MapObject } from "@mapward/core";
-import {
-  activeDirectives,
-  directiveHint,
-  directiveHintClass,
-  directiveLabel,
-  isRunning,
-} from "../../../kernel/directives.ts";
+import { activeDirectives, menuDirectives } from "../../../kernel/directives.ts";
 import { matches } from "../../../kernel/search.ts";
 import { Anchor, Popup } from "../../../lib/store/popup.ts";
 import { Reactive } from "../../../lib/store/reactive.ts";
-
-/**
- * Пункт меню — одна незакрытая директива. Этапов в меню нет: их запускают из файла директивы,
- * за ним в меню и идут (решение 0045).
- */
-export type DirectiveItem = {
-  file: MapFile;
-  label: string;
-  hint: string;
-  hintClass: string;
-  busy: boolean;
-};
 
 /**
  * Что меню умеет, решает хост: нет действия — нет и его кнопки (решение 0014). Форма — порта
@@ -29,8 +11,13 @@ export type DirectiveItem = {
 export type DirectiveMenuHost = { ask: boolean; open?: ((file: MapFile) => void) | undefined };
 
 /**
+ * Пункт меню — директива строкой, той же, что на мета-экране. Этапов в меню нет: их запускают
+ * из файла директивы, за ним в меню и идут (решение 0045).
+ */
+
+/**
  * Директивы объекта кнопкой с поиском — одна и та же в шапке экрана и карточки (решение 0045).
- * Только незакрытые: закрытых у старых объектов десятки, их смотрят на экране «об объекте».
+ * Все директивы объекта: незакрытые сверху, выполненные под ними, поиск идёт по всем.
  * Запрос никуда не сохраняется — закрыли меню, и он пуст, как у меню экшонов.
  */
 export class DirectiveMenuStore extends Reactive {
@@ -66,23 +53,17 @@ export class DirectiveMenuStore extends Reactive {
     return this.host().ask;
   }
 
-  get items(): DirectiveItem[] {
-    return activeDirectives(this.object().directives).map((file) => ({
-      file,
-      label: directiveLabel(file),
-      hint: directiveHint(file),
-      hintClass: directiveHintClass(file),
-      busy: isRunning(file),
-    }));
+  get items(): MapFile[] {
+    return menuDirectives(this.object().directives);
   }
 
-  get found(): DirectiveItem[] {
-    return this.items.filter((item) => matches(this.query, item.file.name));
+  get found(): MapFile[] {
+    return this.items.filter((file) => matches(this.query, file.name));
   }
 
-  /** Что сказать, когда пунктов нет: незакрытых нет вовсе или ничего не нашлось. */
+  /** Что сказать, когда пунктов нет: директив нет вовсе или ничего не нашлось. */
   get empty(): string | undefined {
-    if (this.items.length === 0) return "незакрытых нет";
+    if (this.items.length === 0) return "директив нет";
     return this.found.length === 0 ? "не нашлось" : undefined;
   }
 
@@ -100,9 +81,9 @@ export class DirectiveMenuStore extends Reactive {
     this.typed.set("");
   }
 
-  open(item: DirectiveItem): void {
+  open(file: MapFile): void {
     this.popup.close();
-    this.host().open?.(item.file);
+    this.host().open?.(file);
   }
 
   create(): void {

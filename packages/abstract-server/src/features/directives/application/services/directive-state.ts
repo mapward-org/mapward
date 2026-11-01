@@ -1,97 +1,43 @@
 import type { FileReader, FileWriter } from "../../../../ports/index.ts";
-import { directiveStatePath } from "../../../../kernel/directives.ts";
+import {
+  readDirectiveState,
+  stageFinished,
+  stageStarted,
+  writeDirectiveState,
+} from "../../../../kernel/directive-state.ts";
+import { appendReply } from "../../domain/thread.ts";
 
 /**
  * Состояние прогона пишет сервер, а не агент — решение 0017. Агент сообщает событие: этап
- * начался, этап кончился. Формат состояния и копия текста — внутреннее дело карты.
- *
- * Копия снимается только этапом, которому поручено помечать выполнение: по ней потом видно,
- * менялась ли директива после того, как её сделали. Этап без такого поручения оставляет след
- * о прогоне, но директива остаётся незакрытой.
+ * начался, этап кончился. Лежит состояние во frontmatter самой директивы: файла рядом нет, и
+ * копии текста тоже — отслеживать изменения директивы не нужно, она меняется после каждого этапа.
  */
-export type DirectiveStateFile = {
-  directive?: string;
-  status?: "done";
-  ran?: string;
-  run?: { stage: string; startedAt: string; finishedAt?: string };
-  /**
-   * Сколько раз какой этап начинали. Полной истории прогонов здесь нет намеренно: она растёт
-   * без предела, а спрашивают у неё одно — сколько кругов уже прошло. Счётчик отвечает на это
-   * и не меняет формат состояния, а дополняет его.
-   */
-  runs?: Record<string, number>;
-};
-
-/** Файл состояния прогонов директивы: его читают и пишут оба юзкейса этапа. */
 export class DirectiveState {
   constructor(
     private readonly reader: FileReader,
     private readonly writer: FileWriter,
   ) {}
 
-  async started(params: {
-    objectPath: string;
-    directive: string;
-    stage: string;
-    now: Date;
-  }): Promise<void> {
-    const state = await this.read(params.objectPath, params.directive);
-    // Считается начало, а не конец: прогон, брошенный на середине, — тоже круг, и по счётчику
-    // это должно быть видно.
-    const runs = { ...state.runs, [params.stage]: (state.runs?.[params.stage] ?? 0) + 1 };
-    await this.write(params.objectPath, params.directive, {
-      ...state,
-      runs,
-      run: { stage: params.stage, startedAt: params.now.toISOString() },
-    });
+  async started(params: { directivePath: string; stage: string }): Promise<void> {
+    const text = (await this.reader.read(params.directivePath)) ?? "";
+    const state = stageStarted(readDirectiveState(text), params.stage);
+    await this.writer.write(params.directivePath, writeDirectiveState(text, state));
   }
 
+  /**
+   * Реплика и статус — одной записью: автор правит тот же файл, пока агент думает, и две записи
+   * подряд — два шанса разойтись с его правкой.
+   */
   async finished(params: {
-    objectPath: string;
     directivePath: string;
-    directive: string;
     stage: string;
     marksDone: boolean;
+    reply?: string;
     now: Date;
   }): Promise<void> {
-    const state = await this.read(params.objectPath, params.directive);
-    const run = {
-      stage: params.stage,
-      startedAt: state.run?.stage === params.stage ? state.run.startedAt : params.now.toISOString(),
-      finishedAt: params.now.toISOString(),
-    };
-
-    if (!params.marksDone) {
-      await this.write(params.objectPath, params.directive, { ...state, run });
-      return;
-    }
-
-    // Копия нужна побайтно: пересказ ломает сравнение, по которому выполненная директива
-    // отличается от изменившейся.
-    const text = await this.reader.read(params.directivePath);
-    await this.write(params.objectPath, params.directive, {
-      ...state,
-      directive: text ?? "",
-      status: "done",
-      ran: params.now.toISOString(),
-      run,
-    });
-  }
-
-  private async read(objectPath: string, directive: string): Promise<DirectiveStateFile> {
-    const raw = await this.reader.read(directiveStatePath(objectPath, directive));
-    if (raw === undefined) return {};
-    try {
-      return JSON.parse(raw) as DirectiveStateFile;
-    } catch {
-      return {};
-    }
-  }
-
-  private write(objectPath: string, directive: string, state: DirectiveStateFile) {
-    return this.writer.write(
-      directiveStatePath(objectPath, directive),
-      `${JSON.stringify(state, null, 2)}\n`,
-    );
+    const read = (await this.reader.read(params.directivePath)) ?? "";
+    const text = params.reply === undefined ? read : appendReply(read, params.reply);
+    const state = stageFinished(readDirectiveState(text), params);
+    await this.writer.write(params.directivePath, writeDirectiveState(text, state));
   }
 }

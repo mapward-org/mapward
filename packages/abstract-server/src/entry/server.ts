@@ -27,7 +27,6 @@ import {
   DeleteDirective,
   DirectiveLocator,
   DirectiveState,
-  DirectiveThread,
   FinishDirective,
   ReadStage,
   RunDirective,
@@ -182,12 +181,7 @@ export function createMapServer(ports: ServerPorts) {
   const readStage = new ReadStage(locator, files);
   const stageRequest = new StageRequest(locator);
   const runDirective = new RunDirective(locator, files, state, turns);
-  const finishDirective = new FinishDirective(
-    locator,
-    new DirectiveThread(files, writer),
-    state,
-    turns,
-  );
+  const finishDirective = new FinishDirective(locator, state, turns);
   return {
     capabilities: () => ports.capabilities,
 

@@ -1,3 +1,7 @@
+---
+status: done
+closedAt: 2026-08-28T02:10:24Z
+---
 Добавь решение в папку `/ru/docs/decisions/0002-model.md`
 
 

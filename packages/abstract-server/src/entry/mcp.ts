@@ -155,7 +155,7 @@ function extendsOf(raw: string | undefined): string | undefined {
  * полтора килобайта. Нужен весь список — `directives: "all"` (решение 0016).
  */
 function digest(files: MapFile[], all: boolean) {
-  const counts = { total: files.length, new: 0, changed: 0, done: 0 };
+  const counts = { total: files.length, new: 0, running: 0, waiting: 0, done: 0 };
   for (const file of files) {
     if (file.status !== undefined) counts[file.status]++;
   }
@@ -165,10 +165,11 @@ function digest(files: MapFile[], all: boolean) {
     files: shown.map((file) => ({
       ...fileOf(file),
       status: file.status,
-      // Идущий этап видно с первой секунды: отметку ставит run_directive — решение 0017.
-      ...(file.run === undefined ? {} : { run: file.run }),
+      // Последний этап: идущий видно с первой секунды, отметку ставит run_directive — решение 0017.
+      ...(file.stage === undefined ? {} : { stage: file.stage }),
       // Сколько кругов директива уже прошла: третий Брейншторм и первый читаются по-разному.
       ...(file.runs === undefined ? {} : { runs: file.runs }),
+      ...(file.closedAt === undefined ? {} : { closedAt: file.closedAt }),
     })),
   };
 }
@@ -524,7 +525,7 @@ const TOOLS = [
     name: "finish_directive",
     description:
       "Отметить, что этап закончен. Этап, которому это поручено (marksDone), помечает директиву выполненной: " +
-      "копию текста и время снимает сервер, писать _directives.state руками не надо. " +
+      "статус, этап и счётчик кругов сервер пишет во frontmatter директивы сам, руками его не правят. " +
       "С reply сервер сам дописывает реплику в конец файла директивы: ставит пустую строку перед ней и ничего выше не трогает.",
     inputSchema: {
       type: "object",
@@ -701,7 +702,7 @@ const TOOLS = [
       "Метрику можно писать шаблоном плагина: { label?, plugin, template, params } — шаблоны в describe_plugin; платформа развернёт в component и agent и проверит params. " +
       "Несуществующие метрику, экшон, этап set создаёт; set индекса по адресу полки делает её объектом, delete с keepChildren — объект полкой. " +
       "Структура: create (у родителя: content — _index.json целиком, folder — имя папки), move, setFolder (и для полок), copy. Папки неявные: create и writeFile их создают, опустевшая после delete/move папка уходит. " +
-      "Сырые файлы: readFile, writeFile, removeFile — пути внутри карты, кроме .mapward/ и _directives.state/. " +
+      "Сырые файлы: readFile, writeFile, removeFile — пути внутри карты, кроме .mapward/. " +
       "check — собрать компонент метрики (ошибки с файлом:строкой:столбцом) и спросить её запрос для агента, метрики групп объекта (и унаследованных) и его раскладки, форму экшона, папку плагина; installDeps — зависимости своего плагина. " +
       "Операции идут по очереди, каждая — по карте, где уже есть сделанное предыдущими; отказ любой откатывает всю пачку, ошибки полей — в errors путём до поля. " +
       "Перенос сам переписывает адрес везде, где он стоит строкой в _index.json и config.json карты, тексты директив не трогает. " +

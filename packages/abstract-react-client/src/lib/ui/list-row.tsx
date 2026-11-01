@@ -87,7 +87,8 @@ export function ListRow(props: {
           type="button"
           title="Удалить"
           onClick={props.onRemove}
-          className="absolute top-1 right-2 hidden opacity-60 group-hover/row:block hover:opacity-100"
+          // Во всю высоту строки и по центру её: сдвиг от верха ставил крестик ниже середины.
+          className="absolute inset-y-0 right-2 hidden items-center opacity-60 group-hover/row:flex hover:opacity-100"
         >
           {RemoveIcon}
         </button>

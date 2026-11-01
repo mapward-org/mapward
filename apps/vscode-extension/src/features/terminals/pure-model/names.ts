@@ -37,3 +37,7 @@ export const stageName = (params: {
   `${params.base} · ${shortDirective(params.directive)} · ${params.stage}${
     params.done ? " ✓" : ""
   }`;
+
+/** Имя вкладки терминала, заведённого открытием директивы: этапа ещё нет, есть объект и директива. */
+export const directiveTabName = (params: { base: string; directive: string }) =>
+  `${params.base} · ${shortDirective(params.directive)}`;

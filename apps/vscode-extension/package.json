@@ -69,6 +69,12 @@
         "title": "Показать объект директивы",
         "category": "Mapward",
         "icon": "$(target)"
+      },
+      {
+        "command": "mapward.layout.restore",
+        "title": "Вернуть раскладку",
+        "category": "Mapward",
+        "icon": "$(layout)"
       }
     ],
     "menus": {

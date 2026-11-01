@@ -185,7 +185,8 @@ test("an inherited file says where it actually lives", async () => {
   expect(object.directives).toEqual({
     total: 1,
     new: 1,
-    changed: 0,
+    running: 0,
+    waiting: 0,
     done: 0,
     files: [
       {
@@ -651,13 +652,10 @@ test("run_directive gives the stage prompt and marks the run started", async () 
   // Голова про MCP одна на все этапы — без неё агент уходит сканировать репозиторий.
   expect(prompt).toContain("read_docs");
 
-  const state = JSON.parse(
-    writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
-  );
-  expect(state.run.stage).toBe("Обсудить");
-  expect(state.run.finishedAt).toBeUndefined();
-  // Этап без поручения копию не снимает: прогон был, а директива не выполнена.
-  expect(state.directive).toBeUndefined();
+  // Состояние — во frontmatter самой директивы: этап идёт.
+  const text = writes["/map/_directives/2026-09-20-0100-проба.md"] ?? "";
+  expect(text).toMatch(/^---\nstatus: running\nstage: Обсудить\n/);
+  expect(text).toContain("---\nтекст директивы");
 });
 
 test("only the stage told to do so marks the directive done", async () => {
@@ -665,22 +663,17 @@ test("only the stage told to do so marks the directive done", async () => {
     ...directive,
     stage: "Обсудить",
   });
-  const after = JSON.parse(
-    talk.writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
-  );
-  expect(after.status).toBeUndefined();
-  expect(after.run.finishedAt).toBeDefined();
+  const after = talk.writes["/map/_directives/2026-09-20-0100-проба.md"] ?? "";
+  expect(after).toContain("status: waiting");
+  expect(after).not.toContain("closedAt");
 
   const done = await callWith({ ...workflowTree }, "finish_directive", {
     ...directive,
     stage: "Выполнить",
   });
-  const state = JSON.parse(
-    done.writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
-  );
-  expect(state.status).toBe("done");
-  // Копия побайтная: по ней выполненная директива отличается от изменившейся.
-  expect(state.directive).toBe("текст директивы");
+  const state = done.writes["/map/_directives/2026-09-20-0100-проба.md"] ?? "";
+  expect(state).toContain("status: done");
+  expect(state).toMatch(/closedAt: \d{4}-/);
 });
 
 /**
@@ -744,20 +737,20 @@ test("finish_directive appends the reply to the end of the directive", async () 
   });
 
   // У автора нет перевода строки в конце — реплика всё равно не прилипает к его строке.
-  expect(writes[path]).toBe("текст директивы\n\n> [AI] готово\n");
-  // Реплика записана до состояния: копия выполненной директивы уже с ней.
-  const state = JSON.parse(
-    writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
+  // Статус и реплика легли одной записью.
+  expect(writes[path]).toMatch(
+    /^---\nstatus: done\n[\s\S]*\n---\nтекст директивы\n\n> \[AI\] готово\n$/,
   );
-  expect(state.directive).toBe(writes[path]);
 });
 
-test("a finish without a reply leaves the directive alone", async () => {
+test("a finish without a reply touches only the frontmatter", async () => {
   const { writes } = await callWith({ ...workflowTree }, "finish_directive", {
     ...directive,
     stage: "Обсудить",
   });
-  expect(writes["/map/_directives/2026-09-20-0100-проба.md"]).toBeUndefined();
+  expect(writes["/map/_directives/2026-09-20-0100-проба.md"]).toBe(
+    "---\nstatus: waiting\nstage: Обсудить\n---\nтекст директивы",
+  );
 });
 
 test("a known prompt is not sent again, an unknown one is", async () => {
@@ -776,10 +769,9 @@ test("a known prompt is not sent again, an unknown one is", async () => {
   expect(again.result).toMatchObject({ unchanged: true, promptHash: hash });
   expect(again.result.prompt).toBeUndefined();
   // Прогон отмечен и без промпта: круг был.
-  const state = JSON.parse(
-    again.writes["/map/_directives.state/2026-09-20-0100-проба.state.json"] ?? "{}",
+  expect(again.writes["/map/_directives/2026-09-20-0100-проба.md"]).toContain(
+    "status: running\nstage: Обсудить",
   );
-  expect(state.run.stage).toBe("Обсудить");
 
   const stale = await callWith({ ...workflowTree }, "run_directive", {
     ...directive,

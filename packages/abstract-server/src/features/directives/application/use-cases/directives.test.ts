@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { FilesPort } from "../../../../ports/index.ts";
-import { DirectiveThread } from "../services/directive-thread.ts";
+import { appendReply } from "../../domain/thread.ts";
+import { DirectiveState } from "../services/directive-state.ts";
 import { DeleteDirective } from "./delete-directive.ts";
 
 /** Диск в памяти: удаление проверяется тем же способом, что и чтение карты — решение 0014. */
@@ -24,16 +25,14 @@ function fakeFiles(tree: Record<string, string>): FilesPort {
 const deleteDirective = (files: FilesPort, params: { objectPath: string; directive: string }) =>
   new DeleteDirective(files, files).run(params);
 
-const appendReply = (files: FilesPort, params: { directivePath: string; reply: string }) =>
-  new DirectiveThread(files, files).append(params);
-
 const OBJECT = "/map/packages/core";
 const DIRECTIVE = "2026-09-20-1737-кнопка.md";
+const PATH = `${OBJECT}/_directives/${DIRECTIVE}`;
+const NOW = new Date("2026-10-31T00:00:00Z");
 
-test("удаляет директиву вместе с состоянием её прогонов", async () => {
+test("удаляет файл директивы, соседние не трогает", async () => {
   const tree = {
-    [`${OBJECT}/_directives/${DIRECTIVE}`]: "\n## \n\n",
-    [`${OBJECT}/_directives.state/2026-09-20-1737-кнопка.state.json`]: "{}",
+    [PATH]: "\n## \n\n",
     [`${OBJECT}/_directives/другая.md`]: "текст",
   };
 
@@ -66,8 +65,7 @@ test("именем директивы не выйти из папки объек
   ).rejects.toThrow("Не имя директивы");
 });
 
-test("реплика дописывается в конец и не трогает то, что выше", async () => {
-  const path = `${OBJECT}/_directives/${DIRECTIVE}`;
+test("реплика дописывается в конец и не трогает то, что выше", () => {
   const cases: [string, string][] = [
     ["", "> [AI] да\n"],
     ["ответ", "ответ\n\n> [AI] да\n"],
@@ -75,9 +73,49 @@ test("реплика дописывается в конец и не трогае
     ["ответ\n\n", "ответ\n\n> [AI] да\n"],
   ];
   for (const [before, after] of cases) {
-    const tree: Record<string, string> = { [path]: before };
-    // oxlint-disable-next-line no-await-in-loop
-    await appendReply(fakeFiles(tree), { directivePath: path, reply: "> [AI] да\n\n" });
-    expect(tree[path]).toBe(after);
+    expect(appendReply(before, "> [AI] да\n\n")).toBe(after);
   }
+});
+
+test("этап пишет состояние во frontmatter, тело остаётся как было", async () => {
+  const tree: Record<string, string> = { [PATH]: "## Задача\r\n\r\nтекст" };
+  const files = fakeFiles(tree);
+  const state = new DirectiveState(files, files);
+
+  await state.started({ directivePath: PATH, stage: "Брейншторм" });
+  expect(tree[PATH]).toBe(
+    '---\r\nstatus: running\r\nstage: Брейншторм\r\nruns: {"Брейншторм":1}\r\n---\r\n' +
+      "## Задача\r\n\r\nтекст",
+  );
+
+  await state.finished({
+    directivePath: PATH,
+    stage: "Брейншторм",
+    marksDone: false,
+    reply: "> [AI] вопрос",
+    now: NOW,
+  });
+  expect(tree[PATH]).toMatch(/^---\r\nstatus: waiting\r\nstage: Брейншторм\r\n/);
+  expect(tree[PATH]).toMatch(/текст\n\n> \[AI\] вопрос\n$/);
+
+  await state.started({ directivePath: PATH, stage: "Выполнить" });
+  await state.finished({ directivePath: PATH, stage: "Выполнить", marksDone: true, now: NOW });
+  expect(tree[PATH]).toContain('runs: {"Брейншторм":1,"Выполнить":1}');
+  expect(tree[PATH]).toContain("status: done");
+  expect(tree[PATH]).toContain("closedAt: 2026-10-31T00:00:00.000Z");
+
+  // Выполненную запустили снова — она идёт, отметки о закрытии больше нет.
+  await state.started({ directivePath: PATH, stage: "Выполнить" });
+  expect(tree[PATH]).toContain("status: running");
+  expect(tree[PATH]).not.toContain("closedAt");
+});
+
+test("чужие строки frontmatter остаются на месте", async () => {
+  const tree: Record<string, string> = { [PATH]: "---\ntags: ui\nstatus: new\n---\nтело\n" };
+  const files = fakeFiles(tree);
+
+  await new DirectiveState(files, files).started({ directivePath: PATH, stage: "План" });
+  expect(tree[PATH]).toBe(
+    '---\ntags: ui\nstatus: running\nstage: План\nruns: {"План":1}\n---\nтело\n',
+  );
 });

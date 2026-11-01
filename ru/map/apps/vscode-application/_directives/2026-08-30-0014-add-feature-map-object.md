@@ -1,3 +1,7 @@
+---
+status: done
+closedAt: 2026-08-30T02:40:00
+---
 
 ## Фича map-object
 

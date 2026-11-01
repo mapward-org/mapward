@@ -3,6 +3,7 @@ import {
   centerZone,
   directiveZone,
   isDirectivePath,
+  layoutPlan,
   newDirectiveColumn,
   terminalZone,
 } from "./zones.ts";
@@ -85,5 +86,37 @@ describe("centerZone", () => {
 
   it("все группы — зоны: центра нет", () => {
     expect(centerZone([directives(1), terminals(2)], 1, 2)).toBeUndefined();
+  });
+});
+
+describe("layoutPlan", () => {
+  it("зон нет — раскладывать нечего", () => {
+    expect(layoutPlan([files(1), files(2)], undefined, undefined)).toEqual({ kind: "none" });
+  });
+
+  it("остались только директивы и терминалы — завести центр", () => {
+    expect(layoutPlan([directives(1), terminals(2)], 1, 2)).toEqual({ kind: "make-center" });
+  });
+
+  it("центр, директивы, терминалы по порядку — разложить", () => {
+    expect(layoutPlan([files(1), directives(2), terminals(3)], 2, 3)).toEqual({
+      kind: "arrange",
+      right: 2,
+    });
+    expect(layoutPlan([group(1), directives(2)], 2, undefined)).toEqual({
+      kind: "arrange",
+      right: 1,
+    });
+  });
+
+  it("лишние группы или чужой порядок — не раскладывается", () => {
+    expect(layoutPlan([files(1), files(2), directives(3), terminals(4)], 3, 4)).toEqual({
+      kind: "extra",
+      count: 1,
+    });
+    expect(layoutPlan([files(1), terminals(2), directives(3)], 3, 2)).toEqual({
+      kind: "extra",
+      count: 0,
+    });
   });
 });

@@ -2,6 +2,9 @@ import { MAP_ROOT } from "@mapward/core";
 import { objectPrompt } from "@mapward/abstract-server";
 import type { MapServer } from "@mapward/abstract-server";
 import {
+  directiveTabName,
+  directiveTerminal,
+  onceForDirective,
   openTerminal,
   pickStageSession,
   renameForStage,
@@ -11,35 +14,34 @@ import {
 import { terminalLocation } from "@/features/directive-layout/index.extension.ts";
 import { rememberStage } from "./stage-tabs.ts";
 
+type MapParams = { mapPath: string; basePath: string; name: string; address: string };
+
+async function readHolder(server: MapServer, params: MapParams) {
+  const object =
+    (await server.readObject({ ...params, depth: 0 })) ??
+    (await server.readObject({ ...params, address: MAP_ROOT, depth: 0 }));
+  if (!object) throw new Error(`Объект ${params.address} не найден`);
+  return object;
+}
+
 /**
  * Кнопка этапа: фраза уходит в живую сессию объекта, промпт агент берёт из MCP сам —
  * решение 0017. Входов два — ряд этапов на карте и кнопки в файле директивы (0032), — а
  * логика одна, поэтому она здесь, где сводятся сервер карты и терминалы.
  *
  * Получатель — терминал этой директивы и только он: в чужой разговор фраза не уходит. Его нет —
- * заводим новый, с промптом объекта, и он с этого момента принадлежит директиве. Курсор при
- * этом остаётся там, где был.
+ * заводим новый, и он с этого момента принадлежит директиве; был у директивы разговор раньше —
+ * новый терминал его продолжает. Курсор при этом остаётся там, где был.
  */
 export async function runStage(
   server: MapServer,
-  params: {
-    mapPath: string;
-    basePath: string;
-    name: string;
-    address: string;
-    directive: string;
-    stage: string;
-  },
+  params: MapParams & { directive: string; stage: string },
 ): Promise<{ id: string; name: string }> {
   const { text } = await server.stageRequest(params);
-  const object =
-    (await server.readObject({ ...params, depth: 0 })) ??
-    (await server.readObject({ ...params, address: MAP_ROOT, depth: 0 }));
-  if (!object) throw new Error(`Объект ${params.address} не найден`);
+  const object = await readHolder(server, params);
 
   const tab = { base: object.name, directive: params.directive, stage: params.stage };
-  const existing = pickStageSession(params);
-  if (existing) await sendToTerminal({ id: existing.id, text });
+  const directivePath = object.directives.find((file) => file.name === params.directive)?.path;
 
   // Новой сессии фраза едет внутри промпта, а не строкой следом: `claude` ещё не поднялся,
   // и отправленное вдогонку попало бы в шелл.
@@ -47,25 +49,67 @@ export async function runStage(
   // терминалом, а только что заведённый им ещё не стал, и вкладка до конца этапа оставалась
   // с именем объекта.
   // Терминал директивы живёт вкладкой под её файлом — место называет раскладка.
-  const directivePath = object.directives.find((file) => file.name === params.directive)?.path;
-  const placed =
-    existing || directivePath === undefined
-      ? {}
-      : { directivePath, location: await terminalLocation(directivePath) };
-  const session =
-    existing ??
-    (await openTerminal({
-      ...placed,
+  const open = async () =>
+    openTerminal({
+      ...(directivePath === undefined
+        ? {}
+        : { directivePath, location: await terminalLocation(directivePath) }),
       name: stageName(tab),
       address: params.address,
       cwd: params.basePath,
       prompt: [objectPrompt(object, params.mapPath), "", text].join("\n"),
+      // Продолженный разговор промпт объекта уже слышал — ему только фраза этапа.
+      resumePrompt: text,
       fresh: true,
       directive: params.directive,
       preserveFocus: true,
-    }));
+    });
 
-  rememberStage(session.id, { address: params.address, ...tab });
-  if (existing) await renameForStage({ id: session.id, ...tab });
-  return session;
+  const existing = pickStageSession(params);
+  if (existing) {
+    await sendToTerminal({ id: existing.id, text });
+    rememberStage(existing.id, { address: params.address, ...tab });
+    await renameForStage({ id: existing.id, ...tab });
+    return existing;
+  }
+
+  // Раскладка заводит терминал, когда директиву открыли, а кнопка открывает директиву сама:
+  // заводит тот, кто успел первым. Успела раскладка — фраза уходит в её терминал.
+  const created =
+    directivePath === undefined ? await open() : await onceForDirective(directivePath, open);
+  if (created) {
+    rememberStage(created.id, { address: params.address, ...tab });
+    return created;
+  }
+  const late = pickStageSession(params);
+  if (!late) throw new Error(`Терминал директивы ${params.directive} не завёлся`);
+  await sendToTerminal({ id: late.id, text });
+  rememberStage(late.id, { address: params.address, ...tab });
+  await renameForStage({ id: late.id, ...tab });
+  return late;
+}
+
+/**
+ * Директиву открыли, а терминала у неё нет — завести: рядом с директивой всегда её агент. Был
+ * разговор — он продолжается молча; не было — начинается с промпта объекта, без этапа.
+ */
+export async function openDirectiveTerminal(
+  server: MapServer,
+  params: MapParams & { directive: string; directivePath: string },
+): Promise<void> {
+  await onceForDirective(params.directivePath, async () => {
+    if (directiveTerminal(params.directivePath)) return;
+    const object = await readHolder(server, params);
+    await openTerminal({
+      directivePath: params.directivePath,
+      location: await terminalLocation(params.directivePath),
+      name: directiveTabName({ base: object.name, directive: params.directive }),
+      address: params.address,
+      cwd: params.basePath,
+      prompt: objectPrompt(object, params.mapPath),
+      fresh: true,
+      directive: params.directive,
+      preserveFocus: true,
+    });
+  });
 }

@@ -641,11 +641,7 @@ test("raw files: read with a version, write over a stale one is refused, platfor
     }),
   ).toMatchObject({ ok: false, current: { text: "кто-то поправил" } });
 
-  for (const path of [
-    ".mapward/trash/x.json",
-    "systems/_directives.state/a.json",
-    "../outside.md",
-  ]) {
+  for (const path of [".mapward/trash/x.json", "../outside.md"]) {
     // oxlint-disable-next-line no-await-in-loop
     expect(await run({ op: "writeFile", path, text: "x" })).toMatchObject({ ok: false });
   }

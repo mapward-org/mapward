@@ -66,3 +66,33 @@ export function centerZone(
 ): number | undefined {
   return groups.find((group) => group.column !== directives && group.column !== terminals)?.column;
 }
+
+/**
+ * Как вернуть окну раскладку: центр слева на всю высоту, директива с терминалом — правой колонкой.
+ *
+ * - `make-center` — центра нет, все группы заняты директивами и терминалами: завести центр слева;
+ * - `arrange` — центр первым, за ним зоны (директивы раньше терминалов) и больше ничего: задать
+ *   окну раскладку, VS Code раздаст группы клеткам по порядку; `right` — сколько групп справа;
+ * - `extra` — кроме центра и зон есть другие группы: какую куда, раскладка не знает;
+ * - `none` — зон нет, раскладывать нечего.
+ */
+export type LayoutPlan =
+  | { kind: "make-center" }
+  | { kind: "arrange"; right: number }
+  | { kind: "extra"; count: number }
+  | { kind: "none" };
+
+export function layoutPlan(
+  groups: GroupView[],
+  directives: number | undefined,
+  terminals: number | undefined,
+): LayoutPlan {
+  const zones = [directives, terminals].filter((column) => column !== undefined);
+  if (zones.length === 0) return { kind: "none" };
+  const center = centerZone(groups, directives, terminals);
+  if (center === undefined) return { kind: "make-center" };
+  const extra = groups.length - 1 - zones.length;
+  if (extra > 0) return { kind: "extra", count: extra };
+  const ordered = [center, ...zones].every((column, index) => column === index + 1);
+  return ordered ? { kind: "arrange", right: zones.length } : { kind: "extra", count: 0 };
+}

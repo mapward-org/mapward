@@ -3,6 +3,7 @@ import {
   centerZone,
   directiveZone,
   isDirectivePath,
+  layoutPlan,
   newDirectiveColumn,
   terminalZone,
   type GroupView,
@@ -146,12 +147,50 @@ export function openDirective(
 async function makeCenter(): Promise<number> {
   await vscode.commands.executeCommand("workbench.action.focusFirstEditorGroup");
   await vscode.commands.executeCommand("workbench.action.newGroupAbove");
-  const right = vscode.window.tabGroups.all.length - 1;
+  await arrange(vscode.window.tabGroups.all.length - 1);
+  return 1;
+}
+
+/** Первая группа — колонкой слева на всю высоту, остальные `right` — справа друг над другом. */
+async function arrange(right: number): Promise<void> {
   await vscode.commands.executeCommand("vscode.setEditorLayout", {
     orientation: 0,
     groups: [{ size: 0.6 }, { size: 0.4, groups: Array.from({ length: right }, () => ({})) }],
   });
-  return 1;
+}
+
+/**
+ * Вернуть окну раскладку — команда «Mapward: вернуть раскладку». Центра нет — заводится; есть, а
+ * группы разъехались — раскладываются заново. Лишние группы раскладка не трогает: какую куда, она
+ * не знает, — просит закрыть их.
+ */
+function restoreLayout(): Promise<void> {
+  return serial(async () => {
+    const plan = layoutPlan(groups(), directivesZone(), terminalsZone());
+    if (plan.kind === "make-center") await makeCenter();
+    else if (plan.kind === "arrange") await arrange(plan.right);
+    else if (plan.kind === "none") {
+      void vscode.window.showInformationMessage("Директив в окне нет — раскладывать нечего.");
+    } else {
+      void vscode.window.showWarningMessage(
+        "Раскладку не вернуть: кроме центра, директив и терминалов в окне есть другие группы " +
+          "или директивы стоят ниже терминалов. Закрой лишнее и повтори.",
+      );
+    }
+  });
+}
+
+/**
+ * Центр пропал — закрыли последний файл, и VS Code убрал пустую группу: в окне остались одни
+ * директивы и терминалы. Раскладка сразу заводит центр заново, иначе новый файл VS Code положит
+ * в новую группу справа — в закреплённые он файлы не кладёт.
+ */
+function keepCenter(): Promise<void> {
+  return serial(async () => {
+    if (layoutPlan(groups(), directivesZone(), terminalsZone()).kind === "make-center") {
+      await makeCenter();
+    }
+  });
 }
 
 /**
@@ -193,6 +232,9 @@ export function terminalLocation(
     return { viewColumn: column, preserveFocus: true };
   });
 }
+
+/** Команда «Mapward: вернуть раскладку» — объявлена в `package.json`. */
+const RESTORE_LAYOUT = "mapward.layout.restore";
 
 /**
  * Пара директива — терминал. Директиву, открытую мимо карты (из проводника, в центре), раскладка
@@ -252,5 +294,11 @@ export function registerDirectiveLayout(pairs: Pairs): vscode.Disposable {
     await openDirective(path, { preserveFocus: true });
   });
 
-  return vscode.Disposable.from(onEditor, onTerminal, onTabs);
+  const onGroups = vscode.window.tabGroups.onDidChangeTabGroups(async (event) => {
+    if (event.closed.length > 0) await keepCenter();
+  });
+
+  const restore = vscode.commands.registerCommand(RESTORE_LAYOUT, restoreLayout);
+
+  return vscode.Disposable.from(onEditor, onTerminal, onTabs, onGroups, restore);
 }

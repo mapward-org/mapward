@@ -33,9 +33,8 @@ import {
   type Named,
 } from "../../domain/inherit.ts";
 import { mergeAction, mergeMetric } from "../../domain/merge.ts";
-import { directiveStatePath } from "../../../../kernel/directives.ts";
+import { withState } from "../../../../kernel/directive-state.ts";
 import {
-  directiveStatus,
   filesOf,
   isService,
   ownAction,
@@ -393,17 +392,9 @@ export class LiveMap {
       this.files.list$(dir).pipe(
         follow((entries) =>
           every(
+            // Состояние директивы — во frontmatter её же файла: статус читается из текста.
             filesOf(dir, entries).map((file) =>
-              this.files.text$(directiveStatePath(node.path, file.name)).pipe(
-                // Текст самой директивы нужен, только когда есть состояние: с ним и сравнивается.
-                follow((state) =>
-                  state
-                    ? this.files
-                        .text$(file.path)
-                        .pipe(mapReady((text) => directiveStatus(file, state, text)))
-                    : of(directiveStatus(file, state, undefined)),
-                ),
-              ),
+              this.files.text$(file.path).pipe(mapReady((text) => withState(file, text))),
             ),
           ),
         ),

@@ -1,8 +1,16 @@
 import type { MapFile } from "@mapward/core";
 import { matches } from "./search.ts";
 
-/** Three states, straight from decision 0002: no copy, a different copy, the same copy. */
-export const statusHint = { new: "новая", changed: "изменилась", done: "выполнена" };
+/** Статус директивы словом: его пишет сервер во frontmatter самой директивы. */
+export const statusHint = {
+  new: "новая",
+  running: "идёт",
+  waiting: "ждёт ответа",
+  done: "выполнена",
+};
+
+/** Синий — работа идёт: этап начат или ждёт ответа, а закрыта директива ещё не была. */
+const workColor = "text-[var(--mw-charts-blue,#4a9)]";
 
 /**
  * `new` серым: ещё не запускавшихся директив в списке большинство, и цвет, которым помечено
@@ -10,38 +18,31 @@ export const statusHint = { new: "новая", changed: "изменилась", 
  */
 export const statusColor = {
   new: "text-[var(--mw-descriptionForeground,#888)]",
-  changed: "text-[var(--mw-charts-yellow,#c93)]",
+  running: workColor,
+  waiting: workColor,
   done: "text-[var(--mw-charts-green,#3a3)]",
 };
 
 export const fileStatus = (file: MapFile) => file.status ?? "new";
 
-/** Синий — первый круг работы: прогон был, а закрыта директива ещё не была. */
-const workColor = "text-[var(--mw-charts-blue,#4a9)]";
-
 /**
  * Идёт ли на директиве этап сейчас: отметку ставит сам прогон, а не интерфейс (решение 0017).
  * Идущий этап рисуется лоадером рядом с подписью (решение 0047).
  */
-export const isRunning = (file: MapFile): boolean =>
-  file.run !== undefined && file.run.finishedAt === undefined;
+export const isRunning = (file: MapFile): boolean => fileStatus(file) === "running";
 
 /**
  * Подсказка строки (решение 0047): закрытая — «выполнена», имя последнего этапа после
- * закрытия ничего не говорит; иначе этап, на котором директива сейчас, а без прогонов —
- * какая она.
+ * закрытия ничего не говорит; в работе — этап, на котором директива сейчас; иначе — статус.
  */
-export const directiveHint = (file: MapFile): string =>
-  fileStatus(file) === "done" || file.run === undefined
-    ? statusHint[fileStatus(file)]
-    : file.run.stage.toLowerCase();
+export const directiveHint = (file: MapFile): string => {
+  const status = fileStatus(file);
+  if (status === "done" || status === "new" || file.stage === undefined) return statusHint[status];
+  return file.stage.toLowerCase();
+};
 
-/**
- * Цвет подсказки (решение 0047): статус держит свой цвет и с прогоном — закрытая зелёная,
- * изменившаяся после закрытия жёлтая. Серое — только не запускавшаяся, синее — первый круг.
- */
-export const directiveHintClass = (file: MapFile): string =>
-  fileStatus(file) === "new" && file.run !== undefined ? workColor : statusColor[fileStatus(file)];
+/** Цвет подсказки (решение 0047): серое — не запускавшаяся, синее — в работе, зелёное — закрытая. */
+export const directiveHintClass = (file: MapFile): string => statusColor[fileStatus(file)];
 
 /** От новых к старым: имя начинается с даты, поэтому порядок с диска достаточно перевернуть. */
 export const newestFirst = (files: MapFile[]): MapFile[] => files.toReversed();
@@ -62,9 +63,21 @@ export const matchDirectives = (files: MapFile[], query: string): MapFile[] =>
   files.filter((file) => matches(query, file.name));
 
 /**
- * Незакрытые директивы — `new` и `changed`. Работа идёт именно с ними, поэтому они висят
+ * Незакрытые директивы — всё, кроме `done`. Работа идёт именно с ними, поэтому они висят
  * на первом экране объекта, а выполненные остаются в списке мета-экрана (решение 0024).
  * Потолка нет: десяток незакрытых — это состояние работы, и прятать его нечестно.
  */
 export const activeDirectives = (files: MapFile[]): MapFile[] =>
   newestFirst(files).filter((file) => fileStatus(file) !== "done");
+
+/**
+ * Список поповера на кнопке директив: все директивы объекта, незакрытые сверху, под ними
+ * выполненные — внутри каждой части от новых к старым.
+ */
+export const menuDirectives = (files: MapFile[]): MapFile[] => {
+  const newest = newestFirst(files);
+  return [
+    ...newest.filter((file) => fileStatus(file) !== "done"),
+    ...newest.filter((file) => fileStatus(file) === "done"),
+  ];
+};

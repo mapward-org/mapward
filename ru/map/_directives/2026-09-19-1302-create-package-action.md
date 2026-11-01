@@ -1,3 +1,8 @@
+---
+status: done
+stage: Тестирование
+closedAt: 2026-09-20T01:33:02.529Z
+---
 ##
 
 Приведи в порядок `prototypes/package/_directives/create-package.md`: он написан до решений

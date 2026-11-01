@@ -48,14 +48,11 @@ export type MapAction = {
   config: ActionConfig;
 };
 
-export type DirectiveStatus = "new" | "changed" | "done";
-
-/** Где директива сейчас: этап начат вызовом MCP и им же закрывается — решение 0017. */
-export type DirectiveRun = {
-  stage: string;
-  startedAt: string;
-  finishedAt?: string;
-};
+/**
+ * Где директива сейчас. Пишет его сервер во frontmatter самой директивы: этап начат — `running`,
+ * кончился — `waiting` (ход у человека) или `done`, если этап помечает выполнение.
+ */
+export type DirectiveStatus = "new" | "running" | "waiting" | "done";
 
 export type MapFile = {
   name: string;
@@ -63,13 +60,15 @@ export type MapFile = {
   /** Сколько файл весит, когда хост смог это назвать: по нему решают, читать целиком или хвостом. */
   bytes?: number;
   status?: DirectiveStatus;
-  /** Последний прогон этапа. */
-  run?: DirectiveRun;
+  /** Последний этап, который запускали. */
+  stage?: string;
   /**
-   * Сколько раз какой этап прогоняли. Последний прогон отвечает «где директива сейчас», а этот
+   * Сколько раз какой этап прогоняли. Последний этап отвечает «где директива сейчас», а этот
    * счётчик — «сколько кругов она уже прошла»: третий Брейншторм и первый читаются по-разному.
    */
   runs?: Record<string, number>;
+  /** Когда директиву закрыли — у выполненной. */
+  closedAt?: string;
   /**
    * The object the file actually belongs to, set only when it came from a prototype. On its own
    * files it is absent: present, it means one thing — edit it there, not here.

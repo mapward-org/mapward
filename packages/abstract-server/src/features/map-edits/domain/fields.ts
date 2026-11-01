@@ -110,13 +110,10 @@ export function partial(schema: unknown): unknown {
   return rest;
 }
 
-/**
- * Чьё это хозяйство: `.mapward/` — локальное платформы (корзина, сборки, прогоны),
- * `_directives.state/` — состояние прогонов директив. Их пишет только платформа.
- */
+/** Чьё это хозяйство: `.mapward/` — локальное платформы (корзина, сборки, прогоны). */
 export function owned(path: string, mapPath: string): boolean {
   const rest = path.slice(slash(mapPath).length).split("/").filter(Boolean);
-  return rest[0] === ".mapward" || rest.includes("_directives.state");
+  return rest[0] === ".mapward";
 }
 
 /** Путь сырого файла: от папки карты или абсолютный внутри неё. */
@@ -129,7 +126,7 @@ export function filePath(given: string, mapPath: string): string | { error: stri
   }
   if (owned(path, mapPath)) {
     return {
-      error: `${given} — хозяйство платформы (.mapward/, _directives.state/): его пишет только она`,
+      error: `${given} — хозяйство платформы (.mapward/): его пишет только она`,
     };
   }
   return path;

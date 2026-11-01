@@ -1,11 +1,9 @@
 import type { FileReader, FileWriter } from "../../../../ports/index.ts";
 import { join } from "../../../../lib/path.ts";
-import { directiveStatePath } from "../../../../kernel/directives.ts";
 import { isDirectiveName } from "../../domain/directive-name.ts";
 
 /**
- * Удалить директиву целиком: вместе с файлом уходит состояние её прогонов — где оно лежит,
- * знает карта, и чистит его сервер, а не хост. Случайно созданная директива должна уметь
+ * Удалить директиву: её состояние лежит в ней же, во frontmatter, и уходит вместе с файлом. Случайно созданная директива должна уметь
  * исчезнуть, иначе список копит мусор.
  *
  * Удаляется только своя: доставшаяся от прототипа лежит в чужой папке, и в `_directives`
@@ -26,7 +24,6 @@ export class DeleteDirective {
     if ((await this.reader.read(path)) === undefined) return { deleted: false };
 
     await this.writer.remove(path);
-    await this.writer.remove(directiveStatePath(params.objectPath, params.directive));
     return { deleted: true };
   }
 }

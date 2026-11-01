@@ -3,13 +3,11 @@ import { noStage, pickStage } from "../../domain/stages.ts";
 import type { DirectiveTurns } from "../../ports.ts";
 import type { DirectiveLocator } from "../services/directive-locator.ts";
 import type { DirectiveState } from "../services/directive-state.ts";
-import type { DirectiveThread } from "../services/directive-thread.ts";
 
 /** Этап закончен. Помечает ли это директиву выполненной, решает сам этап. */
 export class FinishDirective {
   constructor(
     private readonly locator: DirectiveLocator,
-    private readonly thread: DirectiveThread,
     private readonly state: DirectiveState,
     private readonly turns: DirectiveTurns,
   ) {}
@@ -21,18 +19,12 @@ export class FinishDirective {
     const stage = pickStage(found.stages, params.stage);
     if (!stage) throw noStage(found.stages, params.stage);
 
-    // Реплика — до состояния: этап, который помечает директиву выполненной, снимает копию уже
-    // с ней (решение 0039).
-    if (params.reply !== undefined) {
-      await this.thread.append({ directivePath: found.file.path, reply: params.reply });
-    }
-
+    // Реплика и статус — одной записью в файл директивы (решение 0039).
     await this.state.finished({
-      objectPath: found.object.path,
       directivePath: found.file.path,
-      directive: found.file.name,
       stage: stage.name,
       marksDone: stage.marksDone,
+      ...(params.reply === undefined ? {} : { reply: params.reply }),
       now: new Date(),
     });
     // Ход у человека. Кладётся после записи состояния: не записалось — ждать нечего.

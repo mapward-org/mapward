@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import type { FileEntry, ServerPorts } from "@mapward/abstract-server";
 import { isDirectivePath } from "@/features/directive-layout/index.extension.ts";
 import { createTrust, editor, installPackages, startPlugin } from "./plugins.ts";
+import { changedSpan } from "./changed-span.ts";
 
 /**
  * Реализации портов сервера для редактора — решение 0014. Всё, что знает про `vscode` и про
@@ -86,9 +87,13 @@ const files = {
   async write(path: string, text: string): Promise<void> {
     const open = openDirective(path);
     if (open) {
+      // Меняется только изменившийся кусок: замена всего текста уводила курсор и прокрутку в конец.
+      const span = changedSpan(open.getText(), text);
       const edit = new vscode.WorkspaceEdit();
-      const whole = new vscode.Range(open.positionAt(0), open.positionAt(open.getText().length));
-      edit.replace(open.uri, whole, text);
+      if (span) {
+        const range = new vscode.Range(open.positionAt(span.start), open.positionAt(span.end));
+        edit.replace(open.uri, range, span.text);
+      }
       // Применилось — сохраняем: диск и документ снова одно, и карта видит новый статус.
       if (await vscode.workspace.applyEdit(edit)) {
         await open.save();
