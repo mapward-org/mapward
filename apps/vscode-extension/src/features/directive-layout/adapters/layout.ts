@@ -99,8 +99,11 @@ function terminalsZone(): number | undefined {
 
 /**
  * Директива в своей группе. Группы нет — она заводится справа от всего открытого и закрепляется.
- * Курсор уходит в директиву: её открывают, чтобы читать и отвечать; раз фокус там — группа
- * закрепляется и тогда, когда она уже была, на случай если её завели раньше без закрепления.
+ * Закрепляется только заведённая здесь группа: найденную не трогаем — центр, где случайно лежат
+ * одни директивы, закреплять нельзя, туда открывает файлы и сам VS Code.
+ *
+ * Курсор уходит в директиву и встаёт в её конец: её открывают, чтобы читать последний круг треда
+ * и отвечать под ним.
  */
 async function showDirective(path: string, preserveFocus: boolean): Promise<void> {
   const zone = directivesZone();
@@ -112,7 +115,16 @@ async function showDirective(path: string, preserveFocus: boolean): Promise<void
     preview: false,
   });
   directivesColumn = editor.viewColumn ?? column;
-  if (zone === undefined || !preserveFocus) await lockActiveGroup();
+  if (zone === undefined) await lockActiveGroup();
+  toEnd(editor);
+}
+
+/** Курсор в конец директивы и прокрутка к нему. */
+function toEnd(editor: vscode.TextEditor): void {
+  const { document } = editor;
+  const end = document.lineAt(document.lineCount - 1).range.end;
+  editor.selection = new vscode.Selection(end, end);
+  editor.revealRange(new vscode.Range(end, end), vscode.TextEditorRevealType.Default);
 }
 
 /** Открыть директиву в её группе — справа сверху. */
@@ -201,12 +213,7 @@ export function registerDirectiveLayout(pairs: Pairs): vscode.Disposable {
     // директивы ищутся по пути во всех группах, кроме своей.
     await serial(async () => {
       const zone = directivesZone();
-      if (zone !== undefined && strays(path, zone).length === 0) {
-        // Директива уже в своей группе, и фокус в ней — закрепить, если группа досталась
-        // незакреплённой: например, директиву открыли из проводника в пустом окне.
-        if (vscode.window.tabGroups.activeTabGroup.viewColumn === zone) await lockActiveGroup();
-        return;
-      }
+      if (zone !== undefined && strays(path, zone).length === 0) return;
       moving = true;
       try {
         await showDirective(path, false);
