@@ -118,8 +118,8 @@ export function View(
           type="button"
           onClick={() => setFolded(!folded)}
           title={folded ? "Показать" : "Скрыть"}
-          // Стрелка висит в узком левом поле сетки: кнопка шириной с поле, уголок по её центру.
-          className="absolute -left-2 flex w-2 justify-center opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
+          // Стрелка висит в узком левом поле сетки: кнопка уже поля на 2px — до названия остаётся зазор.
+          className="absolute -left-2 flex w-1.5 justify-center opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
         >
           <svg
             viewBox="0 0 16 16"

@@ -7,14 +7,14 @@ import type { ReactNode } from "react";
  * вылезает на соседей (решение 0029).
  *
  * Прокрутка обрезает всё, что метрика рисует за своим левым краем, — а там стоит свёртка рамки
- * `views` (`-left-4`). Поэтому клетка заходит в левое поле сетки (`pl-6` у `GridFrame` и
+ * `views` (`-left-2`). Поэтому клетка заходит в левое поле сетки (`p-2` у `GridFrame` и
  * `LayoutFrame`) на ширину свёртки и возвращает её отступом: содержимое стоит где стояло, а
  * свёртка попадает внутрь клетки. В компактном виде свёртки нет и поле узкое — клетка как есть.
  */
 export function BareCell(props: { compact?: boolean | undefined; children: ReactNode }) {
   return (
     <div
-      className={`min-h-0 min-w-0 overflow-auto break-words ${props.compact ? "" : "-ml-4 pl-4"}`}
+      className={`min-h-0 min-w-0 overflow-auto break-words ${props.compact ? "" : "-ml-2 pl-2"}`}
     >
       {props.children}
     </div>
