@@ -20,7 +20,7 @@
   "type": "commonjs",
   "main": "./dist/extension.cjs",
   "scripts": {
-    "build": "tsdown && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify && node scripts/copy-codicons.mjs && node scripts/copy-esbuild-wasm.mjs",
+    "build": "tsdown --config-loader unrun && tailwindcss -i src/apps/webview/index.css -o dist/webview.css --minify && node scripts/copy-codicons.mjs && node scripts/copy-esbuild-wasm.mjs",
     "dev": "pnpm run \"/^dev:/\"",
     "typecheck": "tsc",
     "package": "node scripts/package-vsix.mjs",
