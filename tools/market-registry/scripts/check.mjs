@@ -109,6 +109,19 @@ function mcpCall(cwd, env, name, toolArgs) {
   });
 }
 
+/** Адрес объекта и адреса всех объектов под ним — папок с `_index.json`, и за полками тоже. */
+async function nested(mapDir, address, isObject = true) {
+  const path = address.replace(/^mapward:\/\//, "");
+  const found = isObject ? [address] : [];
+  const entries = await readdir(join(mapDir, path), { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith("_") || entry.name.startsWith(".")) continue;
+    const index = await readFile(join(mapDir, path, entry.name, "_index.json")).catch(() => null);
+    found.push(...(await nested(mapDir, `${address}/${entry.name}`, index !== null)));
+  }
+  return found;
+}
+
 const fence = (text) => `\`\`\`\n${text.trim().slice(-6000)}\n\`\`\``;
 
 /** Строка индекса — в пустую карту: поставить и запустить. */
@@ -149,8 +162,11 @@ async function e2e(entry, kind, registry) {
     if (checked.code !== 0) ok = false;
   }
 
-  // Кусок карты: каждый объект — `check` правки карты: метрики собираются и зовутся пробно.
-  for (const address of result.created ?? []) {
+  // Кусок карты: каждый объект, и вложенные тоже, — `check` правки карты: метрики собираются и
+  // зовутся пробно. `created` называет только верхние объекты куска.
+  const objects = [];
+  for (const top of result.created ?? []) objects.push(...(await nested(join(root, "map"), top)));
+  for (const address of objects) {
     const reply = await mcpCall(root, env, "edit_map", { ops: [{ op: "check", address }] });
     const report = reply.value?.results?.[0];
     log.push(`check ${address}\n${JSON.stringify(reply.error ?? report ?? reply.value, null, 2)}`);
