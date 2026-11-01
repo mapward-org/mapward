@@ -1,5 +1,5 @@
 import { MAP_ROOT } from "@mapward/core";
-import { objectPrompt } from "@mapward/abstract-server";
+import { directivePrompt, objectPrompt } from "@mapward/abstract-server";
 import type { MapServer } from "@mapward/abstract-server";
 import {
   directiveTabName,
@@ -57,8 +57,21 @@ export async function runStage(
       name: stageName(tab),
       address: params.address,
       cwd: params.basePath,
-      prompt: [objectPrompt(object, params.mapPath), "", text].join("\n"),
-      // Продолженный разговор промпт объекта уже слышал — ему только фраза этапа.
+      // Агент сразу знает, чья он директива; разогрев ему не нужен — фраза этапа едет следом.
+      prompt: [
+        directivePath === undefined
+          ? objectPrompt(object, params.mapPath)
+          : directivePrompt({
+              object,
+              mapPath: params.mapPath,
+              directive: params.directive,
+              directivePath,
+              warmUp: false,
+            }),
+        "",
+        text,
+      ].join("\n"),
+      // Продолженный разговор свой промпт уже слышал — ему только фраза этапа.
       resumePrompt: text,
       fresh: true,
       directive: params.directive,
@@ -91,7 +104,8 @@ export async function runStage(
 
 /**
  * Директиву открыли, а терминала у неё нет — завести: рядом с директивой всегда её агент. Был
- * разговор — он продолжается молча; не было — начинается с промпта объекта, без этапа.
+ * разговор — он продолжается молча; не было — начинается с промпта директивы и разогревается:
+ * пока автор пишет, агент собирает контекст, и первый этап начинается сразу.
  */
 export async function openDirectiveTerminal(
   server: MapServer,
@@ -106,7 +120,13 @@ export async function openDirectiveTerminal(
       name: directiveTabName({ base: object.name, directive: params.directive }),
       address: params.address,
       cwd: params.basePath,
-      prompt: objectPrompt(object, params.mapPath),
+      prompt: directivePrompt({
+        object,
+        mapPath: params.mapPath,
+        directive: params.directive,
+        directivePath: params.directivePath,
+        warmUp: true,
+      }),
       fresh: true,
       directive: params.directive,
       preserveFocus: true,

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { MapObject } from "@mapward/core";
-import { objectPrompt, stagePrompt, stageRequest } from "./prompts.ts";
+import { directivePrompt, objectPrompt, stagePrompt, stageRequest } from "./prompts.ts";
 
 const object = {
   address: "mapward://packages/core",
@@ -91,4 +91,57 @@ test("the button phrase carries the call, not the instructions", () => {
   // Промпта во фразе нет: за ним агент идёт сам, иначе контракт живёт в двух местах.
   expect(text).not.toContain("read_docs");
   expect(text.split("\n")).toHaveLength(1);
+});
+
+const forDirective = (warmUp: boolean) =>
+  directivePrompt({
+    object: { ...object, prompt: "память карты — /repo/ru/memories/" },
+    mapPath: "/map",
+    directive: "2026-11-01-0900-проба.md",
+    directivePath: "/map/packages/core/_directives/2026-11-01-0900-проба.md",
+    warmUp,
+  });
+
+/**
+ * Агент директивы с первой строки знает, чья он: вызов этапа показан с адресом объекта и именем
+ * директивы, остаётся назвать этап. Голова про MCP и правила объекта — те же, что везде.
+ */
+test("the directive prompt names its directive and the exact call", () => {
+  const prompt = forDirective(false);
+  expect(prompt).toContain("Ты агент директивы 2026-11-01-0900-проба.md");
+  expect(prompt).toContain(
+    'run_directive { address: "mapward://packages/core", directive: "2026-11-01-0900-проба.md"',
+  );
+  expect(prompt).toContain('read_docs { section: "mcp" }');
+  expect(prompt).toContain("/repo/ru/memories/");
+  expect(prompt).toContain("«Обсудить»");
+});
+
+/**
+ * Разогрев — только для нового разговора без этапа: карта и директива, без кода, и «готов».
+ * Разговору, который заводит кнопка этапа, он не нужен — фраза этапа едет следом.
+ */
+test("only a conversation opened without a stage warms up", () => {
+  const warm = forDirective(true);
+  expect(warm).toContain("--- Разогрев ---");
+  expect(warm).toContain(
+    'read_index { address: "mapward://packages/core", file: "2026-11-01-0900-проба.md" }',
+  );
+  expect(warm).toContain("Код не читай");
+  expect(warm).toContain("«готов»");
+  expect(forDirective(false)).not.toContain("--- Разогрев ---");
+});
+
+/** Этап, пришедший в разогретый разговор, не перечитывает то, что уже прочитано. */
+test("every prompt tells the agent not to reread what it already has", () => {
+  const forStage = stagePrompt({
+    stage: object.workflow[0]!,
+    text: "скажи, что думаешь",
+    directivePath: "/map/_directives/проба.md",
+    object,
+    mapPath: "/map",
+  });
+  for (const prompt of [objectPrompt(object, "/map"), forStage, forDirective(true)]) {
+    expect(prompt).toContain("повторно не читай");
+  }
 });

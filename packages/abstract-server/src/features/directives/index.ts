@@ -1,4 +1,4 @@
-export { objectPrompt, stagePrompt, stageRequest } from "./domain/prompts.ts";
+export { directivePrompt, objectPrompt, stagePrompt, stageRequest } from "./domain/prompts.ts";
 export { directiveName } from "./domain/directive-name.ts";
 export { DirectiveLocator } from "./application/services/directive-locator.ts";
 export { DirectiveState } from "./application/services/directive-state.ts";
