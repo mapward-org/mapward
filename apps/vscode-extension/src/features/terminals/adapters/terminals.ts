@@ -376,7 +376,6 @@ export async function renameForStage(params: {
   base: string;
   directive: string;
   stage: string;
-  done?: boolean;
 }): Promise<void> {
   const session = alive(params.id);
   if (!session) return;

@@ -25,18 +25,12 @@ export const shortDirective = (directive: string) =>
   directive.replace(/\.md$/i, "").replace(/^\d{4}-\d{2}-\d{2}-\d{4}-/, "");
 
 /**
- * Этап кончился — имя не возвращается к объекту, а помечается завершённым: чем этот разговор
- * занимался, важно не меньше, чем чем он занят. Следующий запуск имя перетирает.
+ * Имя вкладки на время этапа. Ставится в начале этапа и остаётся после конца: чем разговор
+ * занимался, важно не меньше, чем чем он занят. Отметки о конце нет — переименовать можно только
+ * активный терминал, а активация увела бы человека к его директиве посреди параллельной работы.
  */
-export const stageName = (params: {
-  base: string;
-  directive: string;
-  stage: string;
-  done?: boolean;
-}) =>
-  `${params.base} · ${shortDirective(params.directive)} · ${params.stage}${
-    params.done ? " ✓" : ""
-  }`;
+export const stageName = (params: { base: string; directive: string; stage: string }) =>
+  `${params.base} · ${shortDirective(params.directive)} · ${params.stage}`;
 
 /** Имя вкладки терминала, заведённого открытием директивы: этапа ещё нет, есть объект и директива. */
 export const directiveTabName = (params: { base: string; directive: string }) =>

@@ -12,7 +12,6 @@ import {
   stageName,
 } from "@/features/terminals/index.extension.ts";
 import { terminalLocation } from "@/features/directive-layout/index.extension.ts";
-import { rememberStage } from "./stage-tabs.ts";
 
 type MapParams = { mapPath: string; basePath: string; name: string; address: string };
 
@@ -81,7 +80,6 @@ export async function runStage(
   const existing = pickStageSession(params);
   if (existing) {
     await sendToTerminal({ id: existing.id, text });
-    rememberStage(existing.id, { address: params.address, ...tab });
     await renameForStage({ id: existing.id, ...tab });
     return existing;
   }
@@ -90,14 +88,10 @@ export async function runStage(
   // заводит тот, кто успел первым. Успела раскладка — фраза уходит в её терминал.
   const created =
     directivePath === undefined ? await open() : await onceForDirective(directivePath, open);
-  if (created) {
-    rememberStage(created.id, { address: params.address, ...tab });
-    return created;
-  }
+  if (created) return created;
   const late = pickStageSession(params);
   if (!late) throw new Error(`Терминал директивы ${params.directive} не завёлся`);
   await sendToTerminal({ id: late.id, text });
-  rememberStage(late.id, { address: params.address, ...tab });
   await renameForStage({ id: late.id, ...tab });
   return late;
 }

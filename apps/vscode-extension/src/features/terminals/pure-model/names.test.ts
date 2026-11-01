@@ -40,19 +40,12 @@ test("the tab name keeps the point of the directive, not its file name", () => {
   expect(shortDirective("верни-кнопки.md")).toBe("верни-кнопки");
 });
 
-test("a finished stage is marked, not erased", () => {
-  const running = stageName({
-    base: "Mapward (ru)",
-    directive: "2026-09-19-2335-add-directives-hooks.md",
-    stage: "Тестирование",
-  });
-  expect(running).toBe("Mapward (ru) · add-directives-hooks · Тестирование");
+test("a stage tab names the object, the directive and the stage", () => {
   expect(
     stageName({
       base: "Mapward (ru)",
       directive: "2026-09-19-2335-add-directives-hooks.md",
       stage: "Тестирование",
-      done: true,
     }),
-  ).toBe(`${running} ✓`);
+  ).toBe("Mapward (ru) · add-directives-hooks · Тестирование");
 });

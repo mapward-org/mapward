@@ -19,7 +19,6 @@ import {
   setMcpUrl,
 } from "@/features/terminals/index.extension.ts";
 import { registerDirectiveLayout } from "@/features/directive-layout/index.extension.ts";
-import { withStageTabs } from "./stage-tabs.ts";
 import { openDirectiveTerminal, runStage } from "./run-stage.ts";
 import {
   directiveHolder,
@@ -76,7 +75,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let webview: { assets: string; bridge: string } | undefined;
   // Обёртка ловит конец этапа, откуда бы он ни пришёл: сервер один и на мост, и на MCP.
   const created = await createServer(() => webview);
-  const server = withStageTabs(created.server);
+  const server = created.server;
   // Окно закрывается — гаснут и процессы плагинов: сироты с вотчерами никому не нужны.
   context.subscriptions.push({ dispose: () => void created.server.stopPlugins() });
 
