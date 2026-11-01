@@ -5,6 +5,7 @@ import type { FileEntry, ServerPorts } from "@mapward/abstract-server";
 import { isDirectivePath } from "@/features/directive-layout/index.extension.ts";
 import { createTrust, editor, installPackages, startPlugin } from "./plugins.ts";
 import { changedSpan } from "./changed-span.ts";
+import { marketPort } from "./market.ts";
 
 /**
  * Реализации портов сервера для редактора — решение 0014. Всё, что знает про `vscode` и про
@@ -173,6 +174,7 @@ export function createPorts(): ServerPorts {
     // Плагины: процесс на node редактора, вопрос «доверять?» и редактор для `ctx.vscode`.
     plugins: { start: startPlugin },
     // Зависимости встроенного плагина (холст `objects-map`) — npm в папке плагина.
+    market: marketPort,
     packages: { install: installPackages },
     trust: createTrust(),
     editor,

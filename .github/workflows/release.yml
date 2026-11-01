@@ -18,16 +18,21 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
+          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       # Opens (and keeps updating) a "Version Packages" pull request. Merging it bumps versions,
-      # writes changelogs and tags the release — nothing is published to npm while packages are private.
+      # writes changelogs, tags the release and publishes the public packages to npm — today only
+      # `@mapward/cli`, which bundles the rest of the monorepo; private packages are skipped.
       - uses: changesets/action@v1
         with:
           version: pnpm run version
+          publish: pnpm run release
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -125,6 +125,26 @@ export type TrustPort = {
  */
 export type PackagesPort = { install(dir: string): Promise<void> };
 
+/** Архив репозитория, разобранный `untar`: коммит, текстовые файлы, двоичные — именами. */
+export type Archive = {
+  /** Коммит, из которого собран архив; GitHub его называет всегда. */
+  commit?: string;
+  /** Текстовые файлы по путям от корня репозитория. */
+  files: Record<string, string>;
+  /** Файлы, которые не текст UTF-8, — их не копируют, а называют. */
+  skipped: string[];
+};
+
+/**
+ * Сеть маркетплейса: только чтение публичного GitHub, без токена. Разбирает архив хост — gzip и
+ * текст у сервера своих нет, — а сам tar разбирает `untar` сервера. Ответ `undefined` — такого нет
+ * (404); любая другая неудача — отклонённый промис с причиной.
+ */
+export type MarketPort = {
+  text(url: string): Promise<string | undefined>;
+  archive(url: string): Promise<Archive | undefined>;
+};
+
 /** Редактор для плагинов: `ctx.vscode`. Нет его — плагин узнаёт об этом из `ctx.isVscode`. */
 export type EditorPort = {
   openFile(path: string, options: { line?: number; column?: number }): Promise<void>;
@@ -167,6 +187,8 @@ export type ServerPorts = {
   trust?: TrustPort;
   /** Без него встроенный плагин с зависимостями копируется, а поставить их просят человека. */
   packages?: PackagesPort;
+  /** Без него маркетплейс отвечает, что сети у хоста нет. */
+  market?: MarketPort;
   editor?: EditorPort;
   /** Есть только у редактора: им рисует плагин `screenshot`. */
   webview?: WebviewPort;

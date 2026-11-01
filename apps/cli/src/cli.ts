@@ -7,6 +7,7 @@ import { bundleBuild, createMapServer, findMaps, serveMcp } from "@mapward/abstr
 import type { MapServer, PluginCheck } from "@mapward/abstract-server";
 import { findMetricOwner, MAP_ROOT, memberOwner } from "@mapward/core";
 import type { MapMetric, ResolvedMap } from "@mapward/core";
+import { MARKET_USAGE, runMarket } from "./market-command.ts";
 import { createPorts } from "./ports.ts";
 import { stdioTransport } from "./stdio.ts";
 import { announce, livePlatform, proxyMcp, serveMcpHttp } from "./platform.ts";
@@ -32,6 +33,7 @@ const USAGE = `mapward <команда>
   plugin check <путь> [карта] работает ли плагин: сборка, процесс и рукопожатие,
                               самоописание, а у метрик, которые на него ссылаются, —
                               сборка компонента и пробный запрос для агента
+${MARKET_USAGE}
 
 Адрес метрики — mapward://<объект>/_metrics/<имя>, экшона — mapward://<объект>/_actions/<имя>. Карта выбирается по имени, если их
 несколько; по умолчанию берётся первая.`;
@@ -250,6 +252,18 @@ async function main(): Promise<void> {
   if (command === "action") {
     const { exitCode } = await runAction(ports, maps, argv.slice(3));
     exit(exitCode);
+  }
+
+  if (command === "market") {
+    try {
+      const code = await runMarket(ports, maps, argv.slice(3));
+      // Вотчер живой модели держит процесс — выходим сами.
+      exit(code);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      exit(1);
+    }
+    return;
   }
 
   if (command === "plugin" && first === "check") {

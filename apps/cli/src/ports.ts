@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { PLUGIN_INSTALL } from "@mapward/abstract-server";
 import type { FileEntry, PluginProcess, ProcessEnv, ServerPorts } from "@mapward/abstract-server";
+import { marketPort } from "./market.ts";
 
 /**
  * Порты сервера со стороны терминала — решение 0014. Та же модель, что в редакторе, только
@@ -294,6 +295,7 @@ export function createPorts(): ServerPorts {
 
     packages: { install: installPackages },
 
+    market: marketPort,
     trust: {
       allow: async ({ mapPath, plugin }) =>
         (await trustedPlugins())[slash(mapPath)]?.includes(slash(plugin)) ?? false,

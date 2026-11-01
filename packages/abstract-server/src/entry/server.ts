@@ -20,6 +20,13 @@ import {
   ComponentBuilds,
 } from "../features/components/index.ts";
 import { RunStore } from "../features/action-runs/index.ts";
+import {
+  DEFAULT_REGISTRY,
+  Market,
+  REGISTRY_ENV,
+  type MarketKind,
+} from "../features/market/index.ts";
+import { basename } from "../lib/path.ts";
 import { BuildPlugin, CheckPlugin, InstallPlugin, PluginHost } from "../features/plugins/index.ts";
 import { TurnStore, type TurnKey } from "../features/directive-turns/index.ts";
 import {
@@ -107,6 +114,21 @@ export function createMapServer(ports: ServerPorts) {
       undo: (ref, id) => undoEdit.run(ref, id),
       redo: (ref, id) => redoEdit.run(ref, id),
     },
+  );
+
+  // Маркетплейс: реестр и репозитории авторов — через сеть хоста; плагин ставится той же
+  // установкой, что встроенный (без доверия), кусок карты — правкой карты одной пачкой.
+  const market = new Market(
+    files,
+    ports.market,
+    installPlugin,
+    (ref, ops) => editMap.run(ref, ops),
+    async (ref, address) => {
+      const object = await map.subtree(ref, address, 1);
+      if (!object) return undefined;
+      return { path: object.path, children: object.children.map((child) => basename(child.path)) };
+    },
+    () => env.vars()[REGISTRY_ENV]?.trim() || DEFAULT_REGISTRY,
   );
 
   // Проверка плагина стыкует сборку, процесс, карту и сборку компонента метрики.
@@ -361,6 +383,30 @@ export function createMapServer(ports: ServerPorts) {
      */
     checkPlugin: (params: MapRef & { plugin: string }, timeout: number) =>
       checkPlugin.run(params, params.plugin, timeout),
+
+    /** Маркетплейс: поиск по реестру — плагины, куски карты или оба индекса. */
+    marketSearch: (params: { query?: string; kind?: MarketKind }) => market.search(params),
+
+    /** Исходники из реестра до установки: дерево файлов и README или один файл. */
+    marketRead: (params: { name: string; kind?: MarketKind; path?: string; commit?: string }) =>
+      market.read(params),
+
+    /**
+     * Поставить из реестра копией: плагин — в `_plugins/<имя>` без доверия (его подтверждает
+     * человек), кусок карты — под родителя пачкой правки с отменой.
+     */
+    marketAdd: (
+      params: MapRef & {
+        name: string;
+        kind?: MarketKind;
+        path?: string;
+        parent?: string;
+        trusted?: boolean;
+      },
+    ) => market.add(params, params),
+
+    /** Установленное против записанного коммита и ветки автора. */
+    marketDiff: (params: MapRef & { path: string }) => market.diff(params, params),
 
     /** Имена встроенных плагинов — что можно поставить. */
     builtinPlugins: () => installPlugin.names(),

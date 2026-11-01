@@ -1,8 +1,19 @@
 {
   "name": "@mapward/cli",
   "version": "0.0.0",
-  "private": true,
-  "description": "Command-line binding: reads a map from disk and runs checks in CI or a terminal.",
+  "description": "Command-line mapward: reads a map from disk, runs metrics, actions and plugin checks, serves MCP, installs from the marketplace.",
+  "keywords": [
+    "agents",
+    "architecture",
+    "map",
+    "mapward",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mapward-org/mapward.git",
+    "directory": "apps/cli"
+  },
   "bin": {
     "mapward": "./dist/cli.mjs"
   },
@@ -10,17 +21,23 @@
     "dist"
   ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@mapward/abstract-server": "workspace:*",
-    "@mapward/core": "workspace:*",
-    "esbuild-wasm": "catalog:"
+    "esbuild-wasm": "catalog:",
+    "rxjs": "catalog:",
+    "tailwindcss": "catalog:",
+    "typebox": "catalog:"
   },
   "devDependencies": {
+    "@mapward/abstract-server": "workspace:*",
+    "@mapward/core": "workspace:*",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",

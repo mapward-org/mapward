@@ -63,7 +63,20 @@ export class InstallPlugin {
         error: `встроенного плагина ${name} нет; есть: ${this.names().join(", ")}`,
       };
     }
+    // Встроенный пришёл с инструментом — ему доверяют сразу.
+    return this.copy(ref, { name, sources, ...(folder ? { folder } : {}), trusted: true });
+  }
 
+  /**
+   * Копия исходников, пришедших не с инструментом, — из маркетплейса. Правила те же, что у
+   * встроенного: занятую папку не трогаем, `index.*` — последним, зависимости — npm. Доверие —
+   * по слову зовущего: чужой код доверенным сам не становится, его подтверждает человек.
+   */
+  async copy(
+    ref: MapRef,
+    params: { name: string; sources: PluginSources; folder?: string; trusted: boolean },
+  ): Promise<InstallResult> {
+    const { name, sources, folder, trusted } = params;
     const mapPath = slash(ref.mapPath);
     const given = folder ? slash(folder.trim()) : `${PLUGINS_DIR}/${name}`;
     const target = isAbsolute(given) ? normalize(given) : join(mapPath, given);
@@ -90,12 +103,12 @@ export class InstallPlugin {
         await this.files.write(path, sources[relative] ?? "");
         written.push(path);
       }
-      await this.trust?.grant({ mapPath, plugin: target });
+      if (trusted) await this.trust?.grant({ mapPath, plugin: target });
     } catch (error) {
       return { ok: false, error: `плагин ${name} не скопирован в ${target}: ${message(error)}` };
     }
 
-    const installed = await this.dependencies(target, sources);
+    const installed = await this.dependencies(target, sources, true, trusted);
     if ("error" in installed) return { ok: false, error: installed.error };
     return {
       ok: true,
@@ -114,6 +127,7 @@ export class InstallPlugin {
     target: string,
     sources: PluginSources,
     copied = true,
+    trusted = true,
   ): Promise<{ names: string[] } | { error: string }> {
     const manifest = sources["package.json"];
     if (manifest === undefined) return { names: [] };
@@ -128,7 +142,7 @@ export class InstallPlugin {
 
     const by = `cd "${target}" && ${PLUGIN_INSTALL.command} ${PLUGIN_INSTALL.args.join(" ")}`;
     const head = copied
-      ? `плагин скопирован в ${target} и доверен, но его зависимости (${names.join(", ")}) не поставлены`
+      ? `плагин скопирован в ${target}${trusted ? " и доверен" : ""}, но его зависимости (${names.join(", ")}) не поставлены`
       : `зависимости плагина ${target} (${names.join(", ")}) не поставлены`;
     if (!this.packages) {
       return { error: `${head}: этот хост пакеты не ставит. Поставьте сами: ${by}` };

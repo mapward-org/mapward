@@ -16,6 +16,7 @@ export * from "./features/directives/index.ts";
 export * from "./features/components/index.ts";
 export * from "./features/maps/index.ts";
 export * from "./features/action-runs/index.ts";
+export * from "./features/market/index.ts";
 export * from "./features/directive-turns/index.ts";
 export type { CheckStep, PluginCheck } from "./features/plugins/index.ts";
 export { PLUGIN_INSTALL } from "./features/plugins/index.ts";

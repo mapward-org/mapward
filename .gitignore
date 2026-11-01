@@ -25,3 +25,7 @@ packages/docs/src/content.generated.ts
 
 # Встроенные плагины едут в сервер строками: исходник — registry/, модуль собирается перед сборкой
 packages/plugins/src/sources.generated.ts
+
+# local secrets
+.env
+.env.*

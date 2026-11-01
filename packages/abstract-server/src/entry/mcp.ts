@@ -654,6 +654,93 @@ const TOOLS = [
     },
   },
   {
+    name: "market_search",
+    description:
+      "Маркетплейс mapward: найти в реестре плагины и куски карты (прототипы с метриками, экшонами, этапами директив), которые выложили другие. " +
+      "Реестр — публичный репозиторий mapward-org/market на GitHub, каждая строка — репозиторий автора и ветка. " +
+      "Ищет словами по имени и описанию; без query — весь индекс. Дальше — market_read: исходники до установки.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "слова поиска; без них — всё" },
+        kind: {
+          type: "string",
+          enum: ["plugin", "map"],
+          description: "plugin — плагины, map — куски карты; без него оба индекса",
+        },
+      },
+    },
+  },
+  {
+    name: "market_read",
+    description:
+      "Прочитать то, что лежит в реестре, не ставя в карту: без path — дерево файлов, README и коммит ветки; с path — текст файла. " +
+      "Это проверка до установки: за безопасность реестр не отвечает, код плагина и команды в метриках куска читают здесь. " +
+      "commit — прочитать на записанном коммите, как он был при установке.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "имя из market_search" },
+        kind: {
+          type: "string",
+          enum: ["plugin", "map"],
+          description: "если имя есть в обоих индексах",
+        },
+        path: { type: "string", description: "файл от корня репозитория" },
+        commit: { type: "string", description: "коммит вместо ветки" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "market_add",
+    description:
+      "Поставить из реестра копией — дальше это код проекта, как встроенный плагин. Плагин копируется в _plugins/<имя> (или path), " +
+      "его зависимости ставит npm; доверенным он не становится — до первого запуска редактор спросит человека «Доверять?». " +
+      "Кусок карты ложится под parent (без него — корень) одной пачкой правки карты: адреса внутри переписываются на новое место, " +
+      "отмена — undo_edit по id из ответа; плагины из его market.json ставятся первыми. Занятое место — отказ. " +
+      "Рядом остаётся .market.json — откуда и с какого коммита; по нему market_diff.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "имя из market_search" },
+        kind: {
+          type: "string",
+          enum: ["plugin", "map"],
+          description: "если имя есть в обоих индексах",
+        },
+        path: {
+          type: "string",
+          description: "плагину — папка от корня карты; по умолчанию _plugins/<имя>",
+        },
+        parent: {
+          type: "string",
+          description: "куску карты — адрес родителя; по умолчанию mapward://",
+        },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "market_diff",
+    description:
+      "Сравнить поставленное из маркетплейса с веткой автора: по .market.json в папке — записанный коммит, коммит ветки сейчас (latest) " +
+      "и файлы, изменившиеся у автора (author) или в карте (local). Обновления командой нет: прочитай изменения market_read " +
+      "(commit — как было, без него — как стало) и перенеси их поверх правок проекта.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "папка плагина или объекта куска: от корня карты или абсолютная",
+        },
+        map: { type: "string", description: "имя карты; без него первая" },
+      },
+      required: ["path"],
+    },
+  },
+  {
     name: "call_plugin",
     description:
       "Вызвать метод плагина — так же, как его зовёт компонент метрики. Метод отвечает потоком: " +
@@ -764,6 +851,10 @@ const view = (args: Record<string, unknown>): View => ({
   directives: args.directives === "all",
   values: (names(args.metrics)?.length ?? 0) > 0 || typeof args.group === "string",
 });
+
+/** Вид из реестра, если его назвали: `plugin` или `map`; другое — как не названный. */
+const marketKind = (kind: unknown): { kind?: "plugin" | "map" } =>
+  kind === "plugin" || kind === "map" ? { kind } : {};
 
 /** Ответ инструмента: агент читает json как текст — так устроен протокол. */
 const text = (value: unknown) => ({
@@ -1092,6 +1183,43 @@ export function serveMcp(
       });
       if (!result.ok) throw new Error(result.error);
       return text(result);
+    }
+
+    if (name === "market_search") {
+      return text(
+        await server.marketSearch({
+          ...(typeof args.query === "string" ? { query: args.query } : {}),
+          ...marketKind(args.kind),
+        }),
+      );
+    }
+
+    if (name === "market_read") {
+      return text(
+        await server.marketRead({
+          name: String(args.name ?? ""),
+          ...marketKind(args.kind),
+          ...(typeof args.path === "string" && args.path ? { path: args.path } : {}),
+          ...(typeof args.commit === "string" && args.commit ? { commit: args.commit } : {}),
+        }),
+      );
+    }
+
+    if (name === "market_add") {
+      // Доверие агент не выдаёт: чужой код подтверждает человек в редакторе.
+      const result = await server.marketAdd({
+        ...ref,
+        name: String(args.name ?? ""),
+        ...marketKind(args.kind),
+        ...(typeof args.path === "string" && args.path ? { path: args.path } : {}),
+        ...(typeof args.parent === "string" && args.parent ? { parent: args.parent } : {}),
+      });
+      if (!result.ok) throw new Error(result.error);
+      return text(result);
+    }
+
+    if (name === "market_diff") {
+      return text(await server.marketDiff({ ...ref, path: String(args.path ?? "") }));
     }
 
     if (name === "read_run") {

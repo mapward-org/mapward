@@ -1,0 +1,52 @@
+# Решение по проверке: комментарий и приём. Здесь есть права на запись, поэтому чужой код здесь
+# не запускается — только читается ответ проверки, а всё, от чего зависит приём, перепроверяется
+# по GitHub: тот ли это коммит и трогает ли pull request только индексы.
+name: merge
+
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  decide:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: check
+          path: out
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: comment and merge
+        run: |
+          set -euo pipefail
+          number=$(tr -cd '0-9' < out/pr.txt)
+          [ -n "$number" ] || { echo "нет номера pull request'а"; exit 1; }
+          head=$(gh pr view "$number" --json headRefOid -q .headRefOid)
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "после проверки в pull request пришли новые коммиты — ждём их проверку"
+            exit 0
+          fi
+          head -c 60000 out/comment.md > comment.md
+          gh pr comment "$number" --body-file comment.md
+          files=$(gh pr view "$number" --json files -q '.files[].path' | sort -u)
+          only_indexes=true
+          for file in $files; do
+            case "$file" in plugins.json|maps.json) ;; *) only_indexes=false ;; esac
+          done
+          ok=$(jq -r '.ok' out/result.json)
+          if [ "$CONCLUSION" = "success" ] && [ "$ok" = "true" ] && [ "$only_indexes" = "true" ]; then
+            gh pr merge "$number" --squash --match-head-commit "$HEAD_SHA"
+          fi
