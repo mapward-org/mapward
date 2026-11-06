@@ -7,17 +7,18 @@ import {
   fillInputs,
   globBase,
   matchesAny,
-  runMessage,
+  TRACE_ENV,
   type PluginClient,
-  type RunMessage,
+  type PluginCtx,
 } from "@mapward/plugin";
 import { Observable, type Unsubscribable } from "rxjs";
 import { Type, type Static } from "typebox";
 
 /**
- * Команды оболочки. Для экшона — `run` и `steps`: вывод уходит сообщениями о ходе по строкам, по
- * мере появления, и окно прогона показывает их сразу. Для метрики — `json`: вывод команды —
- * значение, разобранное json-ом. Отписка — остановка: процесс снимается вместе с детьми.
+ * Команды оболочки. Для экшона — `run` и `steps`: stdout уходит выводом вызова (`ctx.output`),
+ * stderr — ходом (`ctx.log`), по строкам и по мере появления, и окно прогона показывает их сразу.
+ * Для метрики — `json`: вывод команды — значение, разобранное json-ом. Отписка — остановка:
+ * процесс снимается вместе с детьми. Трейс вызова команда получает переменной `MAPWARD_TRACE`.
  *
  * Это код проекта: правь под себя.
  */
@@ -56,8 +57,18 @@ type StepsArgs = {
   timeout?: number;
 };
 
-/** Итог команды: вывод уже ушёл сообщениями, повторять его незачем. */
+/** Итог команды: вывод уже ушёл в лог, повторять его незачем. */
 type Done = { code: 0 };
+
+/** Куда идут строки команды и в каком трейсе она идёт. */
+type Sinks = { out(line: string): void; err(line: string): void; trace?: string };
+
+/** Строки — в лог вызова: stdout выводом, stderr ходом. */
+const toLog = (ctx: PluginCtx): Sinks => ({
+  out: (line) => ctx.output(line),
+  err: (line) => ctx.log(line),
+  ...(ctx.call === undefined ? {} : { trace: ctx.call.trace }),
+});
 
 /** `MAPWARD_INPUT_<ИМЯ>` — скрипту, которому JSON во входе разбирать незачем. */
 function inputEnv(values: Inputs): Env {
@@ -105,13 +116,19 @@ function lines(emit: (line: string) => void): { feed(chunk: string): void; flush
   };
 }
 
-function run(args: RunArgs, mapPath: string): Observable<RunMessage | Done> {
-  return new Observable<RunMessage | Done>((sink) => {
+function run(args: RunArgs, mapPath: string, sinks: Sinks): Observable<Done> {
+  return new Observable<Done>((sink) => {
     const values = args.inputs;
     const command = values ? fillInputs(args.command, values) : args.command;
     const child = spawn(command, {
       cwd: args.cwd ?? mapPath,
-      env: { ...process.env, ...args.env, ...(values ? inputEnv(values) : {}) },
+      env: {
+        ...process.env,
+        ...args.env,
+        ...(values ? inputEnv(values) : {}),
+        // Трейс — дальше вниз: что команда сделает через карту, ляжет в тот же трейс.
+        ...(sinks.trace === undefined ? {} : { [TRACE_ENV]: sinks.trace }),
+      },
       shell: true,
       windowsHide: true,
       // Своя группа — чтобы остановка могла снять и детей; на Windows это делает `taskkill`.
@@ -130,12 +147,12 @@ function run(args: RunArgs, mapPath: string): Observable<RunMessage | Done> {
     // Кодировка на потоке, а не `toString()` куска: русская буква на границе кусков иначе бьётся.
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
-    const out = lines((text) => sink.next({ progress: "out", text }));
+    const out = lines((text) => sinks.out(text));
     const tail: string[] = [];
     const err = lines((text) => {
       tail.push(text);
       tail.splice(0, Math.max(0, tail.length - 20));
-      sink.next({ progress: "log", text });
+      sinks.err(text);
     });
     child.stdout.on("data", (chunk: string) => out.feed(chunk));
     child.stderr.on("data", (chunk: string) => err.feed(chunk));
@@ -175,8 +192,9 @@ function run(args: RunArgs, mapPath: string): Observable<RunMessage | Done> {
  * Шаги по очереди: следующий — после того, как предыдущий сделал своё; упал один — остальные не
  * идут. `script` — команда здесь же, `prompt` — плагин `agent` рядом.
  */
-function steps(args: StepsArgs, mapPath: string, agent: PluginClient): Observable<RunMessage> {
-  return new Observable<RunMessage>((sink) => {
+function steps(args: StepsArgs, ctx: PluginCtx): Observable<never> {
+  const agent = ctx.plugin("../agent");
+  return new Observable<never>((sink) => {
     let current: Unsubscribable | undefined;
     const timer =
       args.timeout === undefined
@@ -198,10 +216,14 @@ function steps(args: StepsArgs, mapPath: string, agent: PluginClient): Observabl
         return;
       }
       const kind = String(step.kind);
-      sink.next({ progress: "step", name: String(step.name ?? step.kind ?? at + 1) });
+      ctx.step(String(step.name ?? step.kind ?? at + 1));
       const stream: Observable<unknown> | undefined =
         kind === "script"
-          ? run({ command: String(step.command ?? step.run ?? ""), ...common }, mapPath)
+          ? run(
+              { command: String(step.command ?? step.run ?? ""), ...common },
+              ctx.map.mapPath,
+              toLog(ctx),
+            )
           : kind === "prompt"
             ? agent.call("run", {
                 prompt: String(step.prompt ?? ""),
@@ -214,11 +236,8 @@ function steps(args: StepsArgs, mapPath: string, agent: PluginClient): Observabl
         return;
       }
       current = stream.subscribe({
-        // Итог шага в прогон не идёт: что шаг сделал, уже пришло сообщениями.
-        next: (value) => {
-          const message = runMessage(value);
-          if (message) sink.next(message);
-        },
+        // Итог шага в прогон не идёт: что шаг сделал, уже в логе — агент пишет свой ход сам, в том
+        // же трейсе.
         error: (error) => sink.error(error),
         complete: () => next(at + 1),
       });
@@ -324,11 +343,9 @@ function parseOutput(text: string): unknown {
  * подписан: `watch` перезапускает команду по изменению файлов, `from` — по новому входу; без них
  * значение одно, и поток кончается. Объект для команды — подстановками в `command` и `env`.
  */
-function json(
-  args: JsonArgs,
-  mapPath: string,
-  plugin: (path: string) => PluginClient,
-): Observable<unknown> {
+function json(args: JsonArgs, ctx: PluginCtx): Observable<unknown> {
+  const mapPath = ctx.map.mapPath;
+  const plugin = (path: string): PluginClient => ctx.plugin(path);
   return new Observable<unknown>((sink) => {
     const cwd = args.cwd ?? mapPath;
     const lasting = args.watch !== undefined || args.from !== undefined;
@@ -338,6 +355,7 @@ function json(
     const start = () => {
       current?.unsubscribe();
       const out: string[] = [];
+      // stdout — значение, его копим; stderr — ходом в лог метрики.
       current = run(
         {
           command: args.command,
@@ -347,11 +365,8 @@ function json(
           ...(args.timeout === undefined ? {} : { timeout: args.timeout }),
         },
         mapPath,
+        { ...toLog(ctx), out: (line) => out.push(line) },
       ).subscribe({
-        next: (value) => {
-          const message = value as { progress?: string; text?: string };
-          if (message.progress === "out") out.push(message.text ?? "");
-        },
         error: (error) => sink.error(error),
         complete: () => {
           sink.next(parseOutput(out.join("\n")));
@@ -411,21 +426,21 @@ export default definePlugin({
       description:
         "Значение метрики — вывод команды, разобранный json-ом (не json — { text }). С watch перезапускается по изменению файлов, с from — по каждому значению другого метода, которое уходит в stdin JSON-ом; без них значение одно. Ненулевой код — ошибка с хвостом stderr",
       params: JSON_ARGS,
-      run: (args, ctx) => json(args, ctx.map.mapPath, (path) => ctx.plugin(path)),
+      run: (args, ctx) => json(args, ctx),
     },
     run: {
       kind: "mutation",
       description:
-        "Выполнить команду оболочкой. Сообщения — строки вывода: { progress: 'out' | 'log', text }; итог — { code: 0 }. Ненулевой код — ошибка с хвостом stderr",
+        "Выполнить команду оболочкой. stdout — выводом вызова, stderr — ходом, в лог плагина по строкам; итог — { code: 0 }. Ненулевой код — ошибка с хвостом stderr",
       params: RUN,
-      run: (args, ctx) => run(args, ctx.map.mapPath),
+      run: (args, ctx) => run(args, ctx.map.mapPath, toLog(ctx)),
     },
     steps: {
       kind: "mutation",
       description:
-        "Шаги по очереди: { kind: 'script', command } — команда, { kind: 'prompt', prompt, permissions } — агент плагином agent рядом. Перед каждым шагом — { progress: 'step', name }",
+        "Шаги по очереди: { kind: 'script', command } — команда, { kind: 'prompt', prompt, permissions } — агент плагином agent рядом. Каждый шаг начинается строкой шага в логе (ctx.step)",
       params: STEPS,
-      run: (args: StepsArgs, ctx) => steps(args, ctx.map.mapPath, ctx.plugin("../agent")),
+      run: (args: StepsArgs, ctx) => steps(args, ctx),
     },
   },
 });

@@ -11,7 +11,7 @@ import {
 } from "rxjs";
 import { expect, test } from "vitest";
 import { findObject } from "@mapward/core";
-import type { MapObject } from "@mapward/core";
+import type { LogLine, MapObject } from "@mapward/core";
 import { definePlugin, runPlugin } from "@mapward/plugin";
 import type { PlatformMessage, PluginDefinition, PluginMessage } from "@mapward/plugin";
 import type {
@@ -25,7 +25,7 @@ import type {
 } from "../../../../ports/index.ts";
 import type { BuildPlugin } from "../use-cases/build-plugin.ts";
 import { InstallPlugin } from "../use-cases/install-plugin.ts";
-import type { PluginsMapEdits } from "../../ports.ts";
+import type { PluginsLogs, PluginsMapEdits } from "../../ports.ts";
 import { PluginHost } from "./plugin-host.ts";
 
 /** Таймеры среды: у пакета их типов нет, а тесту они нужны. */
@@ -124,6 +124,7 @@ function host(
     trust?: TrustPort;
     build?: BuildPlugin;
     edits?: PluginsMapEdits;
+    logs?: PluginsLogs;
   } = {},
 ) {
   const map = new BehaviorSubject(root);
@@ -170,6 +171,7 @@ function host(
     undefined,
     undefined,
     options.edits,
+    options.logs,
   );
   return { plugins, map, started: proc.started, time, watchers, clock };
 }
@@ -465,4 +467,124 @@ test("ctx.editMap идёт в правку карты платформы, отм
     { ref: "/map", ops: [{ op: "move", object: "mapward://a", parent: "mapward://b" }] },
     { undo: "7" },
   ]);
+});
+
+/** Логи в памяти: строки по порядку, файл — имя папки плагина. */
+function memoryLogs() {
+  const lines: LogLine[] = [];
+  const logs: PluginsLogs = {
+    fileOf: (plugin) => plugin.split("/").pop() ?? plugin,
+    write: (_mapPath, line) => lines.push(line),
+    tail: (_mapPath, file, count) => lines.filter((line) => line.file === file).slice(-count),
+  };
+  return { logs, lines };
+}
+
+const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 10));
+
+test("вызов пишет в лог плагина начало, ход и конец в своём трейсе; вложенный вызов — в трейсе родителя", async () => {
+  const { logs, lines } = memoryLogs();
+  const { plugins } = host(
+    {
+      "/p/outer": definePlugin({
+        methods: {
+          run: {
+            run: (_args: unknown, ctx) => {
+              ctx.log("иду к соседу");
+              return ctx.plugin("/p/inner").call("run");
+            },
+          },
+        },
+      }),
+      "/p/inner": definePlugin({
+        methods: {
+          run: {
+            run: (_args: unknown, ctx) =>
+              defer(() => {
+                ctx.step("сосед");
+                ctx.output(`трейс ${ctx.call?.trace ?? "нет"}`);
+                ctx.log.error("ой");
+                return of(1);
+              }),
+          },
+        },
+      }),
+    },
+    undefined,
+    { logs },
+  );
+
+  const values = await firstValueFrom(
+    plugins
+      .call(REF, "/p/outer", "run", {}, { trace: "t1", object: "mapward://core" })
+      .pipe(toArray()),
+  );
+  await settle();
+
+  expect(values).toEqual([1]);
+  const shown = lines.map((line) => [line.file, line.kind, line.text ?? line.status ?? ""]);
+  expect(shown).toEqual([
+    ["outer", "call-start", ""],
+    ["outer", "log", "иду к соседу"],
+    ["inner", "call-start", ""],
+    ["inner", "step", "сосед"],
+    // Плагин знает свой трейс: его отдают процессам переменной окружения.
+    ["inner", "out", "трейс t1"],
+    ["inner", "error", "ой"],
+    ["inner", "call-end", "success"],
+    ["outer", "call-end", "success"],
+  ]);
+  // Все строки — в одном трейсе и на одном объекте; вложенный вызов знает родителя.
+  expect(new Set(lines.map((line) => line.trace))).toEqual(new Set(["t1"]));
+  expect(lines.every((line) => line.object === "mapward://core")).toBe(true);
+  const outer = lines.find((line) => line.file === "outer" && line.kind === "call-start");
+  const inner = lines.find((line) => line.file === "inner" && line.kind === "call-start");
+  expect(inner?.parent).toBe(outer?.call);
+  expect(outer?.parent).toBeUndefined();
+});
+
+test("вызов без трейса заводит свой; отмена трейса снимает все его вызовы и будит ctx.signal", async () => {
+  const { logs, lines } = memoryLogs();
+  const aborted: string[] = [];
+  const { plugins } = host(
+    {
+      "/p/wait": definePlugin({
+        methods: {
+          wait: {
+            run: (args: { name: string }, ctx) => {
+              ctx.signal.addEventListener("abort", () => aborted.push(args.name));
+              return NEVER;
+            },
+          },
+        },
+      }),
+    },
+    undefined,
+    { logs },
+  );
+
+  const errors: string[] = [];
+  const watch = (name: string, trace?: string) =>
+    plugins
+      .call(REF, "/p/wait", "wait", { name }, trace === undefined ? undefined : { trace })
+      .subscribe({ error: (error: Error) => errors.push(`${name}: ${error.message}`) });
+  watch("первый", "t1");
+  watch("второй", "t1");
+  const other = watch("чужой");
+  await settle();
+
+  plugins.cancelTrace("t1");
+  await settle();
+
+  expect(errors.toSorted()).toEqual(["второй: остановлен", "первый: остановлен"]);
+  expect(aborted.toSorted()).toEqual(["второй", "первый"]);
+  const own = lines.find((line) => line.kind === "call-start" && line.trace !== "t1");
+  expect(own?.trace).toMatch(/^t/);
+  expect(
+    lines.filter((line) => line.kind === "call-end").map((line) => [line.trace, line.status]),
+  ).toEqual([
+    ["t1", "stopped"],
+    ["t1", "stopped"],
+  ]);
+  other.unsubscribe();
 });

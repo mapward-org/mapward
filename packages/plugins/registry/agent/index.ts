@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import process from "node:process";
-import { definePlugin, fillInputs, runMessage, type RunMessage } from "@mapward/plugin";
+import { definePlugin, fillInputs, TRACE_ENV, TRACE_HEADER, type PluginCtx } from "@mapward/plugin";
 import { Observable } from "rxjs";
 import { Type, type Static } from "typebox";
 import { parseAnswer } from "./answer.ts";
@@ -10,8 +10,11 @@ import { shapeHint } from "./shape.ts";
 
 /**
  * Агент в headless-режиме: `claude -p`, промпт в stdin, ход агента потоком событий. Ход
- * («→ Read файл», «→ Bash команда», текст) уходит сообщениями по мере прихода, ответ — сообщением
- * вывода и итогом. Отписка — остановка.
+ * («→ Read файл», «→ Bash команда», текст) уходит в лог вызова (`ctx.log`) по мере прихода, ответ —
+ * выводом (`ctx.output`) и итогом. Отписка — остановка.
+ *
+ * Трейс вызова агент получает переменной `MAPWARD_TRACE` и заголовком MCP карты: всё, что он
+ * сделает через карту, ляжет в тот же трейс, и отмена экшона снимет и это.
  *
  * `run` — один вопрос для экшона. `ask` и `refresh` — метрика: спрашивать агента дорого, поэтому
  * `ask` отдаёт сохранённый ответ из файла `cache`, а новый ответ даёт только `refresh` — кнопка.
@@ -116,109 +119,169 @@ function promptOf(args: RunArgs): string {
   return [fillInputs(args.prompt, values), form].filter(Boolean).join("\n\n");
 }
 
-function run(args: RunArgs, basePath: string) {
-  return new Observable<RunMessage | Answer>((sink) => {
-    const override = process.env.MAPWARD_AGENT_COMMAND;
-    const shell = override !== undefined || process.platform === "win32";
-    const flags = quoted([...STREAM_ARGS, ...permissionArgs(args.permissions)], shell);
-    const child = override
-      ? spawn([override, ...flags].join(" "), { shell: true, ...options() })
-      : spawn("claude", flags, { shell, ...options() });
+/**
+ * MCP карты для агента — с трейсом в заголовке: адрес живой платформы лежит в
+ * `.mapward/platform.json`. Конфиг — файлом, а не строкой: JSON в аргументах оболочки Windows
+ * не переживает кавычек. Платформы нет или трейса нет — агент ходит в MCP, как настроено в проекте.
+ */
+async function mcpConfig(mapPath: string, trace: string | undefined): Promise<string | undefined> {
+  if (trace === undefined) return undefined;
+  try {
+    const record = JSON.parse(await readFile(`${mapPath}/.mapward/platform.json`, "utf8")) as {
+      mcp?: unknown;
+    };
+    if (typeof record.mcp !== "string") return undefined;
+    const file = `${mapPath}/.mapward/agent-mcp/${trace.replaceAll(/[^\w-]/g, "_")}.json`;
+    await mkdir(dirname(file), { recursive: true });
+    const config = {
+      mcpServers: {
+        mapward: { type: "http", url: record.mcp, headers: { [TRACE_HEADER]: trace } },
+      },
+    };
+    await writeFile(file, JSON.stringify(config), "utf8");
+    return file;
+  } catch {
+    return undefined;
+  }
+}
+
+function run(args: RunArgs, ctx: PluginCtx) {
+  return new Observable<Answer>((sink) => {
+    const trace = ctx.call?.trace;
+    let child: ChildProcess | undefined;
+    let config: string | undefined;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    void mcpConfig(ctx.map.mapPath, trace).then((file) => {
+      config = file;
+      if (stopped) {
+        if (file) void rm(file, { force: true });
+        return;
+      }
+      start();
+    });
 
     function options() {
       return {
         // Агент работает с проектом, а не с картой: экшону чаще нужен код.
-        cwd: args.cwd ?? basePath,
-        env: { ...process.env, ...args.env, ...(args.inputs ? inputEnv(args.inputs) : {}) },
+        cwd: args.cwd ?? ctx.map.basePath,
+        env: {
+          ...process.env,
+          ...args.env,
+          ...(args.inputs ? inputEnv(args.inputs) : {}),
+          ...(trace === undefined ? {} : { [TRACE_ENV]: trace }),
+        },
         windowsHide: true,
         detached: process.platform !== "win32",
       };
     }
 
-    let expired = false;
-    const timer =
-      args.timeout === undefined
-        ? undefined
-        : setTimeout(() => {
-            expired = true;
-            killTree(child);
-          }, args.timeout);
+    function start() {
+      const override = process.env.MAPWARD_AGENT_COMMAND;
+      const shell = override !== undefined || process.platform === "win32";
+      const flags = quoted(
+        [
+          ...STREAM_ARGS,
+          ...permissionArgs(args.permissions),
+          ...(config === undefined ? [] : ["--mcp-config", config]),
+        ],
+        shell,
+      );
+      const spawned = override
+        ? spawn([override, ...flags].join(" "), { shell: true, ...options() })
+        : spawn("claude", flags, { shell, ...options() });
+      child = spawned;
 
-    let answer: string | undefined;
-    let lastText: string | undefined;
-    const tail: string[] = [];
-    const log = (text: string) => sink.next({ progress: "log", text });
+      let expired = false;
+      timer =
+        args.timeout === undefined
+          ? undefined
+          : setTimeout(() => {
+              expired = true;
+              killTree(spawned);
+            }, args.timeout);
 
-    const event = (raw: string) => {
-      if (raw.trim() === "") return;
-      let parsed: { type?: string; result?: unknown; message?: { content?: unknown } };
-      try {
-        parsed = JSON.parse(raw) as typeof parsed;
-      } catch {
-        log(raw);
-        return;
-      }
-      if (parsed.type === "result") {
-        if (typeof parsed.result === "string") answer = parsed.result;
-        return;
-      }
-      if (parsed.type !== "assistant" || !Array.isArray(parsed.message?.content)) return;
-      for (const block of parsed.message.content as Record<string, unknown>[]) {
-        if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-          lastText = block.text;
-          log(block.text);
-        } else if (block.type === "tool_use") {
-          log(toolLine(String(block.name), block.input));
+      let answer: string | undefined;
+      let lastText: string | undefined;
+      const tail: string[] = [];
+      const log = (text: string) => ctx.log(text);
+
+      const event = (raw: string) => {
+        if (raw.trim() === "") return;
+        let parsed: { type?: string; result?: unknown; message?: { content?: unknown } };
+        try {
+          parsed = JSON.parse(raw) as typeof parsed;
+        } catch {
+          log(raw);
+          return;
         }
-      }
-    };
+        if (parsed.type === "result") {
+          if (typeof parsed.result === "string") answer = parsed.result;
+          return;
+        }
+        if (parsed.type !== "assistant" || !Array.isArray(parsed.message?.content)) return;
+        for (const block of parsed.message.content as Record<string, unknown>[]) {
+          if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+            lastText = block.text;
+            log(block.text);
+          } else if (block.type === "tool_use") {
+            log(toolLine(String(block.name), block.input));
+          }
+        }
+      };
 
-    let buffer = "";
-    let errors = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      buffer += chunk;
-      const parts = buffer.split("\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) event(part);
-    });
-    child.stderr.on("data", (chunk: string) => {
-      errors += chunk;
-      const parts = errors.split("\n");
-      errors = parts.pop() ?? "";
-      for (const part of parts) {
-        tail.push(part);
-        log(part);
-      }
-    });
+      let buffer = "";
+      let errors = "";
+      spawned.stdout.setEncoding("utf8");
+      spawned.stderr.setEncoding("utf8");
+      spawned.stdout.on("data", (chunk: string) => {
+        buffer += chunk;
+        const parts = buffer.split("\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) event(part);
+      });
+      spawned.stderr.on("data", (chunk: string) => {
+        errors += chunk;
+        const parts = errors.split("\n");
+        errors = parts.pop() ?? "";
+        for (const part of parts) {
+          tail.push(part);
+          log(part);
+        }
+      });
 
-    child.on("error", (error) => sink.error(error));
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      event(buffer);
-      if (errors) {
-        tail.push(errors);
-        log(errors);
-      }
-      if (expired) {
-        sink.error(new Error(`время вышло, предел ${args.timeout} мс`));
-      } else if (code === 0) {
-        const text = answer ?? lastText ?? "";
-        sink.next({ progress: "out", text });
-        sink.next({ answer: text });
-        sink.complete();
-      } else {
-        sink.error(new Error(tail.slice(-20).join("\n").trim() || `агент вернул ${String(code)}`));
-      }
-    });
+      spawned.on("error", (error) => sink.error(error));
+      spawned.on("close", (code) => {
+        clearTimeout(timer);
+        if (config) void rm(config, { force: true });
+        event(buffer);
+        if (errors) {
+          tail.push(errors);
+          log(errors);
+        }
+        if (expired) {
+          sink.error(new Error(`время вышло, предел ${args.timeout} мс`));
+        } else if (code === 0) {
+          const text = answer ?? lastText ?? "";
+          ctx.output(text);
+          sink.next({ answer: text });
+          sink.complete();
+        } else {
+          sink.error(
+            new Error(tail.slice(-20).join("\n").trim() || `агент вернул ${String(code)}`),
+          );
+        }
+      });
 
-    child.stdin.on("error", () => {});
-    child.stdin.end(promptOf(args));
+      spawned.stdin.on("error", () => {});
+      spawned.stdin.end(promptOf(args));
+    }
 
     return () => {
+      stopped = true;
       clearTimeout(timer);
-      killTree(child);
+      if (child) killTree(child);
     };
   });
 }
@@ -304,8 +367,8 @@ function ask(args: AskArgs) {
   });
 }
 
-function refresh(args: AskArgs, basePath: string) {
-  return new Observable<RunMessage | Asked>((sink) => {
+function refresh(args: AskArgs, ctx: PluginCtx) {
+  return new Observable<Asked>((sink) => {
     let done = false;
     const finish = () => {
       done = true;
@@ -328,12 +391,10 @@ function refresh(args: AskArgs, basePath: string) {
         ...(args.cwd === undefined ? {} : { cwd: args.cwd }),
         ...(args.timeout === undefined ? {} : { timeout: args.timeout }),
       },
-      basePath,
+      ctx,
     ).subscribe({
       next: (value) => {
-        const message = runMessage(value);
-        if (message) sink.next(message);
-        else answer = (value as Answer).answer;
+        answer = value.answer;
       },
       error: (error) => {
         finish();
@@ -378,9 +439,9 @@ export default definePlugin({
     run: {
       kind: "mutation",
       description:
-        "Один вопрос агенту. Сообщения — ход агента { progress: 'log', text } и ответ { progress: 'out', text }; итог — { answer }",
+        "Один вопрос агенту. Ход агента — строками в лог плагина, ответ — выводом; итог — { answer }",
       params: RUN,
-      run: (args, ctx) => run(args, ctx.map.basePath),
+      run: (args, ctx) => run(args, ctx),
     },
     ask: {
       description:
@@ -392,10 +453,10 @@ export default definePlugin({
     refresh: {
       kind: "mutation",
       description:
-        "Спросить агента заново и сохранить ответ в cache — кнопка обновления метрики. Сообщения — ход агента; итог — новый ответ, как у ask",
+        "Спросить агента заново и сохранить ответ в cache — кнопка обновления метрики. Ход агента — в лог плагина; итог — новый ответ, как у ask",
       params: ASK,
       result: ASKED,
-      run: (args, ctx) => refresh(args, ctx.map.basePath),
+      run: (args, ctx) => refresh(args, ctx),
     },
   },
 });

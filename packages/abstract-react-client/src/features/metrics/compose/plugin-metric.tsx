@@ -28,8 +28,12 @@ export function PluginMetric(props: {
   const port = useMetricsPort();
   const bridge = useBridgeClient();
   const calls = useLocalStore(
-    () => new PluginCalls(bridge, port.ref, props.metric.config.component ?? ""),
-    [props.metric.config.component, port.ref.mapPath],
+    () =>
+      new PluginCalls(bridge, port.ref, props.metric.config.component ?? "", {
+        object: props.object.address,
+        metric: props.metric.address,
+      }),
+    [props.metric.config.component, port.ref.mapPath, props.object.address, props.metric.address],
   );
   useWatch(props.build);
 

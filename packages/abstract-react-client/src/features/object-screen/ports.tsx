@@ -18,8 +18,11 @@ export type ScreenSlots = {
   Directives: ComponentType<{ object: MapObject }>;
   /** Мета-экран: всё, что объект о себе знает. */
   Meta: ComponentType<{ object: MapObject }>;
-  /** Экран прогонов; выбранный прогон едет в истории экрана. */
-  Runs: ComponentType<{ selected: string | undefined; onSelect: (id: string) => void }>;
+  /** Экран прогонов; выбранный прогон едет в истории экрана, не выбран — открыт лог объекта. */
+  Runs: ComponentType<{
+    selected: string | undefined;
+    onSelect: (id: string | undefined) => void;
+  }>;
   /** Меню всех экшонов объекта в шапке. */
   ActionMenu: ComponentType<{ object: MapObject }>;
   /** Форма запуска экшона — поверх экрана. */

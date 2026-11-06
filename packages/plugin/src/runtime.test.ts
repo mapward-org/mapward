@@ -147,9 +147,11 @@ test("контекст: модель карты — просьбой к плат
   await tick();
 
   io.say({ t: "call", id: "1", method: "name", args: { address: "mapward://core" } });
+  // Просьба из `ctx` вызова несёт его номер: платформа отдаёт ей трейс этого вызова.
   expect(io.sent.at(-1)).toEqual({
     t: "request",
     id: "r1",
+    call: "1",
     op: "object",
     address: "mapward://core",
   });

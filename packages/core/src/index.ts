@@ -14,6 +14,7 @@ export * from "./contracts/map.ts";
 export * from "./contracts/state.ts";
 export * from "./contracts/turns.ts";
 export * from "./contracts/runs.ts";
+export * from "./contracts/logs.ts";
 export * from "./contracts/config.ts";
 export * from "./contracts/app.ts";
 export * from "./contracts/plugins.ts";

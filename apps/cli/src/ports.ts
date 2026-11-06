@@ -1,5 +1,15 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { readdir, readFile, mkdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  readdir,
+  readFile,
+  mkdir,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import { watch } from "node:fs";
 import { homedir } from "node:os";
@@ -90,6 +100,12 @@ const files = {
 
   async remove(path: string): Promise<void> {
     await rm(path, { force: true });
+  },
+
+  /** Дозапись — логам карты (`.mapward/logs/`): строка в конец, без переписывания файла. */
+  async append(path: string, text: string): Promise<void> {
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, text, "utf8");
   },
 
   /** Перенос папки объекта — правка карты (решение 0044). Занятую цель не затирает. */

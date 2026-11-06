@@ -44,22 +44,23 @@ export class RunsScreenStore extends Reactive {
     this.tabSlot.set(tab);
   }
 
-  get total(): number {
-    return this.runs().length;
-  }
-
   get shown(): Run[] {
     return inTab(this.runs(), this.tab);
   }
 
   /**
    * Названный прогон показывается, даже если он с другой вкладки: на него ведёт красная точка
-   * метрики, и прятать его за вкладкой значило бы вести в пустоту.
+   * метрики, и прятать его за вкладкой значило бы вести в пустоту. Не названный или ушедший из
+   * лога — справа основной вид, лог объекта (директива «логи плагинов»), а не самый свежий прогон.
    */
   get open(): Run | undefined {
     const id = this.selected();
-    const named = id === undefined ? undefined : this.runs().find((run) => run.id === id);
-    return named ?? this.shown[0];
+    return id === undefined ? undefined : this.runs().find((run) => run.id === id);
+  }
+
+  /** Справа лог объекта, а не прогон. */
+  get logOpen(): boolean {
+    return this.open === undefined;
   }
 
   /** Данные формы открытого прогона — строкой, как их показывают. */
@@ -70,13 +71,13 @@ export class RunsScreenStore extends Reactive {
     ]);
   }
 
-  /** Конфиг — после подстановок: тот, по которому прогон действительно шёл. */
   /** Итог метода экшона — то, что он отдал, кроме сообщений о ходе. */
   get result(): string | undefined {
     const result = this.open?.result;
     return result === undefined ? undefined : pretty(result);
   }
 
+  /** Конфиг — после подстановок: тот, по которому прогон действительно шёл. */
   get config(): string | undefined {
     const config = this.open?.config;
     return config === undefined ? undefined : pretty(config);

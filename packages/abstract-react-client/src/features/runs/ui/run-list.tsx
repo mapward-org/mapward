@@ -21,10 +21,6 @@ export function RunDot(props: { status: RunStatus }) {
   );
 }
 
-export function RunsEmpty() {
-  return <div className="p-3 opacity-60">прогонов у объекта ещё не было</div>;
-}
-
 /**
  * Экран прогонов объекта — решение 0038, по образцу мета-экрана: третий режим того же объекта.
  * Сверху вкладки, слева прогоны, справа выбранный.
@@ -62,7 +58,7 @@ export function RunsTabs(props: { tab: RunsTab; onTab: (tab: RunsTab) => void })
   );
 }
 
-/** Прогоны свежими сверху, экшоны и метрики вместе. */
+/** Лог объекта первым пунктом, под ним прогоны свежими сверху, экшоны и метрики вместе. */
 export function RunList(props: { empty: boolean; children: ReactNode }) {
   return (
     <ul className="m-0 w-2/5 max-w-64 min-w-28 shrink-0 list-none overflow-y-auto border-r border-[var(--mw-menu-border,#8884)] p-0">
@@ -71,6 +67,24 @@ export function RunList(props: { empty: boolean; children: ReactNode }) {
       )}
       {props.children}
     </ul>
+  );
+}
+
+/** Основной вид экрана — лог объекта: он открыт, когда прогон не выбран. */
+export function ObjectLogItem(props: { selected: boolean; onSelect: () => void }) {
+  return (
+    <li className="border-b border-[var(--mw-menu-border,#8884)]">
+      <button
+        type="button"
+        onClick={() => props.onSelect()}
+        className={`flex w-full flex-col px-2 py-1 text-left hover:bg-[var(--mw-list-hoverBackground)] ${
+          props.selected ? "bg-[var(--mw-list-activeSelectionBackground,#8883)]" : ""
+        }`}
+      >
+        <span className="truncate">лог объекта</span>
+        <span className="truncate text-[11px] opacity-60">все строки, по плагинам</span>
+      </button>
+    </li>
   );
 }
 

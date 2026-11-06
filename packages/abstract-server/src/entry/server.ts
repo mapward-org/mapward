@@ -1,6 +1,6 @@
 import { endWith, firstValueFrom, map as mapStream, type Observable } from "rxjs";
 import { MAP_ROOT } from "@mapward/core";
-import type { MapEditOp, PluginEvent, RunSource } from "@mapward/core";
+import type { LogFilter, MapEditOp, PluginEvent, RunSource, TraceRef } from "@mapward/core";
 import { builtinPlugins } from "@mapward/plugins";
 import type { ServerPorts } from "../ports/index.ts";
 import type { MapRef } from "../kernel/map-ref.ts";
@@ -19,7 +19,8 @@ import {
   BuildComponent,
   ComponentBuilds,
 } from "../features/components/index.ts";
-import { RunStore } from "../features/action-runs/index.ts";
+import { TraceStore } from "../features/traces/index.ts";
+import { LogStore, logFileOf } from "../features/logs/index.ts";
 import {
   DEFAULT_REGISTRY,
   Market,
@@ -97,6 +98,8 @@ export function createMapServer(ports: ServerPorts) {
   // Установка встроенного тоже мимо `writer`: `_plugins` — код, а не объекты карты.
   const installPlugin = new InstallPlugin(files, ports.trust, builtinPlugins, ports.packages);
   const buildPlugin = new BuildPlugin(files, ports.bundler);
+  // Логи карты — `.mapward/logs/`: файл на плагин и `mapward.log`. Пишет только платформа.
+  const logs = new LogStore(files, timers);
   const plugins = new PluginHost(
     map,
     buildPlugin,
@@ -113,6 +116,11 @@ export function createMapServer(ports: ServerPorts) {
       edit: (ref, ops) => editMap.run(ref, ops),
       undo: (ref, id) => undoEdit.run(ref, id),
       redo: (ref, id) => redoEdit.run(ref, id),
+    },
+    {
+      fileOf: logFileOf,
+      write: (mapPath, line) => logs.write(mapPath, line),
+      tail: (mapPath, file, count) => logs.tail(mapPath, file, count),
     },
   );
 
@@ -180,21 +188,28 @@ export function createMapServer(ports: ServerPorts) {
     editPlugins,
   );
 
-  // История прогонов — только у экшонов (решение 0038), и только у вызовов через экшон: сам
-  // экшон — метод плагина, и платформа, маршрутизируя вызов, его записывает. Ленту сайдбара
-  // она делит с директивами.
+  // Запуски — трейсы: любой вход заводит трейс, а прогон экшона или метрики собирается из строк
+  // лога. Ленту сайдбара трейсы делят с директивами.
   const turns = new TurnStore();
-  const runs = new RunStore(
-    files,
+  const traces = new TraceStore(
+    {
+      write: (mapPath, line) => logs.write(mapPath, line),
+      read: (mapPath, filter, limit) => logs.read(mapPath, filter, limit),
+      watch: (mapPath, filter, limit) => logs.watch(mapPath, filter, limit),
+    },
     map,
     {
       describe: (ref, plugin) => plugins.describe(ref, plugin),
-      call: (ref, plugin, method, args) => plugins.call(ref, plugin, method, args),
+      call: (ref, plugin, method, args, trace) => plugins.call(ref, plugin, method, args, trace),
+      cancelTrace: (trace) => plugins.cancelTrace(trace),
+      nextId: (prefix) => plugins.nextId(prefix),
     },
-    timers,
     clock,
     turns,
   );
+  /** Трейс вызова: названный (заголовком MCP, мостом) — с объектом, если он идёт; иначе новый. */
+  const traceOf = (trace: string | undefined, object?: string): TraceRef =>
+    trace === undefined ? traces.newTrace(object) : traces.refOf(trace);
 
   const locator = new DirectiveLocator(map);
   const state = new DirectiveState(files, writer);
@@ -204,6 +219,27 @@ export function createMapServer(ports: ServerPorts) {
   const stageRequest = new StageRequest(locator);
   const runDirective = new RunDirective(locator, files, state, turns);
   const finishDirective = new FinishDirective(locator, state, turns);
+
+  /**
+   * Вызов метода плагина с трейсом. Вызов метрики (мост называет объект и метрику) заводит трейс
+   * метрики — её прогон; остальные идут в названном трейсе или в новом.
+   */
+  const tracedCall = (params: PluginCallParams): Observable<unknown> => {
+    const args = params.args ?? {};
+    if (params.metric !== undefined && params.object !== undefined && params.trace === undefined) {
+      return traces.metricCall(params, params.plugin, params.method, args, {
+        object: params.object,
+        metric: params.metric,
+      });
+    }
+    return plugins.call(
+      params,
+      params.plugin,
+      params.method,
+      args,
+      traceOf(params.trace, params.object),
+    );
+  };
   return {
     capabilities: () => ports.capabilities,
 
@@ -260,23 +296,45 @@ export function createMapServer(ports: ServerPorts) {
      * проверяются здесь, и при ошибке прогона нет, а в ответе — что не так с полями.
      */
     runAction: (
-      params: MapRef & { action: string; inputs?: Record<string, unknown>; source?: RunSource },
-    ) => runs.start(params, params.action, params.inputs, params.source),
+      params: MapRef & {
+        action: string;
+        inputs?: Record<string, unknown>;
+        source?: RunSource;
+        /** Трейс, внутри которого экшон запустили: его отмена снимет и этот прогон. */
+        trace?: string;
+      },
+    ) => traces.start(params, params.action, params.inputs, params.source, params.trace),
 
-    /** Остановить прогон — отписаться от вызова метода. */
+    /** Остановить прогон — трейс целиком: его вызовы и запущенное внутри него. */
     stopRun: (params: { mapPath: string; id: string }) => {
-      runs.stop(params.mapPath, params.id);
+      traces.stop(params.id);
     },
 
     /** Дождаться конца прогона: MCP и терминал зовут экшон ради итога, а не номера. */
-    waitRun: (params: { mapPath: string; id: string }) => runs.wait(params.mapPath, params.id),
+    waitRun: (params: { mapPath: string; id: string }) => traces.wait(params.mapPath, params.id),
 
     /** Прогон по номеру, как он есть сейчас: `wait: false` досматривается этим. */
-    readRun: (params: { mapPath: string; id: string }) => runs.find(params.mapPath, params.id),
+    readRun: (params: { mapPath: string; id: string }) => traces.find(params.mapPath, params.id),
 
-    /** Прогоны объекта, свежие сверху, — экран прогонов. */
+    /** Прогоны объекта, свежие сверху, — экран прогонов. Собираются из строк лога. */
     watchRuns: (params: { mapPath: string; address: string }) =>
-      runs.watch(params.mapPath, params.address),
+      traces.watch(params.mapPath, params.address),
+
+    /**
+     * Строки логов по фильтру — трейс, объект, файл плагина; пустой фильтр — всё по карте.
+     * Сначала хвост из файлов, потом окно заново на каждую пачку записи.
+     */
+    watchLogs: (params: { mapPath: string; filter: LogFilter; limit?: number }) =>
+      logs.watch(params.mapPath, params.filter, params.limit),
+
+    /** Трейс для входа MCP: названный заголовком — тот же, иначе новый. */
+    traceOf: (params: { trace?: string; object?: string }) => traceOf(params.trace, params.object),
+
+    /** Строка входа MCP в `mapward.log`: инструмент, трейс, сколько шёл, ошибка. */
+    logMcp: (
+      mapPath: string,
+      entry: { tool: string; trace: string; ms: number; error?: string; object?: string },
+    ) => traces.mcp(mapPath, entry),
 
     /**
      * Правка карты пачкой операций: свои поля по адресу (`get`/`set`/`delete`), структура
@@ -334,15 +392,11 @@ export function createMapServer(ports: ServerPorts) {
     /**
      * Метод плагина потоком значений. Плагин — абсолютный путь к его папке. Отписка — отмена.
      */
-    callPlugin: (
-      params: MapRef & { plugin: string; method: string; args?: unknown },
-    ): Observable<unknown> => plugins.call(params, params.plugin, params.method, params.args ?? {}),
+    callPlugin: (params: PluginCallParams): Observable<unknown> => tracedCall(params),
 
     /** То же для моста: у моста своего конца у потока нет, конец приходит событием. */
-    watchPluginCall: (
-      params: MapRef & { plugin: string; method: string; args?: unknown },
-    ): Observable<PluginEvent> =>
-      plugins.call(params, params.plugin, params.method, params.args ?? {}).pipe(
+    watchPluginCall: (params: PluginCallParams): Observable<PluginEvent> =>
+      tracedCall(params).pipe(
         mapStream((value): PluginEvent => ({ kind: "next", value })),
         endWith<PluginEvent>({ kind: "complete" }),
       ),
@@ -351,22 +405,32 @@ export function createMapServer(ports: ServerPorts) {
      * Первое значение метода или отказ по сроку — так ждёт агент: бесконечно ему некогда, а
      * своих сроков платформа плагину не ставит, их называет зовущий.
      */
-    pluginFirst: (
-      params: MapRef & { plugin: string; method: string; args?: unknown },
-      timeout: number,
-    ) => plugins.first(params, params.plugin, params.method, params.args ?? {}, timeout),
+    pluginFirst: (params: PluginCallParams, timeout: number) =>
+      plugins.first(
+        params,
+        params.plugin,
+        params.method,
+        params.args ?? {},
+        timeout,
+        traceOf(params.trace, params.object),
+      ),
 
     /** Все значения до конца потока — так ждут долгий изменяющий метод. */
-    pluginAll: (
-      params: MapRef & { plugin: string; method: string; args?: unknown },
-      timeout: number,
-    ) => plugins.all(params, params.plugin, params.method, params.args ?? {}, timeout),
+    pluginAll: (params: PluginCallParams, timeout: number) =>
+      plugins.all(
+        params,
+        params.plugin,
+        params.method,
+        params.args ?? {},
+        timeout,
+        traceOf(params.trace, params.object),
+      ),
 
     /** Самоописание плагина: методы, схемы, читающий или изменяющий. */
     describePlugin: (params: MapRef & { plugin: string }) =>
       plugins.describe(params, params.plugin),
 
-    /** Хвост stderr плагина — почему он не отвечает. */
+    /** Хвост лога плагина — почему он не отвечает. */
     pluginLog: (params: MapRef & { plugin: string }) => plugins.log(params, params.plugin),
 
     /**
@@ -411,7 +475,23 @@ export function createMapServer(ports: ServerPorts) {
     /** Имена встроенных плагинов — что можно поставить. */
     builtinPlugins: () => installPlugin.names(),
 
-    /** Погасить процессы плагинов вместе с платформой. */
-    stopPlugins: () => plugins.stopAll(),
+    /** Погасить процессы плагинов вместе с платформой; накопленные строки логов — на диск. */
+    stopPlugins: async () => {
+      await plugins.stopAll();
+      await logs.flushAll();
+    },
   };
 }
+
+/**
+ * Вызов метода плагина извне: плагин — абсолютный путь к его папке. `object` и `metric` — чей вызов
+ * (компонент метрики), `trace` — трейс, в котором он идёт (заголовок MCP от агента экшона).
+ */
+type PluginCallParams = MapRef & {
+  plugin: string;
+  method: string;
+  args?: unknown;
+  object?: string;
+  metric?: string;
+  trace?: string;
+};

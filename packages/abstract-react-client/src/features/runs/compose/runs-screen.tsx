@@ -2,7 +2,9 @@ import { useViewStates } from "../../../services/state/ports.tsx";
 import { useLocalStore } from "../../../lib/store/use-local-store.ts";
 import { useWatch } from "../../../lib/store/use-watch.ts";
 import { FollowBottom } from "../../../lib/store/follow-bottom.ts";
+import { LogsPanelStore } from "../model/logs-panel.ts";
 import { RunsScreenStore } from "../model/runs-screen.ts";
+import type { LogScope } from "../pure-model/logs.ts";
 import type { RunsTab } from "../pure-model/runs.ts";
 import { useRuns } from "../ports.tsx";
 import {
@@ -14,16 +16,28 @@ import {
   RunSteps,
   RunText,
 } from "../ui/run-details.tsx";
-import { RunDot, RunItem, RunList, RunsEmpty, RunsFrame, RunsTabs } from "../ui/run-list.tsx";
+import { ObjectLogItem, RunDot, RunItem, RunList, RunsFrame, RunsTabs } from "../ui/run-list.tsx";
+import {
+  LogBar,
+  LogField,
+  LogFiles,
+  LogHead,
+  LogLines,
+  LogRow,
+  LogScopes,
+  LogTrace,
+  TraceLink,
+} from "../ui/run-logs.tsx";
 
 /**
- * Экран прогонов объекта — решение 0038: прогоны свежими сверху, выбранный справа, а выбор
- * живёт в истории экрана (решение 0036). Общего списка на карту нет: карта строится зонами, и
- * чужие прогоны были бы шумом.
+ * Экран прогонов объекта — решение 0038 и директива «логи плагинов»: интерфейс к логам. Слева
+ * лог объекта и прогоны свежими сверху, справа выбранное: лог объекта с фильтром по плагину —
+ * основной вид, — или прогон со строками его трейса. Выбор живёт в истории экрана (решение 0036).
+ * «Вся карта» — вид для отладки: карта строится зонами, и чужие строки обычно шум.
  */
 export function RunsScreen(props: {
   selected: string | undefined;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | undefined) => void;
 }) {
   const runs = useRuns();
   const views = useViewStates();
@@ -32,18 +46,28 @@ export function RunsScreen(props: {
       new RunsScreenStore(runs, () => props.selected, views.slot<RunsTab>("runs-tab", "actions")),
     [runs, props.selected],
   );
-  useWatch(screen);
+  const logs = useLocalStore(
+    () =>
+      new LogsPanelStore(
+        runs,
+        screen,
+        views.slot<LogScope>("runs-log-scope", "object"),
+        views.slot<string>("runs-log-file", ""),
+        views.slot<string>("runs-log-trace", ""),
+      ),
+    [runs, screen],
+  );
+  useWatch(screen, logs);
   const run = screen.open;
-  // Лог идущего шага держится у конца, пока человек сам не отмотал вверх.
+  // Лог держится у конца, пока человек сам не отмотал вверх.
   const follow = useLocalStore(() => new FollowBottom());
 
-  return screen.total === 0 ? (
-    <RunsEmpty />
-  ) : (
+  return (
     <RunsFrame
       tabs={<RunsTabs tab={screen.tab} onTab={(tab) => screen.setTab(tab)} />}
       list={
         <RunList empty={screen.shown.length === 0}>
+          <ObjectLogItem selected={screen.logOpen} onSelect={() => logs.openLog(props.onSelect)} />
           {screen.shown.map((one) => (
             <RunItem
               key={one.id}
@@ -57,7 +81,7 @@ export function RunsScreen(props: {
         </RunList>
       }
     >
-      {run && (
+      {run ? (
         <RunDetails>
           <RunHeader
             run={run}
@@ -80,25 +104,14 @@ export function RunsScreen(props: {
                   index={index}
                   now={screen.now}
                   dot={<RunDot status={step.status} />}
-                >
-                  {step.output && (
-                    <RunText
-                      title="результат"
-                      text={step.output}
-                      follow={step.status === "running" ? follow.hold : undefined}
-                    />
-                  )}
-                  {step.log && (
-                    <RunText
-                      title="лог"
-                      text={step.log}
-                      error={step.status === "failure"}
-                      follow={step.status === "running" ? follow.hold : undefined}
-                    />
-                  )}
-                </RunStep>
+                />
               ))}
             </RunSteps>
+          </RunBlock>
+          <RunBlock title={logs.title}>
+            <LogLines empty={logs.empty} follow={follow.hold}>
+              <LogRows logs={logs} onSelect={props.onSelect} />
+            </LogLines>
           </RunBlock>
           {screen.result !== undefined && (
             <RunBlock title="Итог">
@@ -111,7 +124,58 @@ export function RunsScreen(props: {
             </RunBlock>
           )}
         </RunDetails>
+      ) : (
+        <RunDetails>
+          <LogBar>
+            {logs.picked === undefined ? (
+              <>
+                <LogScopes scope={logs.scope} onScope={(scope) => logs.setScope(scope)} />
+                <LogFiles
+                  files={logs.files}
+                  file={logs.file}
+                  platform={logs.platform}
+                  onFile={(file) => logs.setFile(file)}
+                />
+              </>
+            ) : (
+              <LogTrace trace={logs.picked} onClear={() => logs.clearTrace()} />
+            )}
+          </LogBar>
+          <RunBlock title={logs.title}>
+            <LogLines empty={logs.empty} follow={follow.hold}>
+              <LogRows logs={logs} onSelect={props.onSelect} />
+            </LogLines>
+          </RunBlock>
+        </RunDetails>
       )}
     </RunsFrame>
   );
+}
+
+/** Строки лога: шапка с номером трейса-ссылкой и поля под ней. */
+function LogRows(props: { logs: LogsPanelStore; onSelect: (id: string | undefined) => void }) {
+  const { logs } = props;
+  return logs.lines.map((line, index) => (
+    <LogRow
+      key={index}
+      head={
+        <LogHead
+          line={line}
+          trace={
+            line.trace !== undefined && (
+              <TraceLink
+                trace={line.trace}
+                current={logs.trace}
+                onTrace={(trace) => logs.showTrace(trace, props.onSelect)}
+              />
+            )
+          }
+        />
+      }
+    >
+      {logs.fields(line).map(([key, value]) => (
+        <LogField key={key} name={key} value={value} />
+      ))}
+    </LogRow>
+  ));
 }

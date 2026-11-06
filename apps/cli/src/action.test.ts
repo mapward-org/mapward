@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { createMapServer, serveMcp, type McpTransport } from "@mapward/abstract-server";
-import type { Run } from "@mapward/core";
+import type { LogLine, Run } from "@mapward/core";
 import { createPorts } from "./ports.ts";
 
 /**
  * Экшон целиком: карта во временной папке, `run_action` по MCP, встроенный плагин `shell`
- * доставляется в карту сам, собирается настоящим esbuild и запускается настоящим node. История
- * прогона ложится в `.mapward/runs`.
+ * доставляется в карту сам, собирается настоящим esbuild и запускается настоящим node. Прогон
+ * своего хранилища не имеет: он — строки трейса в `.mapward/logs`, и собирается из них.
  */
 
 let root = "";
@@ -117,12 +117,8 @@ test("run_action: an action runs through the built-in shell and lands in the his
     // Встроенный плагин доставлен в карту сам и уже доверен.
     expect(granted).toEqual([`${root}/map/_plugins/shell`]);
 
-    // read_run — тот же прогон по номеру; история лежит на диске карты.
+    // read_run — тот же прогон по номеру, собранный из строк его трейса.
     expect(await call("read_run", { id: run.id })).toMatchObject({ id: run.id, status: "success" });
-    const saved = JSON.parse(
-      await readFile(join(root, "map/.mapward/runs/core.json"), "utf8"),
-    ) as Run[];
-    expect(saved.map((entry) => entry.id)).toEqual([run.id]);
 
     // Экшон над методом: форма — параметры метода, заданное в params в ней не нужно.
     const where = (await call("run_action", {
@@ -131,6 +127,29 @@ test("run_action: an action runs through the built-in shell and lands in the his
     expect(where.status).toBe("success");
     // Рабочая папка `shell` по умолчанию — папка карты.
     expect(where.steps[0]?.output).toBe("map\n");
+
+    // Логи — на диске карты: начало и конец трейса — в `mapward.log`, вызов и его вывод — в файле
+    // плагина, с тем же трейсом и объектом. Остановка платформы дописывает накопленное.
+    await map.stopPlugins();
+    const read = async (file: string) =>
+      (await readFile(join(root, `map/.mapward/logs/${file}.log`), "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as LogLine);
+    const platform = await read("mapward");
+    expect(platform.filter((line) => line.trace === run.id).map((line) => line.kind)).toEqual([
+      "trace-start",
+      "trace-end",
+    ]);
+    // Вход MCP — строкой на каждый вызов инструмента.
+    expect(platform.some((line) => line.kind === "mcp" && line.method === "run_action")).toBe(true);
+    const shell = (await read("shell")).filter((line) => line.trace === run.id);
+    expect(shell.map((line) => [line.kind, line.text ?? line.status])).toEqual([
+      ["call-start", undefined],
+      ["out", "привет, мир, core"],
+      ["call-end", "success"],
+    ]);
+    expect(shell.every((line) => line.object === "mapward://core")).toBe(true);
   } finally {
     await map.stopPlugins();
   }

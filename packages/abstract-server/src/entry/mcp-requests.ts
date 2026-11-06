@@ -1,3 +1,4 @@
+import { TRACE_META } from "@mapward/core";
 import type { McpTransport } from "./mcp.ts";
 
 /**
@@ -61,3 +62,28 @@ export function mcpRequests(serve: (transport: McpTransport) => () => void): Mcp
     stop,
   };
 }
+
+/**
+ * Трейс из заголовка `x-mapward-trace` — в `_meta` вызова инструмента: агент, которого запустил
+ * экшон, ходит в MCP с этим заголовком, и всё, что он делает через карту, ложится в трейс экшона.
+ * Заголовка нет или это не вызов инструмента — сообщение как есть.
+ */
+export function withTrace(
+  message: Record<string, unknown>,
+  header: string | string[] | undefined,
+): Record<string, unknown> {
+  const trace = Array.isArray(header) ? header[0] : header;
+  if (!trace || message.method !== "tools/call") return message;
+  const params = (
+    typeof message.params === "object" && message.params !== null ? message.params : {}
+  ) as Record<string, unknown>;
+  const found = params[MCP_META];
+  const meta = (typeof found === "object" && found !== null ? found : {}) as Record<
+    string,
+    unknown
+  >;
+  return { ...message, params: { ...params, [MCP_META]: { ...meta, [TRACE_META]: trace } } };
+}
+
+/** Поле служебных данных вызова в протоколе MCP — имя задано протоколом. */
+export const MCP_META = "_meta";

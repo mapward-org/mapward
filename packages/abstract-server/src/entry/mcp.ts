@@ -6,11 +6,13 @@ import {
   MAP_ROOT,
   MapEditOp,
   memberOwner,
+  TRACE_META,
 } from "@mapward/core";
 import type { MapAction, MapFile, MapMetric, MapObject } from "@mapward/core";
 import { LANGUAGES, section, sections } from "@mapward/docs";
 import type { Language } from "@mapward/docs";
 import type { MapServer } from "./server.ts";
+import { MCP_META } from "./mcp-requests.ts";
 import { projectDeep } from "../lib/projection.ts";
 import { fit } from "../lib/budget.ts";
 import type { MapRef } from "../kernel/map-ref.ts";
@@ -546,10 +548,10 @@ const TOOLS = [
   {
     name: "run_action",
     description:
-      "Запустить экшон объекта — то же, что кнопка на карте. Экшон — ярлык на изменяющий метод плагина (plugin, method, params): платформа зовёт метод и записывает вызов, ход и итог в историю — прогон виден в объекте на экране прогонов. " +
+      "Запустить экшон объекта — то же, что кнопка на карте. Экшон — ярлык на изменяющий метод плагина (plugin, method, params): платформа заводит трейс, зовёт метод в нём, и ход вызова пишется в лог плагина (.mapward/logs/<плагин>.log) — прогон виден в объекте на экране прогонов. " +
       "Экшоны приходят в read_object, поле actions. Поля формы — inputs экшона, а без них — параметры метода из describe_plugin, кроме заданных в params. Поля проверяет сервер: не хватает обязательного — прогона нет, в ответе errors. " +
       "По умолчанию вызов ждёт конца и отдаёт прогон целиком: шаги, логи, вывод, итог (result). С wait: false отдаёт номер сразу, итог — read_run. " +
-      "Метод можно позвать и напрямую, call_plugin, — тогда истории нет. Что экшон сделал, видно в метриках объекта: они подписаны на свои плагины и обновятся сами.",
+      "Метод можно позвать и напрямую, call_plugin, — тогда прогона нет, а строки лога есть. Что экшон сделал, видно в метриках объекта: они подписаны на свои плагины и обновятся сами.",
     inputSchema: {
       type: "object",
       properties: {
@@ -770,7 +772,7 @@ const TOOLS = [
   {
     name: "read_run",
     description:
-      "Прогон экшона по номеру из run_action: статус, шаги, их логи и вывод, итог метода (result). Идущий прогон отдаётся как есть, не дожидаясь конца.",
+      "Прогон экшона по номеру из run_action — собранный из строк его трейса в .mapward/logs: статус, шаги, их ход и вывод, итог метода (result). Идущий прогон отдаётся как есть, не дожидаясь конца. Строки целиком — в файлах логов, grep по номеру трейса.",
     inputSchema: {
       type: "object",
       properties: {
@@ -892,7 +894,16 @@ export function serveMcp(
   const fail = (id: Request["id"], message: string) =>
     transport.send({ jsonrpc: "2.0", id, error: { code: -32_000, message } });
 
-  async function call(name: string, args: Record<string, unknown>): Promise<unknown> {
+  /**
+   * `trace` — трейс вызова: пришёл заголовком (агент экшона) — тот же, что у экшона; не пришёл —
+   * свой. `outer` — только пришедший: экшон, запущенный внутри чужого трейса, снимается вместе с ним.
+   */
+  async function call(
+    name: string,
+    args: Record<string, unknown>,
+    trace: string,
+    outer: string | undefined,
+  ): Promise<unknown> {
     // Неизвестный параметр — отказ, а не молчание (решение 0039). Проглоченный параметр
     // выглядит принятым: агент на старой сборке зовёт новый параметр, получает прежний ответ и
     // уверенно заключает, что правка не сработала.
@@ -1124,6 +1135,7 @@ export function serveMcp(
         action: address,
         inputs: given,
         source: "mcp",
+        ...(outer === undefined ? {} : { trace: outer }),
       });
       if (started.errors) {
         const lines = Object.entries(started.errors).map(([field, why]) => `${field}: ${why}`);
@@ -1163,6 +1175,7 @@ export function serveMcp(
         plugin,
         method: String(args.method ?? ""),
         args: typeof args.args === "object" && args.args !== null ? args.args : {},
+        trace,
       };
       if (args.wait !== "complete") {
         return text({ value: await server.pluginFirst(request, timeout) });
@@ -1223,7 +1236,7 @@ export function serveMcp(
     }
 
     if (name === "read_run") {
-      const run = server.readRun({ mapPath: ref.mapPath, id: String(args.id ?? "") });
+      const run = await server.readRun({ mapPath: ref.mapPath, id: String(args.id ?? "") });
       if (!run) throw new Error(`Прогона ${String(args.id)} нет`);
       return text(run);
     }
@@ -1269,11 +1282,42 @@ export function serveMcp(
       const params = (request.params ?? {}) as {
         name?: string;
         arguments?: Record<string, unknown>;
+      } & Record<string, unknown>;
+      const tool = String(params.name);
+      const args = params.arguments ?? {};
+      // Трейс приходит заголовком, транспорт кладёт его в `_meta`: так агент экшона идёт в трейсе
+      // экшона. Без него вызов — свой трейс.
+      const meta = params[MCP_META] as Record<string, unknown> | undefined;
+      const given = meta?.[TRACE_META];
+      const outer = typeof given === "string" && given !== "" ? given : undefined;
+      const trace = server.traceOf(outer === undefined ? {} : { trace: outer });
+      const startedAt = Date.now();
+      // Вход MCP — строкой в `mapward.log` той карты, к которой он обращён.
+      const record = (error?: string) => {
+        let mapPath: string;
+        try {
+          mapPath = mapOf(args.map).mapPath;
+        } catch {
+          return;
+        }
+        server.logMcp(mapPath, {
+          tool,
+          trace: trace.trace,
+          ms: Date.now() - startedAt,
+          ...(error === undefined ? {} : { error }),
+          ...(trace.object === undefined ? {} : { object: trace.object }),
+        });
       };
-      void call(String(params.name), params.arguments ?? {}).then(
-        (result) => reply(request.id, result),
-        (error: unknown) =>
-          fail(request.id, error instanceof Error ? error.message : String(error)),
+      void call(tool, args, trace.trace, outer).then(
+        (result) => {
+          record();
+          reply(request.id, result);
+        },
+        (error: unknown) => {
+          const why = error instanceof Error ? error.message : String(error);
+          record(why);
+          fail(request.id, why);
+        },
       );
       return;
     }

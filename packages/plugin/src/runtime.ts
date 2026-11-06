@@ -13,8 +13,11 @@ import type {
   MapEditResult,
   MapObject,
   PlatformMessage,
+  PluginCall,
   PluginClient,
   PluginCtx,
+  PluginLog,
+  PluginSignal,
   PluginDefinition,
   PluginDescription,
   PluginMap,
@@ -29,6 +32,15 @@ import type {
 import { schemaErrors } from "./schema.ts";
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** Части строки лога — одной строкой: не строки уходят JSON-ом. */
+const joinParts = (parts: unknown[]) =>
+  parts.map((part) => (typeof part === "string" ? part : JSON.stringify(part))).join(" ");
+
+/** `AbortController` среды: пакет её не знает, а node и браузер дают его глобально. */
+type Controller = { readonly signal: PluginSignal; abort(reason?: unknown): void };
+const newController = (): Controller =>
+  new (globalThis as unknown as { AbortController: new () => Controller }).AbortController();
 
 /**
  * Тождество ради типов: `args` метода выводятся из его `params`, значения потока сверяются с
@@ -109,14 +121,16 @@ export function runPlugin(definition: PluginDefinition, io: PluginIo): void {
   const calls = new Map<string, Unsubscribable>();
   const requests = new Map<string, Subscriber<unknown>>();
   let ctx: PluginCtx | undefined;
+  /** С рукопожатия: из этого `ctx` вызова собирается свой. */
+  let hello: Extract<PlatformMessage, { t: "hello" }> | undefined;
   let counter = 0;
   let stopping = false;
 
-  const request = <T>(body: PluginRequest): Observable<T> =>
+  const request = <T>(body: PluginRequest, call?: string): Observable<T> =>
     new Observable<T>((subscriber) => {
       const id = `r${++counter}`;
       requests.set(id, subscriber as Subscriber<unknown>);
-      io.send({ t: "request", id, ...body });
+      io.send({ t: "request", id, ...(call === undefined ? {} : { call }), ...body });
       return () => {
         if (!requests.delete(id)) return;
         io.send({ t: "release", id });
@@ -135,36 +149,51 @@ export function runPlugin(definition: PluginDefinition, io: PluginIo): void {
       first(request({ op: "vscode", method: "executeCommand", args: [command, ...args] })),
   };
 
+  /** Сигнал, который не срабатывает никогда: у `ctx` процесса отменять нечего. */
+  const never = newController().signal;
+
+  /**
+   * `ctx` процесса — у `init` и `dispose` — и `ctx` вызова поверх него: тот же набор, но строки
+   * лога и просьбы к платформе уходят с номером вызова, и платформа приклеивает к ним его трейс.
+   */
   const makeCtx = (
     map: PluginMap,
     pluginDir: string,
     isVscode: boolean,
     webview: PluginWebview | undefined,
+    call?: { info: PluginCall; signal: PluginSignal },
   ): PluginCtx => {
+    const id = call?.info.id;
+    const ask = <T>(body: PluginRequest) => request<T>(body, id);
+    const write = (kind: "log" | "error" | "out" | "step", line: string) =>
+      io.send({ t: "log", ...(id === undefined ? {} : { call: id }), kind, text: line });
+    const log = ((...parts: unknown[]) => write("log", joinParts(parts))) as PluginLog;
+    log.error = (...parts: unknown[]) => write("error", joinParts(parts));
     const created = {
       map,
       pluginDir,
       isVscode,
       webview,
+      call: call?.info,
+      signal: call?.signal ?? never,
       resolve: (address: string, from?: string) => resolveAddress(address, map, from),
-      log: (...parts: unknown[]) =>
-        io.log(
-          parts.map((part) => (typeof part === "string" ? part : JSON.stringify(part))).join(" "),
-        ),
-      object: (address: string) => request<PluginObject | undefined>({ op: "object", address }),
-      children: (address: string) => request<PluginObject[]>({ op: "children", address }),
+      log,
+      output: (...parts: unknown[]) => write("out", joinParts(parts)),
+      step: (name: string) => write("step", name),
+      object: (address: string) => ask<PluginObject | undefined>({ op: "object", address }),
+      children: (address: string) => ask<PluginObject[]>({ op: "children", address }),
       tree: (address: string, depth: number) =>
-        request<MapObject | undefined>({
+        ask<MapObject | undefined>({
           op: "tree",
           address,
           depth: Number.isFinite(depth) ? depth : null,
         }),
-      editMap: (ops: MapEditOp[]) => first(request<MapEditResult>({ op: "editMap", ops })),
-      undoEdit: (id: string) => first(request<MapEditResult>({ op: "undoEdit", batch: id })),
-      redoEdit: (id: string) => first(request<MapEditResult>({ op: "redoEdit", batch: id })),
+      editMap: (ops: MapEditOp[]) => first(ask<MapEditResult>({ op: "editMap", ops })),
+      undoEdit: (batch: string) => first(ask<MapEditResult>({ op: "undoEdit", batch })),
+      redoEdit: (batch: string) => first(ask<MapEditResult>({ op: "redoEdit", batch })),
       plugin: (path: string): PluginClient => ({
         call: <T>(method: string, args?: unknown) =>
-          request<T>({
+          ask<T>({
             op: "plugin",
             path: isAbsolute(slash(path)) ? slash(path) : joinPath(pluginDir, path),
             method,
@@ -200,9 +229,10 @@ export function runPlugin(definition: PluginDefinition, io: PluginIo): void {
     ...(definition.templates === undefined ? {} : { templates: definition.templates }),
   });
 
-  const call = (id: string, name: string, args: unknown) => {
+  const call = (incoming: Extract<PlatformMessage, { t: "call" }>) => {
+    const { id, method: name, args } = incoming;
     const method = definition.methods[name];
-    if (!ctx || !method) {
+    if (!ctx || !hello || !method) {
       io.send({ t: "error", id, message: `у плагина нет метода ${name}` });
       return;
     }
@@ -215,9 +245,20 @@ export function runPlugin(definition: PluginDefinition, io: PluginIo): void {
       }
     }
     // Тип — `Observable`, но платформе хватает `subscribe`: поток из чужой копии rxjs тоже годится.
+    const abort = newController();
+    const info: PluginCall = {
+      id,
+      // Старая платформа трейса не шлёт: тогда вызов сам себе трейс.
+      trace: incoming.trace ?? id,
+      ...(incoming.object === undefined ? {} : { object: incoming.object }),
+    };
+    const own = makeCtx(hello.map, hello.pluginDir, hello.isVscode, hello.webview, {
+      info,
+      signal: abort.signal,
+    });
     let stream: Observable<unknown>;
     try {
-      stream = method.run(args as never, ctx);
+      stream = method.run(args as never, own);
     } catch (error) {
       io.send({ t: "error", id, message: message(error) });
       return;
@@ -237,8 +278,16 @@ export function runPlugin(definition: PluginDefinition, io: PluginIo): void {
         io.send({ t: "complete", id });
       },
     });
-    // Поток мог кончиться прямо в `subscribe` — тогда держать его не за чем.
-    if (!stopping) calls.set(id, subscription);
+    // Поток мог кончиться прямо в `subscribe` — тогда держать его не за чем. Отмена — отписка и
+    // сигнал разом: метод, который начал работу мимо потока, гасит её по сигналу.
+    if (!stopping && !subscription.closed) {
+      calls.set(id, {
+        unsubscribe: () => {
+          subscription.unsubscribe();
+          abort.abort(new Error("вызов отменён"));
+        },
+      });
+    }
   };
 
   const shutdown = async () => {
@@ -259,6 +308,7 @@ export function runPlugin(definition: PluginDefinition, io: PluginIo): void {
   io.onMessage((incoming) => {
     switch (incoming.t) {
       case "hello": {
+        hello = incoming;
         ctx = makeCtx(incoming.map, incoming.pluginDir, incoming.isVscode, incoming.webview);
         const ready = ctx;
         void Promise.resolve()
@@ -270,7 +320,7 @@ export function runPlugin(definition: PluginDefinition, io: PluginIo): void {
         return;
       }
       case "call":
-        call(incoming.id, incoming.method, incoming.args);
+        call(incoming);
         return;
       case "cancel":
         calls.get(incoming.id)?.unsubscribe();

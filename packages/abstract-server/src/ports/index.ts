@@ -36,6 +36,11 @@ export type FileReader = {
 
 export type FileWriter = {
   write(path: string, text: string): Promise<void>;
+  /**
+   * Дописать в конец, создав файл и папки на пути, — логам (`.mapward/logs/`): переписывать
+   * десять мегабайт ради строки нельзя. Хост, который не умеет, получает чтение и запись целиком.
+   */
+  append?(path: string, text: string): Promise<void>;
   /** Убрать файл. Файла нет — это тоже успех: удаление зовут ради того, чтобы его не стало. */
   remove(path: string): Promise<void>;
 };

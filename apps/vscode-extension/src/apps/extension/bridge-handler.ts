@@ -88,6 +88,8 @@ export function serveBridge(
     runAction: (params) => server.runAction(params),
     stopRun: (params) => server.stopRun(params),
     watchRuns: (params) => server.watchRuns(params),
+    /** Строки логов карты по фильтру — экран прогонов показывает ими лог объекта и прогона. */
+    watchLogs: (params) => server.watchLogs(params),
 
     // Хранилище редактора: у каждого человека своё, в репозиторий не попадает.
     getViewState: (params) => memento.get(params.key),

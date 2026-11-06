@@ -24,15 +24,28 @@ import type {
   WebviewPort,
 } from "../../../../ports/index.ts";
 import type { MapRef } from "../../../../kernel/map-ref.ts";
+import type { LogLine, TraceRef } from "@mapward/core";
 import { debounce } from "@mapward/vfs";
 import { message } from "../../../../lib/bundle.ts";
-import type { PluginsMapEdits, PluginsMapSource } from "../../ports.ts";
+import type { PluginsLogs, PluginsMapEdits, PluginsMapSource } from "../../ports.ts";
 import { instanceKey, toPluginObject } from "../../domain/plugin-object.ts";
 import type { BuildPlugin } from "../use-cases/build-plugin.ts";
 import type { InstallPlugin } from "../use-cases/install-plugin.ts";
 
-/** Вызов, который ждёт ответа: при перезапуске плагина он уходит в новый процесс заново. */
-type Call = { method: string; args: unknown; sink: Subscriber<unknown>; id?: string };
+/**
+ * Вызов, который ждёт ответа: при перезапуске плагина он уходит в новый процесс заново. Трейс у
+ * него есть всегда — названный зовущим или свой.
+ */
+type Call = {
+  method: string;
+  args: unknown;
+  sink: Subscriber<unknown>;
+  id?: string;
+  trace: TraceRef;
+  /** Когда ушёл в процесс — для длительности в строке конца. */
+  sentAt?: number;
+  instance?: Instance;
+};
 
 type Instance = {
   ref: MapRef;
@@ -47,8 +60,10 @@ type Instance = {
   stopping: boolean;
   stopIdle: () => void;
   stopWatch: () => void;
-  /** Хвост stderr: падение без него ничего не объясняет. */
+  /** Хвост stderr, когда логов у хоста нет: падение без него ничего не объясняет. */
   log: string[];
+  /** Имя файла лога плагина. */
+  file: string;
 };
 
 /** Сколько ждать `dispose` после просьбы остановиться, прежде чем убить. */
@@ -103,16 +118,46 @@ export class PluginHost {
     private readonly webview: WebviewPort | undefined = undefined,
     /** Правка карты — `ctx.editMap`; без неё просьба плагина получает отказ. */
     private readonly edits: PluginsMapEdits | undefined = undefined,
+    /** Логи карты: строки вызовов, `ctx.log` и stderr плагина. Без них хост пишет никуда. */
+    private readonly logs: PluginsLogs | undefined = undefined,
   ) {}
 
-  /** Вызов метода плагина. Отписка — это отмена: плагин видит её и гасит своё. */
-  call(ref: MapRef, plugin: string, method: string, args: unknown): Observable<unknown> {
+  /** Номер, уникальный и между окнами: строки прошлых запусков лежат в тех же файлах. */
+  nextId(prefix: string): string {
+    return `${prefix}${Date.parse(this.clock.now()).toString(36)}-${(++this.counter).toString(36)}`;
+  }
+
+  /**
+   * Вызов метода плагина. Отписка — это отмена: плагин видит её и гасит своё. Трейс называет
+   * зовущий; не назвал — вызов заводит свой.
+   */
+  call(
+    ref: MapRef,
+    plugin: string,
+    method: string,
+    args: unknown,
+    trace?: TraceRef,
+  ): Observable<unknown> {
     return new Observable<unknown>((sink) => {
-      const call: Call = { method, args, sink };
+      const call: Call = { method, args, sink, trace: trace ?? { trace: this.nextId("t") } };
       const instance = this.instanceOf(ref, plugin);
       this.attach(instance, call);
       return () => this.detach(call);
     });
+  }
+
+  /**
+   * Снять все идущие вызовы трейса, вложенные тоже: зовущие получают отказ «остановлен», а
+   * процессы плагинов — отмену своих вызовов.
+   */
+  cancelTrace(trace: string): void {
+    for (const instance of this.instances.values()) {
+      for (const call of instance.calls) {
+        if (call.trace.trace !== trace) continue;
+        this.detach(call);
+        call.sink.error(new Error("остановлен"));
+      }
+    }
   }
 
   /** Первое значение или отказ по сроку: срок называет зовущий, у платформы своего нет. */
@@ -122,8 +167,11 @@ export class PluginHost {
     method: string,
     args: unknown,
     timeout: number,
+    trace?: TraceRef,
   ): Promise<unknown> {
-    return this.collect(ref, plugin, method, args, timeout, true).then((values) => values[0]);
+    return this.collect(ref, plugin, method, args, timeout, true, trace).then(
+      (values) => values[0],
+    );
   }
 
   /** Все значения до конца потока или отказ по сроку. */
@@ -133,8 +181,9 @@ export class PluginHost {
     method: string,
     args: unknown,
     timeout: number,
+    trace?: TraceRef,
   ): Promise<unknown[]> {
-    return this.collect(ref, plugin, method, args, timeout, false);
+    return this.collect(ref, plugin, method, args, timeout, false, trace);
   }
 
   private collect(
@@ -144,6 +193,7 @@ export class PluginHost {
     args: unknown,
     timeout: number,
     once: boolean,
+    trace?: TraceRef,
   ): Promise<unknown[]> {
     return new Promise<unknown[]>((resolve, reject) => {
       const values: unknown[] = [];
@@ -168,7 +218,7 @@ export class PluginHost {
           ),
         ),
       );
-      subscription = this.call(ref, plugin, method, args).subscribe({
+      subscription = this.call(ref, plugin, method, args, trace).subscribe({
         next: (value) => {
           values.push(value);
           if (once) finish(() => resolve(values));
@@ -191,7 +241,42 @@ export class PluginHost {
 
   /** Хвост лога плагина — им объясняют, почему он не отвечает. */
   log(ref: MapRef, plugin: string): string[] {
+    if (this.logs) {
+      return this.logs.tail(ref.mapPath, this.logs.fileOf(plugin), 40).map(lineText);
+    }
     return this.instances.get(instanceKey(ref.mapPath, plugin))?.log ?? [];
+  }
+
+  /** Строка в лог плагина с тем, что известно о вызове. */
+  private write(instance: Instance, line: Omit<LogLine, "at" | "file">, call?: Call): void {
+    this.logs?.write(instance.ref.mapPath, {
+      at: this.clock.now(),
+      file: instance.file,
+      ...(call === undefined
+        ? {}
+        : {
+            trace: call.trace.trace,
+            ...(call.id === undefined ? {} : { call: call.id }),
+            ...(call.trace.parent === undefined ? {} : { parent: call.trace.parent }),
+            ...(call.trace.object === undefined ? {} : { object: call.trace.object }),
+            plugin: instance.plugin,
+            method: call.method,
+          }),
+      ...line,
+    });
+  }
+
+  /** Вызов кончился: строка конца с длительностью — один раз. */
+  private ended(call: Call, status: "success" | "failure" | "stopped", error?: string): void {
+    const instance = call.instance;
+    if (!instance || call.sentAt === undefined) return;
+    const ms = Date.parse(this.clock.now()) - call.sentAt;
+    call.sentAt = undefined;
+    this.write(
+      instance,
+      { kind: "call-end", status, ms, ...(error === undefined ? {} : { error }) },
+      call,
+    );
   }
 
   /** Погасить все процессы — когда гаснет сама платформа. */
@@ -215,6 +300,7 @@ export class PluginHost {
       stopIdle: noop,
       stopWatch: noop,
       log: [],
+      file: this.logs?.fileOf(plugin) ?? plugin,
     };
     instance.ready = this.start(instance);
     // Отказ старта разбирают те, кто ждёт; необработанным он остаться не должен.
@@ -247,7 +333,11 @@ export class PluginHost {
 
       return await new Promise<PluginDescription>((resolve, reject) => {
         process.onLog((text) => {
-          for (const line of text.split(/\r?\n/)) if (line) instance.log.push(line);
+          for (const line of text.split(/\r?\n/)) {
+            if (!line) continue;
+            instance.log.push(line);
+            this.write(instance, { kind: "stderr", text: line });
+          }
           instance.log.splice(0, Math.max(0, instance.log.length - LOG_LINES));
         });
         process.onLine((line) => {
@@ -256,6 +346,7 @@ export class PluginHost {
             parsed = JSON.parse(line) as PluginMessage;
           } catch {
             instance.log.push(`не протокол: ${line}`);
+            this.write(instance, { kind: "stderr", text: `не протокол: ${line}` });
             return;
           }
           if (parsed.t === "ready") {
@@ -294,7 +385,15 @@ export class PluginHost {
   }
 
   private exitReason(instance: Instance, code: number | null): string {
-    const tail = instance.log.slice(-10).join("\n");
+    // Хвост — из лога плагина: там и stderr, и `ctx.log.error`, по которым видно, где упало.
+    const lines = this.logs
+      ? this.logs
+          .tail(instance.ref.mapPath, instance.file, 40)
+          .filter((line) => line.kind === "stderr" || line.kind === "error")
+          .slice(-10)
+          .map(lineText)
+      : instance.log.slice(-10);
+    const tail = lines.join("\n");
     return `плагин ${instance.plugin} завершился${code === null ? "" : ` с кодом ${code}`}${tail ? `:\n${tail}` : ""}`;
   }
 
@@ -303,7 +402,10 @@ export class PluginHost {
     for (const subscription of instance.requests.values()) subscription.unsubscribe();
     instance.requests.clear();
     if (!instance.stopping) {
-      for (const call of instance.calls) call.sink.error(new Error(reason));
+      for (const call of instance.calls) {
+        this.ended(call, "failure", reason);
+        call.sink.error(new Error(reason));
+      }
       instance.calls.clear();
       instance.byId.clear();
     }
@@ -324,13 +426,26 @@ export class PluginHost {
     instance.ready.then(
       () => {
         if (!instance.calls.has(call)) return;
-        call.id = `c${++this.counter}`;
+        call.id = this.nextId("c");
+        call.instance = instance;
+        call.sentAt = Date.parse(this.clock.now());
         instance.byId.set(call.id, call);
-        this.send(instance, { t: "call", id: call.id, method: call.method, args: call.args });
+        this.write(instance, { kind: "call-start" }, call);
+        this.send(instance, {
+          t: "call",
+          id: call.id,
+          method: call.method,
+          args: call.args,
+          trace: call.trace.trace,
+          ...(call.trace.object === undefined ? {} : { object: call.trace.object }),
+        });
       },
       (error: unknown) => {
         if (!instance.calls.delete(call)) return;
-        call.sink.error(error instanceof Error ? error : new Error(message(error)));
+        const failure = error instanceof Error ? error : new Error(message(error));
+        // Процесс не поднялся: вызова в нём не было, но строка об отказе — в трейсе зовущего.
+        this.write(instance, { kind: "error", text: failure.message }, call);
+        call.sink.error(failure);
       },
     );
   }
@@ -338,6 +453,7 @@ export class PluginHost {
   private detach(call: Call): void {
     for (const instance of this.instances.values()) {
       if (!instance.calls.delete(call)) continue;
+      this.ended(call, "stopped");
       if (call.id) {
         instance.byId.delete(call.id);
         this.send(instance, { t: "cancel", id: call.id });
@@ -368,14 +484,28 @@ export class PluginHost {
         if (!call) return;
         instance.byId.delete(incoming.id);
         instance.calls.delete(call);
-        if (incoming.t === "error") call.sink.error(new Error(incoming.message));
-        else call.sink.complete();
+        if (incoming.t === "error") {
+          this.ended(call, "failure", incoming.message);
+          call.sink.error(new Error(incoming.message));
+        } else {
+          this.ended(call, "success");
+          call.sink.complete();
+        }
         this.armIdle(instance);
         return;
       }
-      case "request":
-        this.request(instance, incoming.id, incoming);
+      case "request": {
+        // Просьба из `ctx` вызова идёт в его трейсе: вложенный вызов знает родителя.
+        const from = incoming.call === undefined ? undefined : instance.byId.get(incoming.call);
+        const trace = from?.id === undefined ? undefined : { ...from.trace, parent: from.id };
+        this.request(instance, incoming.id, incoming, trace);
         return;
+      }
+      case "log": {
+        const from = incoming.call === undefined ? undefined : instance.byId.get(incoming.call);
+        this.write(instance, { kind: incoming.kind, text: incoming.text }, from);
+        return;
+      }
       case "release":
         instance.requests.get(incoming.id)?.unsubscribe();
         instance.requests.delete(incoming.id);
@@ -386,8 +516,8 @@ export class PluginHost {
   }
 
   /** Просьба плагина к платформе — тоже поток: модель карты он видит вместе с её изменениями. */
-  private request(instance: Instance, id: string, body: PluginRequest): void {
-    const stream = this.answer(instance, body);
+  private request(instance: Instance, id: string, body: PluginRequest, trace?: TraceRef): void {
+    const stream = this.answer(instance, body, trace);
     const subscription = stream.subscribe({
       next: (value) => this.send(instance, { t: "rnext", id, value }),
       error: (error: unknown) => {
@@ -402,7 +532,7 @@ export class PluginHost {
     if (!subscription.closed) instance.requests.set(id, subscription);
   }
 
-  private answer(instance: Instance, body: PluginRequest): Observable<unknown> {
+  private answer(instance: Instance, body: PluginRequest, trace?: TraceRef): Observable<unknown> {
     const { ref } = instance;
     switch (body.op) {
       case "object":
@@ -430,7 +560,7 @@ export class PluginHost {
           .subtree$(ref, body.address, body.depth ?? Infinity)
           .pipe(distinctUntilChanged());
       case "plugin":
-        return this.call(ref, body.path, body.method, body.args);
+        return this.call(ref, body.path, body.method, body.args, trace);
       case "editMap":
       case "undoEdit":
       case "redoEdit": {
@@ -548,4 +678,9 @@ export class PluginHost {
   private send(instance: Instance, outgoing: PlatformMessage): void {
     instance.process?.send(`${JSON.stringify(outgoing)}\n`);
   }
+}
+
+/** Строка лога текстом — для хвоста причины падения. */
+function lineText(line: LogLine): string {
+  return line.text ?? line.error ?? line.kind;
 }

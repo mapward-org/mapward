@@ -99,14 +99,8 @@ export function RunSteps(props: { empty: boolean; children: ReactNode }) {
   );
 }
 
-/** Шаг прогона: строка с временем, под ней — что он вывел. */
-export function RunStep(props: {
-  step: Step;
-  index: number;
-  now: number;
-  dot: ReactNode;
-  children: ReactNode;
-}) {
+/** Шаг прогона: имя, статус и сколько шёл. Что он вывел — в логе прогона, строками трейса. */
+export function RunStep(props: { step: Step; index: number; now: number; dot: ReactNode }) {
   const { step } = props;
   return (
     <li className="flex flex-col gap-1 border-l border-[var(--mw-menu-border,#8884)] pl-2">
@@ -118,7 +112,6 @@ export function RunStep(props: {
           {duration(step.startedAt, step.finishedAt, props.now)}
         </span>
       </div>
-      {props.children}
     </li>
   );
 }

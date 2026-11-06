@@ -6,24 +6,39 @@ import type { PlatformMessage, PluginDefinition, PluginMessage } from "@mapward/
  * Лежит рядом с плагинами, а не в них: в карту копируются только их папки.
  */
 
-export type Outcome = { values: unknown[]; error?: string };
+/** Строка лога, которую плагин написал через `ctx`: вид и текст. */
+export type LogEntry = { kind: string; text: string };
+
+export type Outcome = { values: unknown[]; error?: string; logs: LogEntry[] };
 
 /**
  * Плагин в рантайме и вызов его метода. Просьбы к другим плагинам (`ctx.plugin`) тест отдаёт
- * плагину из `peers` — так `shell.steps` доходит до `agent`.
+ * плагину из `peers` — так `shell.steps` доходит до `agent`. Строки лога соседей ложатся в тот же
+ * список: у платформы они были бы в том же трейсе.
  */
 export function plugin(
   dir: string,
   definition: PluginDefinition,
   peers: Record<string, PluginDefinition> = {},
+  logs: LogEntry[] = [],
 ) {
   let handler: ((message: PlatformMessage) => void) | undefined;
+  /** Кто ждёт строки лога: вызов, которому их показывают по мере прихода. */
+  const watching = new Set<(entry: LogEntry) => void>();
   const say = (message: PlatformMessage) => handler?.(message);
   const listeners = new Map<string, (message: PluginMessage) => void>();
   /** Идущие просьбы к соседям: отпустил поток — сосед снимает свой. */
   const peerCalls = new Map<string, () => void>();
+  const logged = (entry: LogEntry) => {
+    logs.push(entry);
+    for (const watcher of watching) watcher(entry);
+  };
   runPlugin(definition, {
     send: (message) => {
+      if (message.t === "log") {
+        logged({ kind: message.kind, text: message.text });
+        return;
+      }
       if (message.t === "request" && message.op === "plugin") {
         const name = message.path.split("/").pop() ?? "";
         const peer = peers[name];
@@ -31,7 +46,7 @@ export function plugin(
           queueMicrotask(() => say({ t: "rerror", id: message.id, message: `нет ${name}` }));
           return;
         }
-        const { cancel } = plugin(dir, peer).stream(message.method, message.args, {
+        const { cancel } = plugin(dir, peer, {}, logs).stream(message.method, message.args, {
           next: (value) => say({ t: "rnext", id: message.id, value }),
           error: (text) => say({ t: "rerror", id: message.id, message: text }),
           complete: () => say({ t: "rcomplete", id: message.id }),
@@ -67,25 +82,42 @@ export function plugin(
       next: (value: unknown) => void;
       error: (text: string) => void;
       complete: () => void;
+      log?: (entry: LogEntry) => void;
     },
   ) => {
     const id = `c${++counter}`;
+    const { log } = observer;
+    if (log) watching.add(log);
+    const done = () => {
+      if (log) watching.delete(log);
+    };
     listeners.set(id, (message) => {
       if (message.t === "next") observer.next(message.value);
-      else if (message.t === "error") observer.error(message.message);
-      else if (message.t === "complete") observer.complete();
+      else if (message.t === "error") {
+        done();
+        observer.error(message.message);
+      } else if (message.t === "complete") {
+        done();
+        observer.complete();
+      }
     });
-    say({ t: "call", id, method, args });
-    return { cancel: () => say({ t: "cancel", id }) };
+    say({ t: "call", id, method, args, trace: `t-${id}` });
+    return {
+      cancel: () => {
+        done();
+        say({ t: "cancel", id });
+      },
+    };
   };
-  /** Весь поток до конца или ошибки. */
+  /** Весь поток до конца или ошибки — и строки лога, написанные за это время. */
   const call = (method: string, args: unknown) =>
     new Promise<Outcome>((resolve) => {
       const values: unknown[] = [];
+      const from = logs.length;
       stream(method, args, {
         next: (value) => values.push(value),
-        error: (error) => resolve({ values, error }),
-        complete: () => resolve({ values }),
+        error: (error) => resolve({ values, error, logs: logs.slice(from) }),
+        complete: () => resolve({ values, logs: logs.slice(from) }),
       });
     });
   return { call, stream };

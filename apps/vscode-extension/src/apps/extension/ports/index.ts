@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { appendFile, mkdir, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as vscode from "vscode";
 import type { FileEntry, ServerPorts } from "@mapward/abstract-server";
@@ -102,6 +102,15 @@ const files = {
       }
     }
     await vscode.workspace.fs.writeFile(uri(path), encode(text));
+  },
+
+  /**
+   * Дозапись — логам карты (`.mapward/logs/`): файловой системой node, а не редактора: у
+   * `workspace.fs` дописывания нет, а переписывать мегабайты ради строки нельзя.
+   */
+  async append(path: string, text: string): Promise<void> {
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, text, "utf8");
   },
 
   /**

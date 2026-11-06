@@ -66,12 +66,11 @@ export {
 } from "@mapward/vfs";
 
 /**
- * Для метода, которого зовёт экшон: сообщения о ходе (`{ progress: "out", text }` и др.) платформа
- * пишет в прогон, а данные формы `${{ inputs.<имя> }}` подставляет в текст сам метод. Так живут
+ * Для метода, которого зовёт экшон: данные формы `${{ inputs.<имя> }}` подставляет в текст сам
+ * метод, а трейс вызова (`ctx.call.trace`) отдаёт своим процессам переменной `TRACE_ENV`. Так живут
  * встроенные `shell` и `agent`.
  */
-export { fillInputs, runMessage } from "@mapward/core";
-export type { RunMessage } from "@mapward/core";
+export { fillInputs, TRACE_ENV, TRACE_HEADER } from "@mapward/core";
 
 /** rxjs и typebox для сборки плагина: платформа отдаёт их вместо `node_modules`. */
 export { platformModules } from "./platform-modules.ts";

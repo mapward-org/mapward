@@ -1,4 +1,4 @@
-import type { MapEditOp, MapEditResult, MapObject } from "@mapward/core";
+import type { LogLine, MapEditOp, MapEditResult, MapObject } from "@mapward/core";
 import type { Observable } from "rxjs";
 import type { MapRef } from "../../kernel/map-ref.ts";
 
@@ -23,4 +23,14 @@ export type PluginsMapEdits = {
   edit(ref: MapRef, ops: MapEditOp[]): Promise<MapEditResult>;
   undo(ref: MapRef, id: string): Promise<MapEditResult>;
   redo(ref: MapRef, id: string): Promise<MapEditResult>;
+};
+
+/**
+ * Логи карты для хоста: строки вызовов, `ctx.log` и stderr — в файл плагина, хвост — из памяти,
+ * им объясняется падение процесса.
+ */
+export type PluginsLogs = {
+  fileOf(plugin: string): string;
+  write(mapPath: string, line: LogLine): void;
+  tail(mapPath: string, file: string, count: number): LogLine[];
 };

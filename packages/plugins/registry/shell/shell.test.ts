@@ -6,7 +6,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import type { PluginDefinition } from "@mapward/plugin";
 import agent from "../agent/index.ts";
 import files from "../files/index.ts";
-import { plugin as running } from "../harness.ts";
+import { plugin as running, type LogEntry } from "../harness.ts";
 import shell from "./index.ts";
 
 /**
@@ -46,23 +46,23 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 });
 
-const lines = (values: unknown[], progress: string) =>
-  values
-    .filter((value) => (value as { progress?: string }).progress === progress)
-    .map((value) => (value as { text: string }).text);
+/** Строки лога вызова одного вида: `out` — вывод, `log` — ход. */
+const lines = (logs: LogEntry[], kind: string) =>
+  logs.filter((entry) => entry.kind === kind).map((entry) => entry.text);
 
 test("shell.run: output line by line, the form in the command, the env and the stdin", async () => {
   const { call } = plugin(shell);
 
   const outcome = await call("run", {
     command:
-      "node -e \"process.stdin.on('data', (d) => console.log('вход ' + d)); console.log('${{ inputs.level }}'); console.log(process.env.MAPWARD_INPUT_LEVEL); console.error('ход')\"",
+      "node -e \"process.stdin.on('data', (d) => console.log('вход ' + d)); console.log('${{ inputs.level }}'); console.log(process.env.MAPWARD_INPUT_LEVEL); console.log(process.env.MAPWARD_TRACE); console.error('ход')\"",
     inputs: { level: "minor" },
   });
 
   expect(outcome.error).toBeUndefined();
-  expect(lines(outcome.values, "out")).toEqual(["minor", "minor", 'вход {"level":"minor"}']);
-  expect(lines(outcome.values, "log")).toEqual(["ход"]);
+  // Трейс вызова дошёл до команды переменной: что она сделает через карту, ляжет в тот же трейс.
+  expect(lines(outcome.logs, "out")).toEqual(["minor", "minor", "t-c1", 'вход {"level":"minor"}']);
+  expect(lines(outcome.logs, "log")).toEqual(["ход"]);
   expect(outcome.values.at(-1)).toEqual({ code: 0 });
 });
 
@@ -99,12 +99,14 @@ test("shell.run: cancelling the call kills the command with its children", async
       "run",
       { command: 'node -e "console.log(process.pid); setTimeout(() => {}, 20000)"' },
       {
-        next: (value) => {
-          cancel();
-          resolve(Number((value as { text: string }).text));
-        },
+        next: () => {},
         error: () => {},
         complete: () => {},
+        log: (entry) => {
+          if (entry.kind !== "out") return;
+          cancel();
+          resolve(Number(entry.text));
+        },
       },
     );
   });
@@ -131,8 +133,8 @@ test("agent.run: the move is streamed, the answer comes last; permissions become
   });
 
   expect(outcome.error).toBeUndefined();
-  expect(lines(outcome.values, "log")).toEqual(["→ Read a.ts", "думаю"]);
-  const [answer] = lines(outcome.values, "out");
+  expect(lines(outcome.logs, "log")).toEqual(["→ Read a.ts", "думаю"]);
+  const [answer] = lines(outcome.logs, "out");
   // Промпт подставлен и несёт форму в конце; разрешения дошли флагами; форма — и переменной.
   expect(answer).toContain("ответ: расскажи про карты");
   expect(answer).toContain('Данные формы, с которыми запустили экшон: {"topic":"карты"}');
@@ -152,12 +154,9 @@ test("shell.steps: steps one by one, a prompt step goes to agent next door", asy
   });
 
   expect(outcome.error).toBeUndefined();
-  const shown = outcome.values.map((value) => {
-    const message = value as { progress: string; name?: string; text?: string };
-    return message.progress === "step"
-      ? `шаг ${message.name}`
-      : `${message.progress} ${message.text}`;
-  });
+  const shown = outcome.logs.map((entry) =>
+    entry.kind === "step" ? `шаг ${entry.text}` : `${entry.kind} ${entry.text}`,
+  );
   expect(shown[0]).toBe("шаг раз");
   expect(shown[1]).toBe("out 1");
   expect(shown[2]).toBe("шаг два");
@@ -174,7 +173,7 @@ test("shell.steps: steps one by one, a prompt step goes to agent next door", asy
   });
   // Упал один — остальные не идут.
   expect(failed.error).toBe("команда вернула 1");
-  expect(lines(failed.values, "out")).toEqual([]);
+  expect(lines(failed.logs, "out")).toEqual([]);
 });
 
 /** Поток до условия: значения копятся, пока `until` не скажет «хватит», дальше — отписка. */
@@ -209,7 +208,8 @@ test("shell.json: the output is parsed as json, plain text becomes { text }, a f
     command: 'node -e "console.log(JSON.stringify({ items: [{ label: process.env.WHO }] }))"',
     env: { WHO: "core" },
   });
-  expect(parsed).toEqual({ values: [{ items: [{ label: "core" }] }] });
+  // stdout — значение, а не вывод: в лог его строки не идут.
+  expect(parsed).toEqual({ values: [{ items: [{ label: "core" }] }], logs: [] });
 
   const text = await call("json", { command: "node -e \"console.log(1 + 1, 'шт')\"" });
   expect(text.values).toEqual([{ text: "2 шт" }]);

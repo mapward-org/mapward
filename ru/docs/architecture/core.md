@@ -11,8 +11,8 @@
 
 ```
 src/
-  contracts/     контракты моста и протокол; типы того, что по ним едет (Run…, Turn…,
-                 Capabilities, ComponentBuild)
+  contracts/     контракты моста и протокол; типы того, что по ним едет (Run…, LogLine…,
+                 Turn…, Capabilities, ComponentBuild)
   lib/bridge/    клиент и сервер моста поверх контракта
   model/
     model.ts     объект карты как он едет по мосту (MapObject, MapMetric, MapAction, MapFile,
@@ -27,10 +27,11 @@ src/
 
 ## Кто с кем связан
 
-- **сервер ↔ клиент и хост** — контракты моста, объект карты, прогоны, ходы, возможности хоста,
+- **сервер ↔ клиент и хост** — контракты моста, объект карты, прогоны, строки лога и фильтр
+  (`LogLine`, `LogFilter`, мост `watchLogs` в `contracts/logs.ts`), ходы, возможности хоста,
   собранный компонент (`ComponentBuild`);
 - **платформа ↔ плагин** — `@mapward/plugin` встраивает `core` в свою сборку: объект в `ctx`,
-  сообщения прогона (`runMessage`), операции и ответ правки карты (`MapEditOp`, `MapEditResult`
+  имена, которыми трейс едет в процессы и в MCP (`TRACE_ENV`, `TRACE_HEADER`), операции и ответ правки карты (`MapEditOp`, `MapEditResult`
   в `contracts/edit.ts` — их же берут мост `editMap` и MCP `edit_map`);
 - **сервер ↔ клиент одним ответом** — что считают обе стороны и где разойтись нельзя: форма экшона
   и вопрос подтверждения (`actionForm`, `confirmQuestion`, `complete`) — клиент решает, открыть

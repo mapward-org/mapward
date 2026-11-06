@@ -14,6 +14,12 @@ const PluginCall = T.Object({
   plugin: T.String(),
   method: T.String(),
   args: T.Optional(T.Unknown()),
+  /**
+   * Чей это вызов: объект и метрика, которые его сделали. Нужно трейсу — строки вызова в логе
+   * плагина фильтруются по объекту, а прогон метрики находится по её адресу.
+   */
+  object: T.Optional(T.String()),
+  metric: T.Optional(T.String()),
 });
 
 export const PluginEvent = T.Union([

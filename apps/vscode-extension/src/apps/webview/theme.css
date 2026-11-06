@@ -14,6 +14,9 @@
   --mw-button-hoverBackground: var(--vscode-button-hoverBackground);
   --mw-charts-blue: var(--vscode-charts-blue);
   --mw-charts-green: var(--vscode-charts-green);
+  /* Уровни в логе прогонов — как раскраска pino-pretty */
+  --mw-charts-orange: var(--vscode-charts-orange);
+  --mw-charts-purple: var(--vscode-charts-purple);
   --mw-charts-yellow: var(--vscode-charts-yellow);
   --mw-descriptionForeground: var(--vscode-descriptionForeground);
   --mw-editor-background: var(--vscode-editor-background);

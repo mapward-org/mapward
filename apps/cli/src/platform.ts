@@ -6,9 +6,11 @@ import {
   mcpRequests,
   parsePlatform,
   platformFile,
+  withTrace,
   type McpTransport,
   type PlatformRecord,
 } from "@mapward/abstract-server";
+import { TRACE_HEADER } from "@mapward/core";
 
 /**
  * Одна платформа на карту. `mapward mcp` сначала смотрит в `<карта>/.mapward/platform.json`:
@@ -98,7 +100,8 @@ export function serveMcpHttp(
         response.writeHead(400).end();
         return;
       }
-      void mcp.request(parsed as Record<string, unknown>).then((answer) => {
+      const message = withTrace(parsed as Record<string, unknown>, request.headers[TRACE_HEADER]);
+      void mcp.request(message).then((answer) => {
         if (answer === undefined) response.writeHead(204).end();
         else
           response

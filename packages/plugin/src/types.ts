@@ -6,7 +6,7 @@
  * едет в каждую сборку плагина целиком.
  */
 
-import type { MapEditOp, MapEditResult, MapObject, RunMessage } from "@mapward/core";
+import type { MapEditOp, MapEditResult, MapObject } from "@mapward/core";
 import type { Observable } from "rxjs";
 import type { Static, TSchema } from "typebox";
 
@@ -63,6 +63,32 @@ export type PluginWebview = {
   bridge: string;
 };
 
+/**
+ * Сигнал отмены — это `AbortSignal` среды плагина (node), описанный здесь, потому что пакет среды
+ * не знает. `fetch` и `spawn` его принимают как есть (`ctx.signal as AbortSignal`).
+ */
+export type PluginSignal = {
+  readonly aborted: boolean;
+  readonly reason: unknown;
+  throwIfAborted(): void;
+  addEventListener(type: "abort", listener: () => void, options?: { once?: boolean }): void;
+  removeEventListener(type: "abort", listener: () => void): void;
+};
+
+/** Лог плагина: `ctx.log(...)` — строка хода, `ctx.log.error(...)` — ошибка. */
+export type PluginLog = ((...parts: unknown[]) => void) & { error(...parts: unknown[]): void };
+
+/**
+ * Вызов метода: его номер и трейс. Трейс сквозной — процессам, которые метод запускает, его
+ * отдают переменной `MAPWARD_TRACE`, и всё, что они сделают через карту, ляжет в тот же трейс.
+ */
+export type PluginCall = {
+  id: string;
+  trace: string;
+  /** Объект карты, на котором всё началось; не знает — нет. */
+  object?: string;
+};
+
 /** Клиент другого плагина: те же методы, вызов идёт через платформу. */
 export type PluginClient = {
   call<T = unknown>(method: string, args?: unknown): Observable<T>;
@@ -83,7 +109,25 @@ export type PluginCtx = {
    * его даёт `object`.
    */
   resolve(address: string, from?: string): string;
-  log(...parts: unknown[]): void;
+  /**
+   * Строка хода в лог плагина (`.mapward/logs/<плагин>.log`). У `ctx` вызова платформа приклеит к
+   * ней трейс, номер вызова, объект и метод; у `ctx` процесса (`init`, `dispose`) — ничего.
+   * Пишите ход почаще: по нему человек и агент видят, что идёт, и находят, где упало.
+   */
+  readonly log: PluginLog;
+  /** Вывод вызова — то, что он отдаёт человеку: строки команды, ответ агента. */
+  output(...parts: unknown[]): void;
+  /** Начался шаг: следующие строки хода и вывода — его. Предыдущий шаг кончился успехом. */
+  step(name: string): void;
+  /**
+   * Отмена этого вызова: срабатывает, когда от него отписались — человек остановил прогон,
+   * метрику закрыли, агент бросил вызов. Отдавайте его `fetch` и дочерним процессам, проверяйте
+   * в долгих циклах (`ctx.signal.throwIfAborted()`): отписка снимает поток, а работу, начатую
+   * мимо него, гасит только сам плагин. У `ctx` процесса сигнал не срабатывает никогда.
+   */
+  readonly signal: PluginSignal;
+  /** Вызов, в котором выполняется метод; у `ctx` процесса его нет. */
+  readonly call: PluginCall | undefined;
   /** Платформу поднял VS Code. */
   readonly isVscode: boolean;
   /** Редактор. Без него обращение бросает ошибку — проверяйте `isVscode`. */
@@ -214,7 +258,15 @@ export type PlatformMessage =
       isVscode: boolean;
       webview?: PluginWebview;
     }
-  | { t: "call"; id: string; method: string; args: unknown }
+  | {
+      t: "call";
+      id: string;
+      method: string;
+      args: unknown;
+      /** Трейс вызова; старая платформа его не шлёт. */
+      trace?: string;
+      object?: string;
+    }
   | { t: "cancel"; id: string }
   | { t: "shutdown" }
   | { t: "rnext"; id: string; value: unknown }
@@ -239,14 +291,16 @@ export type PluginMessage =
   | { t: "next"; id: string; value: unknown }
   | { t: "error"; id: string; message: string }
   | { t: "complete"; id: string }
-  | ({ t: "request"; id: string } & PluginRequest)
+  /** Просьба к платформе; `call` — вызов, из `ctx` которого она сделана: ей достаётся его трейс. */
+  | ({ t: "request"; id: string; call?: string } & PluginRequest)
+  /** Строка лога: `call` — вызов, из `ctx` которого она написана; без него — строка процесса. */
+  | { t: "log"; call?: string; kind: "log" | "error" | "out" | "step"; text: string }
   | { t: "release"; id: string }
   | { t: "disposed" };
 
 /**
  * Что `definePlugin` выводит по схемам метода: `params` — тип `args`, `result` — тип значений
- * потока; сообщения о ходе (`RunMessage`) идут мимо `result` — их платформа пишет в прогон. Две
- * записи, а не одна: TypeScript выводит по ключам только один параметр на запись.
+ * потока. Две записи, а не одна: TypeScript выводит по ключам только один параметр на запись.
  */
 export type WithParams<P> = Omit<MethodDefinition, "params" | "run"> & {
   params?: P;
@@ -254,7 +308,7 @@ export type WithParams<P> = Omit<MethodDefinition, "params" | "run"> & {
 };
 export type WithResult<R> = Omit<MethodDefinition, "result" | "run"> & {
   result?: R;
-  run(args: never, ctx: PluginCtx): Observable<FromSchema<R> | RunMessage>;
+  run(args: never, ctx: PluginCtx): Observable<FromSchema<R>>;
 };
 
 /** Методы плагина как их видит клиент: `usePlugin<typeof plugin>` берёт типы отсюда. */

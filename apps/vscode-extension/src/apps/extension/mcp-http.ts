@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mcpRequests, type McpTransport } from "@mapward/abstract-server";
+import { mcpRequests, withTrace, type McpTransport } from "@mapward/abstract-server";
+import { TRACE_HEADER } from "@mapward/core";
 import type { BridgeHttp } from "./bridge-http.ts";
 
 /**
@@ -51,7 +52,7 @@ export function startMcpHttp(
         response.writeHead(400).end();
         return;
       }
-      void mcp.request(parsed).then((answer) => {
+      void mcp.request(withTrace(parsed, request.headers[TRACE_HEADER])).then((answer) => {
         // Уведомление ответа не ждёт: пустой успех.
         if (answer === undefined) {
           response.writeHead(204).end();
